@@ -1,8 +1,10 @@
 # syntax=docker/dockerfile:1.10
 # Multi-stage Dockerfile for LX Music Sync Server (Ultra-slim Bun Architecture)
 
+ARG BUN_VERSION=1.4.2
+
 # Stage 1: Build Frontend, Server bundle and assets on host platform
-FROM --platform=$BUILDPLATFORM oven/bun:1-alpine AS builder
+FROM --platform=$BUILDPLATFORM oven/bun:${BUN_VERSION}-alpine AS builder
 WORKDIR /app
 
 # 安装构建原生 C++ 模块所需的编译链与依赖
@@ -26,7 +28,7 @@ RUN bun run build:frontend
 RUN bun run build
 
 # Stage 2: Ultra-slim Production Runner
-FROM oven/bun:1-alpine AS runner
+FROM oven/bun:${BUN_VERSION}-alpine AS runner
 WORKDIR /server
 
 RUN apk add --no-cache \

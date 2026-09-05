@@ -162,7 +162,7 @@ Web 播放器针对移动端进行了深度优化，手机浏览器访问也能�
 
 本项目提供官方多架构 Docker 镜像（基于精简的高性能 Alpine 与原生音频库构建）：
 
-- **GitHub Packages**: `ghcr.io/xcq0607/lxserver:latest`
+- **GitHub Packages**: `ghcr.io/biaobiaobiao108/lxserver:latest`
 
 **Docker Run 运行：**
 
@@ -175,7 +175,7 @@ docker run -d \
   -v $(pwd)/music:/server/music \
   --name lx-sync-server \
   --restart unless-stopped \
-  ghcr.io/xcq0607/lxserver:latest
+  ghcr.io/biaobiaobiao108/lxserver:latest
 ```
 
 **Docker Compose 部署：**
@@ -186,7 +186,7 @@ docker run -d \
 version: '3'
 services:
   lx-sync-server:
-    image: ghcr.io/xcq0607/lxserver:latest
+    image: ghcr.io/biaobiaobiao108/lxserver:latest
     container_name: lx-sync-server
     restart: unless-stopped
     ports:

@@ -17,17 +17,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/XCQ0607/lxserver.git"
+    "url": "git+https://github.com/biaobiaobiao108/lxserver.git"
   },
-  "author": {
-    "name": "XCQ",
-    "email": "2406498704@qq.com"
-  },
-  "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/XCQ0607/lxserver/issues"
+    "url": "https://github.com/biaobiaobiao108/lxserver/issues"
   },
-  "homepage": "https://github.com/XCQ0607/lxserver#readme",
+  "homepage": "https://github.com/biaobiaobiao108/lxserver#readme",
   "dependencies": {
     "@foobar404/wave": "^2.0.5",
     "archiver": "^8.0.0",

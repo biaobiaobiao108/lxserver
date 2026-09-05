@@ -112,7 +112,6 @@ export const fixNewMusicInfoQuality = (musicInfo: LX.Music.MusicInfo) => {
     delete musicInfo.meta._qualitys.flac32bit
 
     musicInfo.meta.qualitys = musicInfo.meta.qualitys.map(quality => {
-      // @ts-expect-error
       if (quality.type == 'flac32bit') quality.type = 'flac24bit'
       return quality
     })

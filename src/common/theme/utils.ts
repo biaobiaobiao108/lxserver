@@ -1,7 +1,12 @@
-const { RGB_Linear_Shade, RGB_Alpha_Shade } = require('./colorUtils')
+import { RGB_Linear_Shade, RGB_Alpha_Shade } from './colorUtils'
 
-exports.createThemeColors = (rgbaColor, fontRgbaColor, isDark, isDarkFont) => {
-  const colors = {
+export const createThemeColors = (
+  rgbaColor: string,
+  fontRgbaColor?: string,
+  isDark?: boolean,
+  isDarkFont?: boolean
+): Record<string, string> => {
+  const colors: Record<string, string> = {
     '--color-primary': rgbaColor,
   }
 
@@ -23,9 +28,9 @@ exports.createThemeColors = (rgbaColor, fontRgbaColor, isDark, isDarkFont) => {
     }
   }
   preColor = RGB_Linear_Shade(isDark ? -0.35 : 1, preColor)
-  colors[`--color-primary-light-${1000}`] = preColor
+  colors['--color-primary-light-1000'] = preColor
   for (let j = 1; j < 10; j += 1) {
-    colors[`--color-primary-light-${1000}-alpha-${j * 100}`] = RGB_Alpha_Shade(0.1 * j, preColor)
+    colors[`--color-primary-light-1000-alpha-${j * 100}`] = RGB_Alpha_Shade(0.1 * j, preColor)
   }
 
   colors['--color-theme'] = isDark ? colors['--color-primary-light-900'] : rgbaColor
@@ -33,28 +38,29 @@ exports.createThemeColors = (rgbaColor, fontRgbaColor, isDark, isDarkFont) => {
   return { ...colors, ...createFontColors(fontRgbaColor, isDark, isDarkFont) }
 }
 
-const createFontColors = (rgbaColor, isDark, isDarkFont) => {
-  // rgb(238, 238, 238)
-  // let prec = 'rgb(255, 255, 255)'
+export const createFontColors = (
+  rgbaColor?: string,
+  isDark?: boolean,
+  isDarkFont?: boolean
+): Record<string, string> => {
   rgbaColor ??= isDark ? 'rgb(229, 229, 229)' : 'rgb(33, 33, 33)'
   if (isDark) return createFontDarkColors(rgbaColor, isDarkFont)
 
-  let colors = {
+  const colors: Record<string, string> = {
     '--color-1000': rgbaColor,
   }
-  let step = (isDarkFont ? 0.02 : 0.05) * (isDark ? -1 : 1)
+  const step = (isDarkFont ? 0.02 : 0.05) * (isDark ? -1 : 1)
   for (let i = 1; i < 21; i += 1) {
     colors[`--color-${String(1000 - 50 * i).padStart(3, '0')}`] = RGB_Linear_Shade(step * i, rgbaColor)
   }
-  // console.log(colors)
   return colors
 }
 
-const createFontDarkColors = (rgbaColor, isDarkFont) => {
-  // rgb(238, 238, 238)
-  // let prec = 'rgb(255, 255, 255)'
-
-  let colors = {
+export const createFontDarkColors = (
+  rgbaColor: string,
+  isDarkFont?: boolean
+): Record<string, string> => {
+  const colors: Record<string, string> = {
     '--color-1000': rgbaColor,
   }
   const step = isDarkFont ? -0.015 : -0.05
@@ -63,13 +69,5 @@ const createFontDarkColors = (rgbaColor, isDarkFont) => {
     preColor = RGB_Linear_Shade(step, preColor)
     colors[`--color-${String(1000 - 50 * i).padStart(3, '0')}`] = preColor
   }
-
-  // console.log(colors)
   return colors
 }
-
-// console.log(createFontColors('rgb(33, 33, 33)', false))
-// console.log(createFontColors('rgb(255, 255, 255)', true))
-
-// console.log(createFontDarkColors('rgb(255, 255, 255)'))
-

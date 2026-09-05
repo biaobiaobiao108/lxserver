@@ -1,8 +1,8 @@
-import type WS from 'ws'
+import type { WebSocket, Server } from 'ws'
 
 declare global {
   namespace LX {
-    interface Socket extends WS.WebSocket {
+    interface Socket extends WebSocket {
       isAlive?: boolean
       isReady: boolean
       keyInfo: LX.Sync.KeyInfo
@@ -20,7 +20,7 @@ declare global {
       remoteQueueList: LX.Sync.ClientSyncListActions
       remoteQueueDislike: LX.Sync.ClientSyncDislikeActions
     }
-    type SocketServer = WS.Server<Socket>
+    type SocketServer = Omit<Server<any>, 'clients'> & { clients: Set<Socket> }
   }
 }
 

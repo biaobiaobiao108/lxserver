@@ -157,3 +157,21 @@ export const authConnect = async (req: http.IncomingMessage) => {
   throw new Error('failed')
 }
 
+export const verifyAdminAuth = (req: http.IncomingMessage, allowQueryAuth = false, urlObj?: URL): boolean => {
+  const configuredPassword = global.lx.config['frontend.password']
+  if (!configuredPassword || typeof configuredPassword !== 'string' || configuredPassword.trim() === '') {
+    return false
+  }
+  const headerAuth = req.headers['x-frontend-auth']
+  if (typeof headerAuth === 'string' && headerAuth === configuredPassword) {
+    return true
+  }
+  if (allowQueryAuth && urlObj) {
+    const queryAuth = urlObj.searchParams.get('auth')
+    if (typeof queryAuth === 'string' && queryAuth === configuredPassword) {
+      return true
+    }
+  }
+  return false
+}
+

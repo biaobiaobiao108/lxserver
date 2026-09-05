@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { WebSocketServer, WebSocket } from 'ws'
 import { registerLocalSyncEvent, callObj, sync } from './sync'
-import { authCode, authConnect } from './auth'
+import { authCode, authConnect, verifyAdminAuth } from './auth'
 import { getAddress, sendStatus, decryptMsg, encryptMsg, getIP } from '@/utils/tools'
 import { accessLog, startupLog, syncLog, loginLog, tokenLog } from '@/utils/log4js'
 import {
@@ -4938,8 +4938,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
 
       // [新增] 管理员身份验证接口
       if (pathname === '/api/admin/verify' && req.method === 'POST') {
-        const auth = req.headers['x-frontend-auth']
-        if (auth === global.lx.config['frontend.password']) {
+        if (verifyAdminAuth(req)) {
           res.writeHead(200, { 'Content-Type': 'application/json' })
           res.end(JSON.stringify({ success: true }))
         } else {
@@ -4956,8 +4955,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
       // 所有自定义源修改接口通用鉴权 (如果是公开访问限制模式，则必须登录)
       if (pathname.startsWith('/api/custom-source/') && req.method === 'POST' && pathname !== '/api/custom-source/validate') {
         if (global.lx.config['user.enablePublicRestriction']) {
-          const auth = req.headers['x-frontend-auth']
-          const isAdmin = auth === global.lx.config['frontend.password']
+          const isAdmin = verifyAdminAuth(req)
           const user = verifyUserAuth(req)
           if (!isAdmin && !user) {
             res.writeHead(403, { 'Content-Type': 'application/json' })
@@ -5003,10 +5001,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
 
       // elFinder 文件管理器连接器
       if (pathname === '/api/elfinder/connector') {
-        // [修改] 优先从 Header 获取，如果没有则尝试从 URL 参数获取 (用于支持下载和预览)
-        const auth = req.headers['x-frontend-auth'] || urlObj.searchParams.get('auth')
-
-        if (auth !== global.lx.config['frontend.password']) {
+        if (!verifyAdminAuth(req, true, urlObj)) {
           res.writeHead(401)
           res.end('Unauthorized')
           return
@@ -5830,18 +5825,18 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
       }
       // File Management - List Files
       if (pathname === '/api/files' && req.method === 'GET') {
-        const auth = req.headers['x-frontend-auth']
-        if (auth !== global.lx.config['frontend.password']) {
+        if (!verifyAdminAuth(req)) {
           res.writeHead(401)
           res.end('Unauthorized')
           return
         }
 
         const dirPath = urlObj.searchParams.get('path') || ''
-        const fullPath = path.join(global.lx.dataPath, dirPath)
+        const resolvedRoot = path.resolve(global.lx.dataPath)
+        const fullPath = path.resolve(global.lx.dataPath, dirPath)
 
-        // 安全检查：确保路径在 dataPath 内
-        if (!fullPath.startsWith(global.lx.dataPath)) {
+        // 安全检查：确保路径严格在 dataPath 内
+        if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
           res.writeHead(403)
           res.end('Forbidden')
           return
@@ -5873,17 +5868,17 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
 
       // File Management - Download File
       if (pathname === '/api/files/download' && req.method === 'GET') {
-        const auth = req.headers['x-frontend-auth']
-        if (auth !== global.lx.config['frontend.password']) {
+        if (!verifyAdminAuth(req)) {
           res.writeHead(401)
           res.end('Unauthorized')
           return
         }
 
         const filePath = urlObj.searchParams.get('path') || ''
-        const fullPath = path.join(global.lx.dataPath, filePath)
+        const resolvedRoot = path.resolve(global.lx.dataPath)
+        const fullPath = path.resolve(global.lx.dataPath, filePath)
 
-        if (!fullPath.startsWith(global.lx.dataPath)) {
+        if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
           res.writeHead(403)
           res.end('Forbidden')
           return
@@ -5905,8 +5900,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
 
       // File Management - Create/Update File
       if (pathname === '/api/files' && (req.method === 'POST' || req.method === 'PUT')) {
-        const auth = req.headers['x-frontend-auth']
-        if (auth !== global.lx.config['frontend.password']) {
+        if (!verifyAdminAuth(req)) {
           res.writeHead(401)
           res.end('Unauthorized')
           return
@@ -5915,9 +5909,10 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
         void readBody(req).then(body => {
           try {
             const { path: filePath, content, isDirectory } = JSON.parse(body)
-            const fullPath = path.join(global.lx.dataPath, filePath)
+            const resolvedRoot = path.resolve(global.lx.dataPath)
+            const fullPath = path.resolve(global.lx.dataPath, filePath || '')
 
-            if (!fullPath.startsWith(global.lx.dataPath)) {
+            if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
               res.writeHead(403)
               res.end('Forbidden')
               return
@@ -5945,8 +5940,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
 
       // File Management - Delete File
       if (pathname === '/api/files' && req.method === 'DELETE') {
-        const auth = req.headers['x-frontend-auth']
-        if (auth !== global.lx.config['frontend.password']) {
+        if (!verifyAdminAuth(req)) {
           res.writeHead(401)
           res.end('Unauthorized')
           return
@@ -5955,9 +5949,10 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
         void readBody(req).then(body => {
           try {
             const { path: filePath } = JSON.parse(body)
-            const fullPath = path.join(global.lx.dataPath, filePath)
+            const resolvedRoot = path.resolve(global.lx.dataPath)
+            const fullPath = path.resolve(global.lx.dataPath, filePath || '')
 
-            if (!fullPath.startsWith(global.lx.dataPath)) {
+            if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
               res.writeHead(403)
               res.end('Forbidden')
               return

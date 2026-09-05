@@ -2469,7 +2469,11 @@ export const serveCacheFile = (req: http.IncomingMessage, res: http.ServerRespon
     for (const loc of locations) {
         for (const folder of roots) {
             const dir = getCacheDir(normalizedUsername, folder === 'music', loc)
-            const checkPath = path.join(dir, filename) // [Fix] Allow subfolders
+            const checkPath = path.resolve(dir, filename)
+            const resolvedDir = path.resolve(dir)
+            if (!checkPath.startsWith(resolvedDir + path.sep) && checkPath !== resolvedDir) {
+                continue
+            }
             if (fs.existsSync(checkPath)) { filePath = checkPath; break }
         }
         if (filePath) break

@@ -6,7 +6,9 @@
   <p>
     <img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="Build Status">
     <img src="https://img.shields.io/badge/version-v2.0.0-blue?style=flat-square" alt="Version">
-    <img src="https://img.shields.io/badge/node-%3E%3D16-green?style=flat-square" alt="Node Version">
+    <img src="https://img.shields.io/badge/bun-%3E%3D1.1-black?style=flat-square&logo=bun" alt="Bun Version">
+    <img src="https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker" alt="Docker">
+    <img src="https://img.shields.io/badge/typescript-v7-3178C6?style=flat-square&logo=typescript" alt="TypeScript">
     <img src="https://img.shields.io/github/license/XCQ0607/lxserver?style=flat-square" alt="License">
     <br>
     <br>
@@ -142,24 +144,11 @@ The Web Player is deeply optimized for mobile devices, providing a native App-li
 
 ## 🚀 Quick Start
 
-Built with **Node.js**, supporting multiple deployment methods.
+Built with **Full-stack Bun + TypeScript**, focusing on containerized (Docker) and high-performance server deployments.
 
+### Option 1: Containerized Deployment via Docker (Recommended)
 
-### Option 1: Desktop Client
-
-You can now run LX Music Sync Server more conveniently via our Desktop Client, available for Windows, macOS, and Linux.
-
-- **📦 Download Latest**: [GitHub Releases](https://github.com/XCQ0607/lxserver/releases/latest)
-- **✨ Key Advantages**:
-    - **Single Window**: Integrated management dashboard and Web player for a unified experience.
-    - **System Tray**: Minimizes to tray on close, ensuring the sync service stays active in the background.
-    - **Port Conflict Resolution**: Automatically detects and switches ports if the default is in use.
-    - **Setup Wizard**: Guided data path selection on first launch, supports **Portable Mode**.
-    - **Multi-Arch Support**: Builds for Windows (x64/x86/ARM64 Setup & Portable), macOS (Intel x64 & Apple Silicon arm64), and Linux (amd64/arm64/armv7l deb/AppImage).
-
-### Option 2: Containerized Deployment via Docker
-
-This project supports pulling images from Docker Hub or GitHub Packages:
+This project provides multi-arch Docker images built on lightweight Alpine with native audio libraries:
 - **Docker Hub**: `xcq0607/lxserver:latest`
 - **GitHub Packages**: `ghcr.io/xcq0607/lxserver:latest`
 
@@ -204,26 +193,34 @@ services:
       # - PLAYER_PATH=/music
 ```
 
-### Option 3: Manual Run (Git Clone)
+Run with Docker Compose:
+```bash
+docker compose up -d
+```
+
+### Option 2: Run directly with Bun (Full-Stack Bun)
+
+Ensure [Bun](https://bun.sh/) (version >= 1.1) is installed:
 
 ```bash
 # 1. Clone project
 git clone https://github.com/XCQ0607/lxserver.git && cd lxserver
 
-# 2. Install dependencies and build
-npm ci && npm run build
+# 2. Install dependencies
+bun install
 
-# 3. Start service
-npm start
+# 3. Build frontend bundles (via native Bun Bundler)
+bun run build:frontend
+
+# 4. Start service
+# In development (with hot-reload):
+bun run dev
+
+# In production:
+bun start
 ```
 
-### Option 4: Using Release Build
-
-1. Download the archive from GitHub Releases.
-2. Extract and run `npm install --production`.
-3. Execute `npm start`.
-
-### 3. Access Info
+### Access Info
 
 - **Web Player**: `http://your-ip:9527/music` (Default path, configurable via `PLAYER_PATH`)
 - **Sync Dashboard**: `http://your-ip:9527` (Default path, configurable via `ADMIN_PATH`, default password: `123456`)
@@ -232,11 +229,14 @@ npm start
 
 ## 🏗️ Architecture
 
-Separated frontend and backend architecture based on Node.js:
+Engineered with a modern **Full-Stack Bun + TypeScript** architecture:
 
-- **Backend (Express + WebSocket)**: Core sync logic and WebDAV backup.
-- **Console (Vanilla JS)**: Located in the root directory, handles user and data management.
-- **WebPlayer (Vanilla JS)**: Handles music playback, default access path is `/music`.
+- **Runtime & Backend (Bun + Express + WebSocket)**: Powered by Bun for high-throughput I/O and real-time WebSocket sync, Subsonic API compliance, and WebDAV automated snapshots.
+- **Frontend (Bun Bundler)**:
+  - `frontend/admin/src`: Admin dashboard source, bundled via native `Bun.build` to `public/`.
+  - `frontend/player/src`: Web player source, bundled via native `Bun.build` to `public/music/`.
+  - Sub-50ms blazing fast asset compilation and minification.
+- **Containerization (Docker)**: Based on `oven/bun:1-alpine`, bundled with `chromaprint` native audio fingerprinting, zero desktop bloat.
 
 ---
 

@@ -3,13 +3,6 @@
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
-import moduleAlias from 'module-alias'
-// @ts-ignore
-moduleAlias.addAliases({
-  '@common': path.join(__dirname, 'common'),
-  '@renderer': path.join(__dirname, 'modules'),
-  '@': __dirname
-})
 
 if (typeof (global as any).navigator === 'undefined') {
   (global as any).navigator = { userAgent: 'node.js' }
@@ -75,8 +68,15 @@ const getConfigHash = (filePath: string) => {
 const dataPath = envParams.DATA_PATH ?? path.join(__dirname, '../data')
 const saveConfigToFile = () => {
   const configPath = process.env.CONFIG_PATH || path.join(process.cwd(), 'config.js')
-  const content = `module.exports = ${JSON.stringify(global.lx.config, null, 2)}`
+  const content = `module.exports = ${JSON.stringify(global.lx.config, null, 2)}\n`
   try {
+    if (fs.existsSync(configPath)) {
+      const existing = fs.readFileSync(configPath, 'utf-8')
+      if (existing.trim() === content.trim()) {
+        lastConfigHash = crypto.createHash('md5').update(content).digest('hex')
+        return
+      }
+    }
     fs.writeFileSync(configPath, content)
     lastConfigHash = crypto.createHash('md5').update(content).digest('hex')
     // console.log('Current memory config saved to config.js')
@@ -359,7 +359,7 @@ if (fs.existsSync(usersJsonPath)) {
 checkUserConfig(global.lx.config.users)
 
 console.log(`Users:
-${global.lx.config.users.map(user => `  ${user.name}: ${user.password}`).join('\n') || '  No User'}
+${global.lx.config.users.map(user => `  ${user.name}: [PROTECTED]`).join('\n') || '  No User'}
 `)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { getUserDirname } = require('@/user')

@@ -1,54 +1,45 @@
-FROM alpine AS base
+FROM oven/bun:1-alpine AS builder
+WORKDIR /app
 
-FROM base AS builder
-WORKDIR /source-code
-COPY . .
-
-RUN apk add --update \
+# 安装构建原生 C++ 模块所需的编译链与依赖
+RUN apk add --no-cache \
   g++ \
   make \
-  py3-pip \
-  nodejs \
-  npm \
-  && (apk add --no-cache chromaprint || true) \
-  && npm install --ignore-scripts --no-audit --no-fund && npm run build \
-  && rm -rf node_modules && npm install --omit=dev --no-audit --no-fund \
-  && mkdir -p build-output \
-  && mv server node_modules config.js index.js package.json public -t build-output
+  python3 \
+  py3-pip
 
+COPY package.json bun.lock tsconfig.json ./
+RUN bun install --frozen-lockfile
 
-FROM base AS final
+COPY . .
+
+# 使用 Bun 原生 Bundler 构建前端资源
+RUN bun run build:frontend
+
+FROM oven/bun:1-alpine AS runner
 WORKDIR /server
 
-RUN apk add --update --no-cache nodejs \
-  && (apk add --no-cache chromaprint || echo "chromaprint apk not found, will use bundled binary")
+RUN apk add --no-cache \
+  chromaprint \
+  gcompat \
+  libstdc++
 
-COPY --from=builder ./source-code/build-output ./
+COPY --from=builder /app/package.json ./
+COPY --from=builder /app/bun.lock ./
+COPY --from=builder /app/tsconfig.json ./
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/config.js ./config.js
+COPY --from=builder /app/scripts ./scripts
 
 VOLUME /server/data
 ENV DATA_PATH='/server/data'
 ENV LOG_PATH='/server/data/logs'
-
-EXPOSE 9527
 ENV NODE_ENV='production'
 ENV PORT=9527
 ENV BIND_IP='0.0.0.0'
-# ENV PROXY_HEADER 'x-real-ip'
-# ENV SERVER_NAME 'My Sync Server'
-# ENV MAX_SNAPSHOT_NUM '10'
-# ENV LIST_ADD_MUSIC_LOCATION_TYPE 'top'
-# ENV LX_USER_user1 '123.123'
-# ENV LX_USER_user2 '{ "password": "123.456", "maxSnapshotNum": 10, "list.addMusicLocationType": "top" }'
-# ENV CONFIG_PATH '/server/config.js'
-# ENV WEBDAV_URL ''
-# ENV WEBDAV_USERNAME ''
-# ENV WEBDAV_PASSWORD ''
-# ENV SYNC_INTERVAL '60'
-# ENV ENABLE_WEBPLAYER_AUTH 'false'
-# ENV WEBPLAYER_PASSWORD '123456'
-# ENV LOG_PATH '/server/logs'
-# ENV DATA_PATH '/server/data'
-# ENV PLAYER_ENABLE_AUTH 'true'
-# ENV PLAYER_PASSWORD '123.456'
 
-CMD [ "node", "index.js" ]
+EXPOSE 9527
+
+CMD [ "bun", "run", "src/index.ts" ]

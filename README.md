@@ -9,7 +9,9 @@
   <p>
     <img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="Build Status">
     <img src="https://img.shields.io/badge/version-v2.0.0-blue?style=flat-square" alt="Version">
-    <img src="https://img.shields.io/badge/node-%3E%3D16-green?style=flat-square" alt="Node Version">
+    <img src="https://img.shields.io/badge/bun-%3E%3D1.1-black?style=flat-square&logo=bun" alt="Bun Version">
+    <img src="https://img.shields.io/badge/docker-ready-2496ED?style=flat-square&logo=docker" alt="Docker">
+    <img src="https://img.shields.io/badge/typescript-v7-3178C6?style=flat-square&logo=typescript" alt="TypeScript">
     <img src="https://img.shields.io/github/license/XCQ0607/lxserver?style=flat-square" alt="License">
     <br>
     <br>
@@ -154,26 +156,16 @@ Web 播放器针对移动端进行了深度优化，手机浏览器访问也能�
 
 ## 🚀 快速启动
 
-本项目基于 **Node.js** 开发，支持多种部署方式。
+本项目全面采用 **全栈 Bun** 与 **Docker 容器化** 架构，专注于高性能云端与私有化部署。
 
-### 方式一：桌面客户端
+### 方式一：使用 Docker 部署（推荐）
 
-可以通过桌面端更方便地运行 LX Music Sync Server，支持 Windows、macOS 和 Linux。
-
-- **📦 最新版本下载**: [GitHub Releases](https://github.com/XCQ0607/lxserver/releases/latest)
-- **✨ 桌面端优势**:
-  - **单窗口管理**: 服务器管理与 Web 播放器合二为一，界面更统一。
-  - **托盘常驻**: 窗口关闭后自动缩回托盘，服务在后台始终运行。
-  - **全架构支持**: 提供 Windows (x64/x86/ARM64 Setup 及 Portable)、macOS (Intel/Apple Silicon) 及 Linux (amd64/arm64/armv7l) 全家桶。
-
-### 方式二：使用 Docker
-
-本项目支持从 Docker Hub 或 GitHub Packages 拉取镜像：
+本项目提供官方多架构 Docker 镜像（基于精简的高性能 Alpine 与原生音频库构建）：
 
 - **Docker Hub**: `xcq0607/lxserver:latest`
 - **GitHub Packages**: `ghcr.io/xcq0607/lxserver:latest`
 
-**Docker Run 示例：**
+**Docker Run 运行：**
 
 ```bash
 docker run -d \
@@ -187,7 +179,7 @@ docker run -d \
   xcq0607/lxserver:latest
 ```
 
-**Docker Compose 示例：**
+**Docker Compose 部署：**
 
 新建 `docker-compose.yml` 文件：
 
@@ -214,26 +206,34 @@ services:
       # - PLAYER_PATH=/music
 ```
 
-### 方式三：直接运行 (Git Clone)
+运行服务：
+```bash
+docker compose up -d
+```
+
+### 方式二：使用 Bun 源码运行 (全栈 Bun)
+
+确保已安装 [Bun](https://bun.sh/)（版本 >= 1.1）：
 
 ```bash
 # 1. 克隆项目
 git clone https://github.com/XCQ0607/lxserver.git && cd lxserver
 
-# 2. 安装依赖并编译
-npm ci && npm run build
+# 2. 安装依赖
+bun install
 
-# 3. 启动服务
-npm start
+# 3. 构建前端静态资源 (使用原生 Bun Bundler 极速打包)
+bun run build:frontend
+
+# 4. 启动服务
+# 开发环境 (带热重载与监听):
+bun run dev
+
+# 生产环境运行:
+bun start
 ```
 
-### 方式四：使用 Release 版本
-
-1. 在 GitHub Releases 下载压缩包。
-2. 解压后运行 `npm install --production`。
-3. 执行 `npm start` 启动。
-
-### 3. 访问说明
+### 访问说明
 
 - **Web 播放器**: `http://your-ip:9527/music` (默认路径，可通过 `PLAYER_PATH` 修改)
 - **同步管理后台**: `http://your-ip:9527` (默认路径，可通过 `ADMIN_PATH` 修改，默认密码: `123456`)
@@ -242,11 +242,14 @@ npm start
 
 ## 🏗️ 项目架构
 
-本项目基于 Node.js 采用前后端分离架构：
+本项目采用基于 **全栈 Bun + TypeScript** 的现代前后端工程架构，专攻服务器与 Docker 部署：
 
-- **Backend (Express + WebSocket)**: 核心同步逻辑与 WebDAV 备份。
-- **Console (Vanilla JS)**: 位于根目录，负责用户与数据管理。
-- **WebPlayer (Vanilla JS)**: 负责音乐播放业务，默认访问路径为 `/music`。
+- **Runtime & Backend (Bun + Express + WebSocket)**：全量运行于 Bun 极速运行时，原生支持 TS 执行、快速 I/O 与 WebSocket 实时双向同步，并集成 Subsonic API 与 WebDAV 自动增量/全量快照备份。
+- **Frontend (Bun Bundler)**：
+  - `frontend/admin/src`：管理后台工程源码，采用原生 `Bun.build` 构建输出至 `public/`。
+  - `frontend/player/src`：Web 播放器工程源码，采用原生 `Bun.build` 构建输出至 `public/music/`。
+  - 前端资源毫秒级完成打包与代码压缩。
+- **Containerization (Docker)**：基于 `oven/bun:1-alpine` 极速轻量镜像构建，内置 `chromaprint` 原生音频指纹库，体积小、冷启动快、无冗余桌面层依赖。
 
 ---
 

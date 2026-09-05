@@ -1,43 +1,27 @@
 {
-  // https://github.com/tsconfig/bases#node-16-tsconfigjson
-  "extends": "@tsconfig/node16/tsconfig.json",
-  // Most ts-node options can be specified here using their programmatic names.
-  "ts-node": {
-    // It is faster to skip typechecking.
-    // Remove if you want ts-node to do typechecking.
-    "transpileOnly": true,
-    "files": true,
-    "compilerOptions": {
-      // compilerOptions specified here will override those declared below,
-      // but *only* in ts-node.  Useful if you want ts-node and tsc to use
-      // different options with a single tsconfig.json.
-    }
-  },
   "compilerOptions": {
-    "ignoreDeprecations": "6.0",
-    "target": "ES2022",
-    "lib": [
-      "ES2022"
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": [
+      "bun-types"
     ],
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
-    // typescript options here
     "allowJs": true,
-    "rootDir": "./src",
-    "outDir": "./server",
+    "strict": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
     "noImplicitReturns": false,
-    "baseUrl": "./src",
     "paths": {
       "@/*": [
-        "./*"
+        "./src/*"
       ],
       "@common/*": [
-        "./common/*"
+        "./src/common/*"
       ],
       "@renderer/*": [
-        "./modules/*"
+        "./src/modules/*"
       ]
-    },
+    }
   },
   "include": [
     "src"

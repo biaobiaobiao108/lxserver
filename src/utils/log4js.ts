@@ -1,5 +1,7 @@
 import path from 'node:path'
-import log4js from 'log4js'
+import type { Log4js } from 'log4js'
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const log4js: Log4js = require('log4js')
 
 const createLogConfig = (logPath: string) => {
   return {

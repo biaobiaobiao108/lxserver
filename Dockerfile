@@ -33,6 +33,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/config.js ./config.js
 COPY --from=builder /app/scripts ./scripts
 
+# 将系统 chromaprint (fpcalc) 直接软链接至播放器二进制目录，免去容器内下载
+RUN mkdir -p /server/public/music/bin && ln -sf /usr/bin/fpcalc /server/public/music/bin/fpcalc
+
 VOLUME /server/data
 ENV DATA_PATH='/server/data'
 ENV LOG_PATH='/server/data/logs'

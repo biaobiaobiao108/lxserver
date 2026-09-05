@@ -1,8 +1,13 @@
 .git
 .gitignore
+.vscode
 node_modules
 data
 logs
-lx-music-desktop-master
-dist-electron
-build
+cache
+music
+packaging
+tests
+*.log
+package-lock.json
+debug.txt

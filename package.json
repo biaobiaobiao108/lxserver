@@ -9,6 +9,7 @@
     "dev": "bun --watch src/index.ts",
     "build": "bun build src/index.ts --outdir ./server --target bun --packages=external",
     "build:frontend": "bun run scripts/build-frontend.ts",
+    "dev:frontend": "bun run scripts/build-frontend.ts --watch",
     "test": "bun test"
   },
   "engines": {
@@ -29,10 +30,8 @@
   "homepage": "https://github.com/XCQ0607/lxserver#readme",
   "dependencies": {
     "@foobar404/wave": "^2.0.5",
-    "@types/formidable": "^3.5.1",
     "archiver": "^8.0.0",
     "brace-expansion": "^5.0.9",
-    "crypto-js": "^4.2.0",
     "file-type": "^22.0.2",
     "formidable": "^3.5.4",
     "log4js": "^6.9.1",
@@ -49,6 +48,7 @@
   "devDependencies": {
     "@types/archiver": "^8.0.0",
     "@types/bun": "latest",
+    "@types/formidable": "^3.5.1",
     "@types/needle": "^3.3.0",
     "@types/tunnel": "^0.0.7",
     "@types/unzipper": "^0.10.11",

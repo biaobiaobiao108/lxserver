@@ -66,18 +66,19 @@ const getConfigHash = (filePath: string) => {
 }
 
 const dataPath = envParams.DATA_PATH ?? path.join(__dirname, '../data')
-const saveConfigToFile = () => {
+const saveConfigToFile = async () => {
   const configPath = process.env.CONFIG_PATH || path.join(process.cwd(), 'config.js')
   const content = `module.exports = ${JSON.stringify(global.lx.config, null, 2)}\n`
   try {
-    if (fs.existsSync(configPath)) {
-      const existing = fs.readFileSync(configPath, 'utf-8')
+    const file = Bun.file(configPath)
+    if (await file.exists()) {
+      const existing = await file.text()
       if (existing.trim() === content.trim()) {
         lastConfigHash = crypto.createHash('md5').update(content).digest('hex')
         return
       }
     }
-    fs.writeFileSync(configPath, content)
+    await Bun.write(configPath, content)
     lastConfigHash = crypto.createHash('md5').update(content).digest('hex')
     // console.log('Current memory config saved to config.js')
   } catch (err) {
@@ -487,7 +488,7 @@ if (!fs.existsSync(openLibDir)) {
 }
 
 // 启动前最后保存一次合并后的配置，确保环境变量被固化到 config.js 中
-saveConfigToFile()
+await saveConfigToFile()
 
 startServer(global.lx.config.port, global.lx.config.bindIP)
 

@@ -6,10 +6,8 @@
       "name": "lx-music-sync-server",
       "dependencies": {
         "@foobar404/wave": "^2.0.5",
-        "@types/formidable": "^3.5.1",
         "archiver": "^8.0.0",
         "brace-expansion": "^5.0.9",
-        "crypto-js": "^4.2.0",
         "file-type": "^22.0.2",
         "formidable": "^3.5.4",
         "log4js": "^6.9.1",
@@ -26,6 +24,7 @@
       "devDependencies": {
         "@types/archiver": "^8.0.0",
         "@types/bun": "latest",
+        "@types/formidable": "^3.5.1",
         "@types/needle": "^3.3.0",
         "@types/tunnel": "^0.0.7",
         "@types/unzipper": "^0.10.11",
@@ -188,8 +187,6 @@
     "crc32-stream": ["crc32-stream@7.0.1", "", { "dependencies": { "crc-32": "^1.2.0", "readable-stream": "^4.0.0" } }, "sha512-IBWsY8xznyQrcHn8h4bC8/4ErNke5elzgG8GcqF4RFPw6aHkWWRc7Tgw6upjaTX/CT/yQgqYENkxYsTYN+hW2g=="],
 
     "crypt": ["crypt@0.0.2", "https://registry.npmmirror.com/crypt/-/crypt-0.0.2.tgz", {}, "sha512-mCxBlsHFYh9C+HVpiEacem8FEBnMXgU9gy4zmNC+SXAZNB/1idgp/aulFJ4FgCi7GPEVbfyng092GqL2k2rmow=="],
-
-    "crypto-js": ["crypto-js@4.2.0", "https://registry.npmmirror.com/crypto-js/-/crypto-js-4.2.0.tgz", {}, "sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q=="],
 
     "data-uri-to-buffer": ["data-uri-to-buffer@4.0.1", "https://registry.npmmirror.com/data-uri-to-buffer/-/data-uri-to-buffer-4.0.1.tgz", {}, "sha512-0R9ikRb668HB7QDxT1vkpuUBtqc53YyAwMwGeUFKRojY/NWKvdZ+9UYtRfGmhqNbRkTSVpMbmyhXipFFv2cb/A=="],
 

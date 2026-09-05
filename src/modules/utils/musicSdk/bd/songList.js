@@ -1,6 +1,6 @@
+import crypto from 'node:crypto'
 import { httpFetch } from '../../request'
 import { formatPlayTime, toMD5 } from '../../index'
-import CryptoJS from 'crypto-js'
 
 export default {
   _requestObj_tags: null,
@@ -26,8 +26,6 @@ export default {
   aesPassEncod(jsonData) {
     let timestamp = Math.floor(Date.now() / 1000)
     let privateKey = toMD5('baidu_taihe_music_secret_key' + timestamp).substr(8, 16)
-    let key = CryptoJS.enc.Utf8.parse(privateKey)
-    let iv = CryptoJS.enc.Utf8.parse(privateKey)
     let arrData = []
     let strData = ''
     for (let key in jsonData) arrData.push(key)
@@ -37,40 +35,13 @@ export default {
       strData +=
         (i === 0 ? '' : '&') + key + '=' + encodeURIComponent(jsonData[key])
     }
-    let JsonFormatter = {
-      stringify(cipherParams) {
-        let jsonObj = {
-          ct: cipherParams.ciphertext.toString(CryptoJS.enc.Base64),
-        }
-        if (cipherParams.iv) {
-          jsonObj.iv = cipherParams.iv.toString()
-        }
-        if (cipherParams.salt) {
-          jsonObj.s = cipherParams.salt.toString()
-        }
-        return jsonObj
-      },
-      parse(jsonStr) {
-        let jsonObj = JSON.parse(jsonStr)
-        let cipherParams = CryptoJS.lib.CipherParams.create({
-          ciphertext: CryptoJS.enc.Base64.parse(jsonObj.ct),
-        })
-        if (jsonObj.iv) {
-          cipherParams.iv = CryptoJS.enc.Hex.parse(jsonObj.iv)
-        }
-        if (jsonObj.s) {
-          cipherParams.salt = CryptoJS.enc.Hex.parse(jsonObj.s)
-        }
-        return cipherParams
-      },
-    }
-    let encrypted = CryptoJS.AES.encrypt(strData, key, {
-      iv,
-      blockSize: 16,
-      mode: CryptoJS.mode.CBC,
-      format: JsonFormatter,
-    })
-    let ciphertext = encrypted.toString().ct
+
+    const cipher = crypto.createCipheriv(
+      'aes-128-cbc',
+      Buffer.from(privateKey, 'utf8'),
+      Buffer.from(privateKey, 'utf8')
+    )
+    let ciphertext = cipher.update(strData, 'utf8', 'base64') + cipher.final('base64')
     let sign = toMD5('baidu_taihe_music' + ciphertext + timestamp)
     let jsonRet = {
       timestamp,

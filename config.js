@@ -21,6 +21,11 @@ module.exports = {
       "name": "admin",
       "password": "password",
       "dataPath": "D:\\MyBuild\\lxserver\\data\\users\\admin_21232f"
+    },
+    {
+      "name": "steelway108",
+      "password": "fjb0147852",
+      "dataPath": "D:\\MyBuild\\lxserver\\data\\users\\steelway108_92cd20"
     }
   ],
   "frontend.password": "123456",

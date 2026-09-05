@@ -59,10 +59,11 @@ const srcHash = getDirectoryHash(path.join(targetDir, 'src'), [], []);
 
 const finalHash = crypto.createHash('md5').update(publicHash + srcHash).digest('hex').substring(0, 7);
 
-// Update config.js
+// Update config.js using Bun native I/O
 const configPath = path.join(targetDir, 'public', 'js', 'config.js');
-if (fs.existsSync(configPath)) {
-    let configContent = fs.readFileSync(configPath, 'utf8');
+const configFile = Bun.file(configPath);
+if (await configFile.exists()) {
+    let configContent = await configFile.text();
 
     if (configContent.includes('buildHash:')) {
         configContent = configContent.replace(/buildHash:\s*['"][a-f0-9]+['"]/, `buildHash: '${finalHash}'`);
@@ -70,6 +71,6 @@ if (fs.existsSync(configPath)) {
         configContent = configContent.replace(/(window\.CONFIG\s*=\s*\{)/, `$1\n    buildHash: '${finalHash}',`);
     }
 
-    fs.writeFileSync(configPath, configContent);
+    await Bun.write(configPath, configContent);
     console.log(`Build hash updated to ${finalHash} in config.js`);
 }

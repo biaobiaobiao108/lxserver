@@ -1,8 +1,10 @@
 import path from 'path'
+import fs from 'fs'
 
-console.log('[Bun Bundler] Building frontend assets...')
+const isWatch = process.argv.includes('--watch')
 
 async function build() {
+  const startTime = performance.now()
   const adminEntry = path.join(import.meta.dir, '../frontend/admin/src/index.ts')
   const playerEntry = path.join(import.meta.dir, '../frontend/player/src/index.ts')
 
@@ -16,7 +18,8 @@ async function build() {
   })
   if (!adminResult.success) {
     console.error('[Bun Bundler] Admin build failed:', adminResult.logs)
-    process.exit(1)
+    if (!isWatch) process.exit(1)
+    return
   }
 
   // 2. Build Music Player
@@ -29,13 +32,38 @@ async function build() {
   })
   if (!playerResult.success) {
     console.error('[Bun Bundler] Player build failed:', playerResult.logs)
-    process.exit(1)
+    if (!isWatch) process.exit(1)
+    return
   }
 
-  console.log('[Bun Bundler] Frontend build completed successfully!')
+  const duration = (performance.now() - startTime).toFixed(1)
+  console.log(`[Bun Bundler] Frontend build completed in ${duration}ms`)
 }
 
-build().catch(err => {
+async function main() {
+  console.log(`[Bun Bundler] Building frontend assets... ${isWatch ? '(watch mode)' : ''}`)
+  await build()
+
+  if (isWatch) {
+    const adminSrc = path.join(import.meta.dir, '../frontend/admin/src')
+    const playerSrc = path.join(import.meta.dir, '../frontend/player/src')
+    let debounceTimer: Timer | null = null
+
+    const onChange = (filename: string | null) => {
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(async () => {
+        console.log(`[Bun Bundler] File changed: ${filename || 'unknown'}, rebuilding...`)
+        await build()
+      }, 100)
+    }
+
+    if (fs.existsSync(adminSrc)) fs.watch(adminSrc, { recursive: true }, (_, f) => onChange(f))
+    if (fs.existsSync(playerSrc)) fs.watch(playerSrc, { recursive: true }, (_, f) => onChange(f))
+    console.log('[Bun Bundler] Watching for changes in frontend/ ...')
+  }
+}
+
+main().catch(err => {
   console.error('[Bun Bundler] Error:', err)
   process.exit(1)
 })

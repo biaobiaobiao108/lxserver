@@ -59,7 +59,8 @@ export const getUserConfig = (userName: string): Required<LX.User> => {
 
 // 读取所有用户目录下的devicesInfo信息，建立clientId与用户的对应关系，用于非首次连接
 const deviceUserMap = new Map<string, string>()
-for (const deviceInfo of fs.readdirSync(global.lx.userPath).map(dirname => {
+const userDirs = (global.lx.userPath && fs.existsSync(global.lx.userPath)) ? fs.readdirSync(global.lx.userPath) : []
+for (const deviceInfo of userDirs.map(dirname => {
   const devicesFilePath = path.join(global.lx.userPath, dirname, File.userDevicesJSON)
   if (fs.existsSync(devicesFilePath)) {
     const devicesInfo = JSON.parse(fs.readFileSync(devicesFilePath).toString()) as DevicesInfo

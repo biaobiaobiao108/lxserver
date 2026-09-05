@@ -22,6 +22,10 @@ describe('File Cache Path Traversal Defense', () => {
     expect(isSafePath(baseDir, '..\\..\\config.js')).toBe(false)
     expect(isSafePath(baseDir, '/etc/passwd')).toBe(false)
     expect(isSafePath(baseDir, '..\\..\\..\\etc\\passwd')).toBe(false)
-    expect(isSafePath(baseDir, 'C:\\Windows\\System32\\calc.exe')).toBe(false)
+    if (process.platform === 'win32') {
+      expect(isSafePath(baseDir, 'C:\\Windows\\System32\\calc.exe')).toBe(false)
+    } else {
+      expect(isSafePath(baseDir, '/var/log/syslog')).toBe(false)
+    }
   })
 })

@@ -2469,7 +2469,8 @@ export const serveCacheFile = (req: http.IncomingMessage, res: http.ServerRespon
     for (const loc of locations) {
         for (const folder of roots) {
             const dir = getCacheDir(normalizedUsername, folder === 'music', loc)
-            const checkPath = path.resolve(dir, filename)
+            const safeFilename = filename.replace(/\\/g, '/')
+            const checkPath = path.resolve(dir, safeFilename)
             const resolvedDir = path.resolve(dir)
             if (!checkPath.startsWith(resolvedDir + path.sep) && checkPath !== resolvedDir) {
                 continue

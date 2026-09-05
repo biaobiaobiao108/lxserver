@@ -100,7 +100,7 @@ jobs:
             "${{ steps.image.outputs.name }}@${{ steps.push.outputs.digest }}" >/dev/null
 
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:9527/hello >/dev/null; then
+            if curl --fail --silent http://127.0.0.1:9527/ >/dev/null; then
               echo "Smoke test passed successfully!"
               exit 0
             fi

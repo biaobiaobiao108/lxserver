@@ -100,13 +100,16 @@ jobs:
             "${{ steps.image.outputs.name }}@${{ steps.push.outputs.digest }}" >/dev/null
 
           for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:9527/ >/dev/null; then
-              echo "Smoke test passed successfully!"
+            http_code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9527/ || true)
+            if [ "$http_code" = "200" ]; then
+              echo "Smoke test passed successfully with HTTP 200!"
               exit 0
             fi
+            echo "Attempt $attempt: HTTP status is '$http_code', waiting 2s..."
             sleep 2
           done
 
+          echo "Container logs on failure:"
           docker logs "$container_name"
           exit 1
 

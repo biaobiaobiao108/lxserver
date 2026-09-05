@@ -80,6 +80,10 @@ lxserver/
 - 外部依赖若包含可选的动态依赖（如 `unzipper` 中的 `@aws-sdk/client-s3`），服务端打包时统一使用 `--packages=external`。
 - 部分 CommonJS 模块（如 `log4js`）应采用 `const log4js: Log4js = require('log4js')` 方式导入以兼顾类型与运行时。
 
+### 4. CI/CD 与镜像发布规范
+- **CI 流水线 (`ci.yml`)**：仅在 `push` 到主分支时触发，自动执行依赖缓存、`bun test` 自动化测试、`bun run tsc --noEmit`、前端与服务端全量构建。
+- **Docker 镜像发布 (`docker-publish.yml`)**：仅在推送版本标签（如 `git push origin v2.0.0`）时触发多架构构建（`linux/amd64`, `linux/arm64`）并自动发布至 `ghcr.io`，免第三方密钥。
+
 ---
 
 ## 4. 常用开发与构建命令
@@ -87,7 +91,9 @@ lxserver/
 | 操作 | 命令 | 说明 |
 | :--- | :--- | :--- |
 | **安装依赖** | `bun install` | 安装项目依赖并更新 `bun.lock` |
+| **自动化测试** | `bun test` | 运行 Bun 原生自动化单元测试套件 |
 | **静态类型检查** | `bun run tsc --noEmit` | 验证全项目 TypeScript 类型正确性 |
+| **前端开发热重载** | `bun run dev:frontend` | 监听前端源码改动并极速增量重编 |
 | **前端编译打包** | `bun run build:frontend` | 使用 Bun Bundler 编译前端至 `public/` |
 | **开发环境启动** | `bun run dev` | 启动开发服务，支持热重载与文件监听 |
 | **生产环境启动** | `bun start` | 直接以生产模式运行服务端主入口 |

@@ -1,0 +1,136 @@
+name: Build, Publish and Release Docker Image
+
+on:
+  push:
+    tags:
+      - 'v*' # 仅在推送版本标签（例如 v2.0.0, v2.0.1 等）时自动触发
+  workflow_dispatch:
+    inputs:
+      publish_latest:
+        description: '手动构建时是否将镜像更新为 latest'
+        required: true
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+
+concurrency:
+  group: docker-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build, Publish and Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set image name
+        id: image
+        shell: bash
+        run: echo "name=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.name }}
+          flavor: |
+            latest=auto
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+            type=sha
+            type=raw,value=latest,enable=${{ github.event_name == 'workflow_dispatch' && inputs.publish_latest == true || startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          sbom: true
+          provenance: false
+          cache-from: type=gha,scope=lxserver
+          cache-to: type=gha,mode=max,scope=lxserver,ignore-error=true
+
+      - name: Inspect multi-platform manifest
+        run: docker buildx imagetools inspect "${{ steps.image.outputs.name }}@${{ steps.push.outputs.digest }}"
+
+      - name: Smoke test amd64 image
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name=lxserver-smoke-${GITHUB_RUN_ID}
+          trap 'docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
+
+          docker run --detach \
+            --name "$container_name" \
+            --platform linux/amd64 \
+            --publish 127.0.0.1:9527:9527 \
+            "${{ steps.image.outputs.name }}@${{ steps.push.outputs.digest }}" >/dev/null
+
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:9527/hello >/dev/null; then
+              echo "Smoke test passed successfully!"
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs "$container_name"
+          exit 1
+
+      - name: Create or update GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            ### 🎵 LX Music Sync Server ${{ github.ref_name }}
+
+            多架构极简全栈 Bun 容器镜像（`linux/amd64` + `linux/arm64`）已自动构建并推送到 GitHub Container Registry。
+
+            #### 🐳 快速拉取与运行命令：
+            ```bash
+            # 拉取当前版本镜像
+            docker pull ${{ steps.image.outputs.name }}:${{ github.ref_name }}
+
+            # 启动容器 (数据持久化在 ./data)
+            docker run -d \
+              --name lxserver \
+              --restart unless-stopped \
+              -p 9527:9527 \
+              -v $(pwd)/data:/server/data \
+              ${{ steps.image.outputs.name }}:${{ github.ref_name }}
+            ```

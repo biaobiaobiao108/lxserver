@@ -149,7 +149,6 @@ Built with **Full-stack Bun + TypeScript**, focusing on containerized (Docker) a
 ### Option 1: Containerized Deployment via Docker (Recommended)
 
 This project provides multi-arch Docker images built on lightweight Alpine with native audio libraries:
-- **Docker Hub**: `xcq0607/lxserver:latest`
 - **GitHub Packages**: `ghcr.io/xcq0607/lxserver:latest`
 
 **Docker Run Example:**
@@ -163,7 +162,7 @@ docker run -d \
   -v $(pwd)/music:/server/music \
   --name lx-sync-server \
   --restart unless-stopped \
-  xcq0607/lxserver:latest
+  ghcr.io/xcq0607/lxserver:latest
 ```
 
 **Docker Compose Example:**
@@ -174,7 +173,7 @@ Create a `docker-compose.yml` file:
 version: '3'
 services:
   lx-sync-server:
-    image: xcq0607/lxserver:latest
+    image: ghcr.io/xcq0607/lxserver:latest
     container_name: lx-sync-server
     restart: unless-stopped
     ports:

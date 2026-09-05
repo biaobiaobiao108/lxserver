@@ -11,3 +11,8 @@ tests
 *.log
 package-lock.json
 debug.txt
+public/music/bin
+*.md
+.github
+Dockerfile*
+

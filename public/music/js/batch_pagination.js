@@ -196,6 +196,7 @@ async function batchDeleteFromList() {
     }
 
     const idsToDelete = Array.from(window.selectedItems);
+    let deleted = false;
 
     if (window.SyncManager.mode === 'local') {
         // Local mode: Use user credentials to directly manipulate data
@@ -233,6 +234,7 @@ async function batchDeleteFromList() {
 
             // Refresh current view
             handleListClick(activeListId);
+            deleted = true;
 
             console.log('[Batch] 本地模式删除成功');
 
@@ -250,7 +252,8 @@ async function batchDeleteFromList() {
             }
 
             // Remove items from list
-            const remainingItems = listToModify.filter(item => !idsToDelete.includes(item.id));
+            const idsSet = new Set(idsToDelete.map(id => String(id)));
+            const remainingItems = listToModify.filter(item => !idsSet.has(String(item.id)));
             setListById(activeListId, remainingItems);
 
             // Save to cache
@@ -270,6 +273,7 @@ async function batchDeleteFromList() {
             // Update UI
             renderMyLists(currentListData);
             handleListClick(activeListId);
+            deleted = true;
 
         } catch (e) {
             showError('批量删除失败: ' + e.message);
@@ -277,8 +281,8 @@ async function batchDeleteFromList() {
         }
     }
 
-    // Clear selection and exit batch mode
-    exitBatchMode();
+    // Clear selection only after the list was actually updated.
+    if (deleted) exitBatchMode();
 }
 
 // Helper: Get current active list ID
@@ -291,12 +295,20 @@ function getCurrentActiveListId() {
     return null;
 }
 
+function getEditableListContext() {
+    const listId = getCurrentActiveListId();
+    if (!listId || !currentListData) return null;
+    const list = getListById(listId);
+    if (!Array.isArray(list)) return null;
+    return { listId, list };
+}
+
 // Helper: Get list by ID
 function getListById(listId) {
     if (!currentListData) return null;
     if (listId === 'default') return currentListData.defaultList;
     if (listId === 'love') return currentListData.loveList;
-    const userList = currentListData.userList.find(l => l.id === listId);
+    const userList = (currentListData.userList || []).find(l => String(l.id) === String(listId));
     return userList ? userList.list : null;
 }
 
@@ -306,7 +318,7 @@ function setListById(listId, newList) {
     if (listId === 'default') currentListData.defaultList = newList;
     else if (listId === 'love') currentListData.loveList = newList;
     else {
-        const userList = currentListData.userList.find(l => l.id === listId);
+        const userList = (currentListData.userList || []).find(l => String(l.id) === String(listId));
         if (userList) userList.list = newList;
     }
 }
@@ -479,6 +491,7 @@ window.clearSelection = clearSelection;
 window.exitBatchMode = exitBatchMode;
 window.deselectAll = deselectAll;
 window.batchDeleteFromList = batchDeleteFromList;
+window.getEditableListContext = getEditableListContext;
 window.handleBatchCollect = handleBatchCollect;
 window.goToPage = goToPage;
 window.nextPage = nextPage;

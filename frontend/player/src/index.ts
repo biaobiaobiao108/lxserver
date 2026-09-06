@@ -50,6 +50,10 @@ window.batchCollectSongs = null; // Store songs for batch collection modal
 const audio = document.getElementById('audio-player');
 let currentPlaybackRate = 1.0;
 
+function setCurrentSearchScope(scope: string) {
+    window.currentSearchScope = scope;
+}
+
 const lazyScriptPromises = new Map<string, Promise<void>>();
 
 function loadLazyScript(src, globalName) {
@@ -1222,7 +1226,7 @@ function switchTab(tabId) {
     // Reset Search Scope if switching to search/settings explicitly
     if (tabId === 'search') {
         initGlobalListSearch(); // [New] 强制重置 ListSearch 为 'global' 模式
-        currentSearchScope = 'network';
+        setCurrentSearchScope('network');
         document.getElementById('search-source').classList.remove('hidden');
         document.getElementById('search-type').classList.remove('hidden');
         const searchInput = document.getElementById('search-input');
@@ -1681,7 +1685,7 @@ function handleSearchKeyPress(e) {
  * @param {string} query 搜索关键词
  * @param {string} source 可选，切换到指定搜索源
  */
-function performSearch(query, source = null) {
+function performSearch(query, source = null, type = 'song') {
     if (!query || query === '暂无播放' || query === '选择一首歌曲播放') return;
 
     // 预处理：移除括号及其内容 (支持中英文括号)，通常用于移除“歌曲名 (DJ版)”中的补充信息
@@ -1694,14 +1698,21 @@ function performSearch(query, source = null) {
 
     // 如果指定了源且属于支持的源，则更新选择框
     const sourceEl = document.getElementById('search-source');
+    const typeEl = document.getElementById('search-type');
     const validSources = ['kw', 'kg', 'tx', 'wy', 'mg'];
+    const searchType = ['song', 'singer', 'album'].includes(type) ? type : 'song';
+    if (typeEl) typeEl.value = searchType;
     if (source && sourceEl && validSources.includes(source)) {
         sourceEl.value = source;
     }
+    if ((searchType === 'singer' || searchType === 'album') && sourceEl && !['wy', 'tx'].includes(sourceEl.value)) {
+        sourceEl.value = 'wy';
+    }
+    applySearchTypeSourceRestrictions();
 
     // 重置搜索范围到全网搜索
     if (typeof currentSearchScope !== 'undefined') {
-        currentSearchScope = 'network';
+        setCurrentSearchScope('network');
     }
 
     // 设置搜索框内容
@@ -1718,6 +1729,11 @@ let lastSearchResultList = null;
 let lastSearchType = null;
 
 function handleSearchTypeChange() {
+    applySearchTypeSourceRestrictions();
+    doSearch();
+}
+
+function applySearchTypeSourceRestrictions() {
     const typeSelect = document.getElementById('search-type');
     const sourceSelect = document.getElementById('search-source');
     if (!typeSelect || !sourceSelect) return;
@@ -1734,7 +1750,6 @@ function handleSearchTypeChange() {
     } else {
         Array.from(sourceSelect.options).forEach(opt => { opt.disabled = false; });
     }
-    doSearch();
 }
 window.handleSearchTypeChange = handleSearchTypeChange;
 
@@ -2271,14 +2286,8 @@ function formatPlayCount(count) {
     return count;
 }
 
-function searchBySinger(name) {
-    const input = document.getElementById('search-input');
-    const type = document.getElementById('search-type');
-    if (input && type) {
-        input.value = name;
-        type.value = 'song';
-        handleSearchTypeChange();
-    }
+function searchBySinger(name, source = null) {
+    performSearch(name, source, 'singer');
 }
 window.searchBySinger = searchBySinger;
 
@@ -2288,6 +2297,36 @@ let currentArtistInfo = null;
 window.currentArtistId = null;
 window.currentArtistSource = 'wy';
 window.currentArtistOrder = 'hot';
+
+type ArtistRequestContext = {
+    serial: number;
+    controller: AbortController;
+};
+
+let artistRequestSerial = 0;
+let artistRequestController: AbortController | null = null;
+
+function beginArtistRequest(): ArtistRequestContext {
+    artistRequestController?.abort();
+    const controller = new AbortController();
+    artistRequestController = controller;
+    return { serial: ++artistRequestSerial, controller };
+}
+
+function invalidateArtistRequest() {
+    artistRequestController?.abort();
+    artistRequestController = null;
+    artistRequestSerial += 1;
+}
+
+function isArtistRequestCurrent(request: ArtistRequestContext, id, source, tab, order = null) {
+    return request.serial === artistRequestSerial
+        && !request.controller.signal.aborted
+        && String(window.currentArtistId) === String(id)
+        && window.currentArtistSource === source
+        && window.currentArtistTab === tab
+        && (order === null || window.currentArtistOrder === order);
+}
 
 async function enterArtist(id, source = 'wy', order = 'hot', tab = 'songs', isBack = false) {
     const typeEl = document.getElementById('search-type');
@@ -2318,6 +2357,7 @@ async function enterArtist(id, source = 'wy', order = 'hot', tab = 'songs', isBa
     window.currentArtistSource = source;
     window.currentArtistOrder = order;
     window.currentArtistTab = tab;
+    const request = beginArtistRequest();
     const resultsContainer = document.getElementById('search-results');
     const header = document.getElementById('search-results-header');
     if (header) header.classList.add('hidden');
@@ -2330,26 +2370,34 @@ async function enterArtist(id, source = 'wy', order = 'hot', tab = 'songs', isBa
         }
 
         try {
-            const detailRes = await fetch(`${API_BASE}/artistDetail?id=${id}&source=${source}`);
+            const detailRes = await fetch(`${API_BASE}/artistDetail?id=${id}&source=${source}`, {
+                signal: request.controller.signal,
+            });
             if (!detailRes.ok) throw new Error('Failed to fetch artist detail');
-            currentArtistInfo = await detailRes.json();
+            const detail = await detailRes.json();
+            if (!isArtistRequestCurrent(request, id, source, tab, tab === 'songs' ? order : null)) return;
+            currentArtistInfo = detail;
         } catch (e) {
+            if (e?.name === 'AbortError' || !isArtistRequestCurrent(request, id, source, tab, tab === 'songs' ? order : null)) return;
             showError(`获取歌手详情失败: ${e.message}`);
             goBackToSearch();
             return;
         }
     }
 
+    if (!isArtistRequestCurrent(request, id, source, tab, tab === 'songs' ? order : null)) return;
+
     // 渲染头部
     renderArtistHeader(currentArtistInfo, tab, order);
 
     // 加载具体内容
     if (tab === 'songs') {
-        await loadArtistSongs(id, source, order);
+        await loadArtistSongs(id, source, order, false, request);
     } else if (tab === 'albums') {
-        await loadArtistAlbums(id, source);
+        await loadArtistAlbums(id, source, false, request);
     }
 
+    if (!isArtistRequestCurrent(request, id, source, tab, tab === 'songs' ? order : null)) return;
     const backBtn = document.getElementById('search-back-btn');
     if (backBtn) backBtn.classList.remove('hidden');
 }
@@ -2553,25 +2601,26 @@ function toggleArtistFold() {
 }
 window.toggleArtistFold = toggleArtistFold;
 
-async function loadArtistSongs(id, source, order, forceFetch = false) {
+async function loadArtistSongs(id, source, order, forceFetch = false, requestContext: ArtistRequestContext | null = null) {
+    const request = requestContext || beginArtistRequest();
     // Check if we can use cache to speed up UI transitions (like batch mode toggle)
     if (!forceFetch && window.currentArtistSongsCache && window.currentArtistId === id && window.currentArtistOrder === order && window.currentArtistSource === source) {
+        if (!isArtistRequestCurrent(request, id, source, 'songs', order)) return;
         renderArtistSongsUI(window.currentArtistSongsCache);
         return;
     }
 
+    if (!isArtistRequestCurrent(request, id, source, 'songs', order)) return;
     renderArtistSongsLoading();
 
     try {
-        const res = await fetch(`${API_BASE}/artistSongs?id=${id}&source=${source}&order=${order}`);
+        const res = await fetch(`${API_BASE}/artistSongs?id=${id}&source=${source}&order=${order}`, {
+            signal: request.controller.signal,
+        });
         if (!res.ok) throw new Error('Failed to fetch songs');
         const list = await res.json();
 
-        const isCurrentRequest = String(window.currentArtistId) === String(id)
-            && window.currentArtistSource === source
-            && window.currentArtistOrder === order
-            && window.currentArtistTab === 'songs';
-        if (!isCurrentRequest) return;
+        if (!isArtistRequestCurrent(request, id, source, 'songs', order)) return;
 
         // [Fix] 唯一 ID
         list.forEach((item, idx) => {
@@ -2589,6 +2638,7 @@ async function loadArtistSongs(id, source, order, forceFetch = false) {
 
         renderArtistSongsUI(list, 1);
     } catch (e) {
+        if (e?.name === 'AbortError' || !isArtistRequestCurrent(request, id, source, 'songs', order)) return;
         showError(`加载歌曲失败: ${e.message}`);
         goBackToSearch();
     }
@@ -2844,24 +2894,25 @@ async function fetchAllArtistAlbums(id, source, signal, onProgress) {
 
 
 
-async function loadArtistAlbums(id, source, forceFetch = false) {
+async function loadArtistAlbums(id, source, forceFetch = false, requestContext: ArtistRequestContext | null = null) {
+    const request = requestContext || beginArtistRequest();
     if (!forceFetch && window.currentArtistAlbumsCache && String(window.currentArtistId) === String(id) && window.currentArtistSource === source) {
+        if (!isArtistRequestCurrent(request, id, source, 'albums')) return;
         renderArtistAlbumsUI(window.currentArtistAlbumsCache);
         return;
     }
 
+    if (!isArtistRequestCurrent(request, id, source, 'albums')) return;
     renderArtistAlbumsLoading();
 
     try {
-        const data = await fetchAllArtistAlbums(id, source, undefined, (loaded, total) => {
-            const stillViewingArtist = String(window.currentArtistId) === String(id) && window.currentArtistSource === source;
-            if (window.currentArtistTab === 'albums' && stillViewingArtist) {
+        const data = await fetchAllArtistAlbums(id, source, request.controller.signal, (loaded, total) => {
+            if (isArtistRequestCurrent(request, id, source, 'albums')) {
                 renderArtistAlbumsLoading(loaded, total);
             }
         });
         const list = data.list;
-        const stillViewingArtist = String(window.currentArtistId) === String(id) && window.currentArtistSource === source;
-        if (!stillViewingArtist) return;
+        if (!isArtistRequestCurrent(request, id, source, 'albums')) return;
 
         window.currentArtistAlbumsCache = list;
         window.currentArtistAlbumsTotal = data.total;
@@ -2870,13 +2921,9 @@ async function loadArtistAlbums(id, source, forceFetch = false) {
             renderArtistAlbumsUI(list);
         }
     } catch (e) {
-        const stillViewingArtist = String(window.currentArtistId) === String(id) && window.currentArtistSource === source;
-        if (stillViewingArtist) {
-            showError(`加载专辑失败: ${e.message}`);
-            goBackToSearch();
-        } else {
-            console.warn('[ArtistAlbums] 已离开歌手页，忽略专辑加载失败:', e);
-        }
+        if (e?.name === 'AbortError' || !isArtistRequestCurrent(request, id, source, 'albums')) return;
+        showError(`加载专辑失败: ${e.message}`);
+        goBackToSearch();
     }
 }
 
@@ -3010,6 +3057,7 @@ async function downloadArtistAlbumSongs(album, button) {
 window.downloadArtistAlbumSongs = downloadArtistAlbumSongs;
 
 async function enterAlbum(id, source = 'wy') {
+    invalidateArtistRequest();
     // 保存进入专辑前的上下文，如果是从歌手页进入，则记录歌手 ID
     const artistHeader = document.getElementById('artist-detail-header');
     if (artistHeader) {
@@ -3057,6 +3105,7 @@ async function enterAlbum(id, source = 'wy') {
 }
 
 function goBackToSearch(fromPopState = false) {
+    invalidateArtistRequest();
     if (!fromPopState) {
         if (window.history.state && window.history.state.page === 'search-detail') {
             window.history.back();
@@ -3291,7 +3340,7 @@ function renderResults(list) {
             <!-- Artist (Hidden on Mobile) -->
             <div class="hidden sm:flex sm:col-span-3 md:col-span-3 lg:col-span-3 t-text-muted text-sm md:text-base items-center hover:text-emerald-600 transition-colors cursor-pointer overflow-hidden"
                  title="${itemSinger}"
-                 onclick="event.stopPropagation(); document.getElementById('search-input').value = ${itemSingerArg}; doSearch();">
+                 onclick="event.stopPropagation(); performSearch(${itemSingerArg}, ${safeInlineString(item.source || '')}, 'singer');">
                 ${createMarqueeHtml(item.singer)}
             </div>
 
@@ -5151,12 +5200,38 @@ function updatePlayerInfo(song, actualQuality) {
             const singers = song.singer.split(/[、&,，]| \/ /).map(s => s.trim()).filter(s => s);
             if (singers.length > 1) {
                 const selected = await showOptions('搜索歌手', '识别到多个歌手，请选择要搜索的对象：', singers);
-                if (selected) performSearch(selected, song.source);
+                if (selected) performSearch(selected, song.source, 'singer');
             } else {
-                performSearch(song.singer, song.source);
+                performSearch(song.singer, song.source, 'singer');
             }
         };
         artistEl.classList.add('hover:text-emerald-500', 'cursor-pointer', 'transition-colors');
+    }
+
+    // Bottom Player - 更新专辑并支持专辑类型搜索
+    const albumEl = document.getElementById('player-album');
+    const albumSeparator = document.getElementById('player-meta-separator');
+    const albumName = String(song.albumName || song.album || song.meta?.albumName || song.meta?.album || '').trim();
+    if (albumEl) {
+        if (albumName) {
+            albumEl.innerText = albumName;
+            albumEl.setAttribute('data-text', albumName);
+            albumEl.setAttribute('aria-label', `搜索专辑 ${albumName}`);
+            albumEl.classList.remove('hidden');
+            albumEl.onclick = (e) => {
+                e.stopPropagation();
+                performSearch(albumName, song.source, 'album');
+            };
+            albumEl.classList.add('hover:text-emerald-500', 'cursor-pointer', 'transition-colors');
+            albumSeparator?.classList.remove('hidden');
+        } else {
+            albumEl.innerText = '';
+            albumEl.removeAttribute('data-text');
+            albumEl.removeAttribute('aria-label');
+            albumEl.classList.add('hidden');
+            albumEl.onclick = null;
+            albumSeparator?.classList.add('hidden');
+        }
     }
 
     // 触发滚动检测
@@ -5184,7 +5259,7 @@ function updatePlayerInfo(song, actualQuality) {
         sideSinger.innerText = song.singer;
         sideSinger.onclick = (e) => {
             e.stopPropagation();
-            performSearch(song.singer, song.source);
+            performSearch(song.singer, song.source, 'singer');
         };
         sideSinger.classList.add('hover:text-emerald-500', 'cursor-pointer', 'transition-colors');
     }
@@ -5220,9 +5295,9 @@ function updatePlayerInfo(song, actualQuality) {
                 const singers = song.singer.split(/[、&,，]| \/ /).map(s => s.trim()).filter(s => s);
                 if (singers.length > 1) {
                     const selected = await showOptions('搜索歌手', '识别到多个歌手，请选择要搜索的对象：', singers);
-                    if (selected) performSearch(selected, song.source);
+                    if (selected) performSearch(selected, song.source, 'singer');
                 } else {
-                    performSearch(song.singer, song.source);
+                    performSearch(song.singer, song.source, 'singer');
                 }
             }
         };
@@ -8677,7 +8752,7 @@ function handleArtistLibraryClick() {
     document.getElementById('search-source').classList.add('hidden');
     document.getElementById('search-type').classList.add('hidden');
 
-    currentSearchScope = 'lib_artists';
+    setCurrentSearchScope('lib_artists');
     window.currentViewingListId = '__lib_artists__';
     renderLibraryArtists(window.libraryData.artists);
 }
@@ -8708,7 +8783,7 @@ function handleAlbumLibraryClick() {
     document.getElementById('search-source').classList.add('hidden');
     document.getElementById('search-type').classList.add('hidden');
 
-    currentSearchScope = 'lib_albums';
+    setCurrentSearchScope('lib_albums');
     window.currentViewingListId = '__lib_albums__';
     renderLibraryAlbums(window.libraryData.albums);
 }
@@ -9874,7 +9949,7 @@ function handleListClick(listId, skipAutoUpdate = false) {
 
     // Set current viewing list ID for batch operations
     window.currentViewingListId = listId;
-    currentSearchScope = 'local_list';
+    setCurrentSearchScope('local_list');
 
     let list = [];
     let title = '';
@@ -9913,7 +9988,7 @@ function handleListClick(listId, skipAutoUpdate = false) {
     document.getElementById('search-input').placeholder = `在 ${title} 中搜索...`;
 
     // Set Scope
-    currentSearchScope = 'local_list';
+    setCurrentSearchScope('local_list');
     document.getElementById('search-source').classList.add('hidden'); // Hide selector
     document.getElementById('search-type').classList.add('hidden');
 

@@ -188,10 +188,14 @@ const loadTasks = () => {
 }
 
 const getPublicTask = (task: ServerDownloadTask) => {
-  const live = task.status === 'downloading' && task.activeSongKey
+  const live = task.status === 'downloading' && task.activeSongKey && controllers.has(taskMapKey(task.username, task.id))
     ? fileCache.cacheProgress.get(task.activeSongKey)
     : undefined
-  const liveStatus = live?.status as ServerDownloadStatus | undefined
+  // A transient cache progress entry must never downgrade a terminal queue
+  // state. In particular, lyric/tagging cleanup can outlive the audio task.
+  const liveStatus = ['downloading', 'tagging', 'finished', 'exists'].includes(String(live?.status))
+    ? live?.status as ServerDownloadStatus
+    : undefined
   return {
     id: task.id,
     songKey: task.activeSongKey || task.songKey,

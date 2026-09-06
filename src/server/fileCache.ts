@@ -2111,6 +2111,11 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                         return
                     }
 
+                    // The audio file has been promoted to its final path. Metadata,
+                    // cover and lyric enrichment are best-effort and must not turn a
+                    // successfully downloaded audio file into a failed task.
+                    try {
+
                     let imageBuffer: Buffer | undefined
                     let imageMime = 'image/jpeg'
                     try {
@@ -2211,10 +2216,18 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                     }
 
                     await ensureCachedLyrics(songInfo, actualQuality, username, isOnlyDownload, finalPath, folderType, shouldCacheLyric, shouldEmbedLyric)
+                    } catch (postProcessError: any) {
+                        console.warn(`[FileCache] Optional post-processing failed for ${path.basename(finalPath)}: ${postProcessError?.message || postProcessError}`)
+                    } finally {
+                        if (!fs.existsSync(finalPath)) {
+                            fail(new Error('Downloaded file is missing after processing'))
+                            return
+                        }
 
-                    cacheProgress.set(songKey, { progress: 100, status: 'finished', total: total || received, received, speed: 0, updatedAt: Date.now() })
-                    setTimeout(() => cacheProgress.delete(songKey), 30000)
-                    settle(() => { resolve(); void checkAndCleanupCache(username) })
+                        cacheProgress.set(songKey, { progress: 100, status: 'finished', total: total || received, received, speed: 0, updatedAt: Date.now() })
+                        setTimeout(() => cacheProgress.delete(songKey), 30000)
+                        settle(() => { resolve(); void checkAndCleanupCache(username) })
+                    }
                 })
             })
             fileStream.on('error', (err) => { fs.unlink(tempPath, () => { }); fail(err) })

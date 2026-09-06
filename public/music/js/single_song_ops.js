@@ -168,11 +168,16 @@ async function deleteSingleSong(songId) {
         if (!(await requireAdminForOpenWrite('删除公开列表中的歌曲'))) return;
     }
 
-    const activeListId = getCurrentActiveListId();
-    if (!activeListId || !currentListData) {
+    const listContext = typeof window.getEditableListContext === 'function'
+        ? window.getEditableListContext()
+        : null;
+    const activeListId = listContext?.listId || getCurrentActiveListId();
+    if (!activeListId || !currentListData || (listContext && !Array.isArray(listContext.list))) {
         showError('无法确定当前列表');
         return;
     }
+
+    const normalizedSongId = String(songId);
 
     if (window.SyncManager.mode === 'local') {
         // Local mode: Use user credentials
@@ -193,7 +198,7 @@ async function deleteSingleSong(songId) {
                 },
                 body: JSON.stringify({
                     listId: activeListId,
-                    songIds: [songId]
+                    songIds: [normalizedSongId]
                 })
             });
 
@@ -228,7 +233,7 @@ async function deleteSingleSong(songId) {
             }
 
             // Remove item from list
-            const remainingItems = listToModify.filter(item => item.id !== songId);
+            const remainingItems = listToModify.filter(item => String(item.id) !== normalizedSongId);
             setListById(activeListId, remainingItems);
 
             // Save to cache

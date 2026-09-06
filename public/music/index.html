@@ -3327,11 +3327,15 @@
                         data-text="暂无播放">暂无播放</div>
                     <div id="player-source" class="flex-shrink-0"></div>
                 </div>
-                <div class="flex flex-col min-w-0">
-                    <div id="player-artist"
-                        class="text-xs text-gray-500 truncate dynamic-marquee min-w-0 w-fit self-start"
-                        data-text="选择一首歌曲播放">选择一首歌曲播放</div>
-                    <div id="player-status" class="text-xs text-emerald-600 font-medium whitespace-nowrap"></div>
+                <div class="flex items-center gap-1 min-w-0 text-xs text-gray-500">
+                    <button type="button" id="player-artist"
+                        class="text-left truncate dynamic-marquee min-w-0 max-w-[55%] w-fit self-start hover:text-emerald-500 cursor-pointer transition-colors"
+                        data-text="选择一首歌曲播放" aria-label="搜索歌手">选择一首歌曲播放</button>
+                    <span id="player-meta-separator" class="hidden flex-shrink-0" aria-hidden="true">·</span>
+                    <button type="button" id="player-album"
+                        class="hidden text-left truncate dynamic-marquee min-w-0 max-w-[45%] w-fit self-start hover:text-emerald-500 cursor-pointer transition-colors"
+                        data-text="" aria-label="搜索专辑"></button>
+                    <div id="player-status" class="ml-auto text-[10px] text-emerald-600 font-medium whitespace-nowrap truncate max-w-[40%]"></div>
                 </div>
             </div>
             <!-- Action Buttons (Mobile Compact) -->

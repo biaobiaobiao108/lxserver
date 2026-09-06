@@ -325,9 +325,11 @@ class DownloadManager {
         task.speed = 0;
 
         if (this.shouldAutoSyncLyric(task)) {
-            window.requestServerLyricCache(task.song, task.quality).then((synced) => {
-                if (synced) setTimeout(() => this.checkTaskLyric(task), 2000);
-            });
+            Promise.resolve(window.requestServerLyricCache(task.song, task.quality))
+                .then((synced) => {
+                    if (synced) setTimeout(() => this.checkTaskLyric(task), 2000);
+                })
+                .catch((error) => console.warn('[DownloadManager] Lyric sync failed after download:', task.id, error));
         }
 
         this.renderTask(task);
@@ -512,9 +514,11 @@ class DownloadManager {
 
                             // 成功完成后触发歌词同步（补充）
                             if (this.shouldAutoSyncLyric(task)) {
-                                window.requestServerLyricCache(task.song, task.quality).then((synced) => {
-                                    if (synced) setTimeout(() => this.checkTaskLyric(task), 2000);
-                                });
+                                Promise.resolve(window.requestServerLyricCache(task.song, task.quality))
+                                    .then((synced) => {
+                                        if (synced) setTimeout(() => this.checkTaskLyric(task), 2000);
+                                    })
+                                    .catch((error) => console.warn('[DownloadManager] Lyric sync failed after download:', task.id, error));
                             }
 
                             this.renderTask(task);

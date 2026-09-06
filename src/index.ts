@@ -401,13 +401,10 @@ createModuleEvent()
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 require('@/utils/migrate').default(global.lx.dataPath, global.lx.userPath)
 
-// 初始化 SQLite 数据库并按需从 JSON 导入历史数据
+// 初始化 SQLite 原生数据库 (WAL 模式)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { initDatabase } = require('@/database')
 initDatabase()
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { migrateFromJsonIfNecessary } = require('@/database/migrateFromJson')
-await migrateFromJsonIfNecessary()
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { startServer } = require('@/server')

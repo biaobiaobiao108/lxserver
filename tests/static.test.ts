@@ -8,6 +8,7 @@ describe('Static Routing & Frontend Serving (routes/static.ts)', () => {
 
   beforeEach(() => {
     (global as any).lx = {
+      dataPath: publicDir,
       staticPath: publicDir,
       config: {
         'player.path': '/music',
@@ -104,5 +105,23 @@ describe('Static Routing & Frontend Serving (routes/static.ts)', () => {
     const res = await rootRouter.handle(req)
     // Should return null (fallback to legacy server handler) without throwing TypeError
     expect(res).toBeNull()
+  })
+
+  test('Removed admin file manager does not remove player cache routes', async () => {
+    const { createRootRouter } = await import('@/server/routes')
+    const rootRouter = createRootRouter().setNotFound(() => null)
+
+    const filePage = await rootRouter.handle(new Request('http://localhost:9527/filemanager.html'))
+    expect(filePage.status).toBe(404)
+
+    const elFinder = await rootRouter.handle(new Request('http://localhost:9527/api/elfinder/connector?cmd=open'))
+    expect(elFinder).toBeNull()
+
+    const legacyFiles = await rootRouter.handle(new Request('http://localhost:9527/api/files'))
+    expect(legacyFiles).toBeNull()
+
+    const cacheStats = await rootRouter.handle(new Request('http://localhost:9527/api/music/cache/stats'))
+    expect(cacheStats).not.toBeNull()
+    expect(cacheStats.status).not.toBe(404)
   })
 })

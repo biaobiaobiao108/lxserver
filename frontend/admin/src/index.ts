@@ -309,9 +309,8 @@ class App {
 
         // 快照管理用户选择事件
         // document.getElementById('snapshot-user-select')?.addEventListener('change', () => this.loadSnapshots());
-        // WebDAV 和文件管理器
+        // WebDAV
         this.bindWebDAVEvents();
-        this.bindFileManagerEvents();
 
         // PWA 安装事件
         this.deferredPrompt = null;
@@ -437,7 +436,6 @@ class App {
             config: '系统配置',
             logs: '系统日志',
             webdav: 'WebDAV同步',
-            files: '文件管理',
             snapshots: '快照管理',
             about: '关于'
         };
@@ -477,10 +475,6 @@ class App {
             case 'about':
                 this.loadAbout();
                 break;
-            case 'files':
-                // 跳转到新的 elFinder 文件管理器 (相对路径)
-                window.location.href = 'filemanager.html';
-                return;
             case 'music':
                 window.location.href = (window.CONFIG && window.CONFIG['player.path']) || '/music';
                 return;
@@ -2405,180 +2399,10 @@ class App {
         return date.toLocaleString('zh-CN');
     }
 
-    // ========== 文件管理器功能 ==========
-
-    currentPath = '';
-
-    async loadFiles(path = '') {
-        this.currentPath = path;
-
-        try {
-            const data = await this.request(`/api/files?path=${encodeURIComponent(path)}`);
-            this.renderFileList(data.items || []);
-            this.updateBreadcrumb(path);
-        } catch (err) {
-            console.error('Failed to load files:', err);
-            document.getElementById('file-items').innerHTML = '<p style="padding: 2rem; text-align: center; color: var(--accent-error);">加载文件失败</p>';
-        }
-    }
-
-    renderFileList(items) {
-        const container = document.getElementById('file-items');
-
-        if (items.length === 0) {
-            container.innerHTML = '<p style="padding: 2rem; text-align: center; color: var(--text-secondary);">此文件夹为空</p>';
-            return;
-        }
-
-        // 排序：文件夹在前
-        items.sort((a, b) => {
-            if (a.isDirectory && !b.isDirectory) return -1;
-            if (!a.isDirectory && b.isDirectory) return 1;
-            return a.name.localeCompare(b.name);
-        });
-
-        container.innerHTML = items.map(item => {
-            const itemName = this.escapeHtml(item.name || '');
-            const itemPath = String(item.path || '');
-            const itemPathHtml = this.escapeHtml(itemPath);
-            const itemPathArg = safeInlineString(itemPath);
-            const ariaLabel = `${item.isDirectory ? '打开文件夹' : '查看文件'} ${itemName}`;
-            return `
-        <div class="file-item">
-            <div class="file-name" role="button" tabindex="0" aria-label="${ariaLabel}" onclick="app.${item.isDirectory ? `loadFiles(${itemPathArg})` : `viewFile(${itemPathArg})`}" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.${item.isDirectory ? `loadFiles(${itemPathArg})` : `viewFile(${itemPathArg})`}; }">
-                <span class="file-icon">${item.isDirectory ? '📁' : this.getFileIcon(item.name)}</span>
-                <span>${itemName}</span>
-            </div>
-            <div class="file-size">${item.isDirectory ? '-' : this.formatFileSize(item.size)}</div>
-            <div class="file-date">${this.formatDate(item.mtime)}</div>
-            <div class="file-item-actions">
-                ${!item.isDirectory ? `<button onclick="app.editFile(${itemPathArg})">编辑</button>` : ''}
-                <button onclick="app.downloadFile(${itemPathArg})">下载</button>
-                <button onclick="app.deleteFile(${itemPathArg}, ${item.isDirectory})" style="color: var(--accent-error);">删除</button>
-            </div>
-        </div>
-    `;
-        }).join('');
-    }
-
-    getFileIcon(filename) {
-        const ext = filename.split('.').pop().toLowerCase();
-        const icons = {
-            json: '📄',
-            txt: '📝',
-            log: '📋',
-            js: '📜',
-            css: '🎨',
-            html: '🌐',
-            md: '📖',
-        };
-        return icons[ext] || '📄';
-    }
-
-    updateBreadcrumb(path) {
-        const parts = path ? path.split('/').filter(p => p) : [];
-        const breadcrumb = document.getElementById('file-breadcrumb');
-
-        let html = '<a href="#" onclick="app.loadFiles(\'\'); return false;">根目录</a>';
-
-        let currentPath = '';
-        parts.forEach((part, index) => {
-            currentPath += (index > 0 ? '/' : '') + part;
-            html += `<a href="#" onclick="app.loadFiles(${safeInlineString(currentPath)}); return false;">${this.escapeHtml(part)}</a>`;
-        });
-
-        breadcrumb.innerHTML = html;
-    }
-
-    async createNewFile() {
-        const filename = await showInput('创建文件', '请输入文件名：');
-        if (!filename) return;
-
-        const path = this.currentPath ? `${this.currentPath}/${filename}` : filename;
-
-        try {
-            await this.request('/api/files', {
-                method: 'POST',
-                body: JSON.stringify({ path, content: '', isDirectory: false })
-            });
-            this.loadFiles(this.currentPath);
-            showSuccess('文件创建成功');
-        } catch (err) {
-            showError('创建文件失败: ' + err.message);
-        }
-    }
-
-    async createNewFolder() {
-        const foldername = await showInput('创建文件夹', '请输入文件夹名：');
-        if (!foldername) return;
-
-        const path = this.currentPath ? `${this.currentPath}/${foldername}` : foldername;
-
-        try {
-            await this.request('/api/files', {
-                method: 'POST',
-                body: JSON.stringify({ path, isDirectory: true })
-            });
-            this.loadFiles(this.currentPath);
-            showSuccess('文件夹创建成功');
-        } catch (err) {
-            showError('创建文件夹失败: ' + err.message);
-        }
-    }
-
-    async editFile(filePath) {
-        // 简单的编辑：使用 showInput
-        const newContent = await showInput('编辑文件', '编辑文件内容（简易编辑器）：\n\n提示：输入新内容后点击确定', { defaultValue: '' });
-        if (newContent === null) return;
-
-        try {
-            await this.request('/api/files', {
-                method: 'PUT',
-                body: JSON.stringify({ path: filePath, content: newContent })
-            });
-            showSuccess('保存成功！');
-        } catch (err) {
-            showError('保存失败: ' + err.message);
-        }
-    }
-
-    viewFile(filePath) {
-        showInfo('文件查看功能：' + filePath + '\n\n可以通过下载按钮下载文件后查看');
-    }
-
-    async downloadFile(filePath) {
-        const url = `/api/files/download?path=${encodeURIComponent(filePath)}`;
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filePath.split('/').pop();
-        a.click();
-    }
-
-    async deleteFile(filePath, isDirectory) {
-        const type = isDirectory ? '文件夹' : '文件';
-        if (!(await showSelect('删除文件', `确定要删除${type} "${filePath}" 吗？\n\n${isDirectory ? '⚠️ 文件夹内的所有内容也会被删除！' : ''}`, { danger: true }))) return;
-
-        try {
-            await this.request('/api/files', {
-                method: 'DELETE',
-                body: JSON.stringify({ path: filePath })
-            });
-            this.loadFiles(this.currentPath);
-            showSuccess('删除成功');
-        } catch (err) {
-            showError('删除失败: ' + err.message);
-        }
-    }
-
     formatFileSize(bytes) {
         if (bytes < 1024) return bytes + ' B';
         if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
         return (bytes / 1024 / 1024).toFixed(1) + ' MB';
-    }
-
-    formatDate(timestamp) {
-        const date = new Date(timestamp);
-        return date.toLocaleString('zh-CN');
     }
 
     formatUptime(seconds) {
@@ -2611,12 +2435,6 @@ class App {
         document.getElementById('local-backup-input')?.addEventListener('change', (e) => this.handleLocalRestore(e));
 
         this.initSSE();
-    }
-
-    bindFileManagerEvents() {
-        document.getElementById('new-file-btn')?.addEventListener('click', () => this.createNewFile());
-        document.getElementById('new-folder-btn')?.addEventListener('click', () => this.createNewFolder());
-        document.getElementById('refresh-files-btn')?.addEventListener('click', () => this.loadFiles(this.currentPath));
     }
 
     async loadSnapshots() {

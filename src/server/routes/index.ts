@@ -3,7 +3,6 @@ import { createAuthRouter } from './auth'
 import { createSystemRouter } from './system'
 import { createUserRouter } from './user'
 import { createCustomSourceRouter } from './customSource'
-import { createElFinderRouter } from './elfinder'
 import { createMusicRouter } from './music'
 import { createCacheRouter } from './cache'
 import { createSyncRouter } from './sync'
@@ -25,7 +24,6 @@ export const createRootRouter = (): Router => {
   root.mount('/', createSystemRouter())
   root.mount('/', createUserRouter())
   root.mount('/', createCustomSourceRouter())
-  root.mount('/', createElFinderRouter())
   root.mount('/', createMusicRouter())
   root.mount('/', createCacheRouter())
   root.mount('/', createSyncRouter())

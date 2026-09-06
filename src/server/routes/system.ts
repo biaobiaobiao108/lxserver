@@ -2,7 +2,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import needle from 'needle'
-import formidable from 'formidable'
 import { Router, type HttpContext } from '../core'
 import { verifyAdminAuth } from '../auth'
 import { serverStatus } from '../state'
@@ -506,90 +505,6 @@ export const createSystemRouter = (): Router => {
       })
     } catch (err: any) {
       return ctx.text(err.message, 500)
-    }
-  })
-
-  // 6. 本地文件管理接口 (/api/files*)
-  router.get('/api/files', (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
-    const dirPath = ctx.query.get('path') || ''
-    const resolvedRoot = path.resolve(global.lx.dataPath)
-    let fullPath: string
-    try { fullPath = resolveInside(resolvedRoot, dirPath) } catch { return ctx.text('Forbidden', 403) }
-
-    try {
-      const items = fs.readdirSync(fullPath).flatMap((name) => {
-        const itemPath = path.join(fullPath, name)
-        const stat = fs.lstatSync(itemPath)
-        if (stat.isSymbolicLink()) return []
-        return {
-          name,
-          path: path.relative(global.lx.dataPath, itemPath),
-          isDirectory: stat.isDirectory(),
-          size: stat.size,
-          mtime: stat.mtime.getTime(),
-        }
-      })
-      return ctx.json({ items })
-    } catch (err: any) {
-      return ctx.json({ error: err.message }, 500)
-    }
-  })
-
-  router.get('/api/files/download', (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
-    const filePath = ctx.query.get('path') || ''
-    const resolvedRoot = path.resolve(global.lx.dataPath)
-    let fullPath: string
-    try { fullPath = resolveInside(resolvedRoot, filePath) } catch { return ctx.text('Forbidden', 403) }
-    if (!fs.existsSync(fullPath)) return ctx.text('File not found', 404)
-    if (!fs.statSync(fullPath).isFile()) return ctx.text('File not found', 404)
-    return new Response(Bun.file(fullPath), {
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'Content-Disposition': `attachment; filename="${path.basename(fullPath)}"`,
-      },
-    })
-  })
-
-  router.post('/api/files', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
-    try {
-      const { path: filePath, content, isDirectory } = await ctx.bodyJson<{ path?: string; content?: string; isDirectory?: boolean }>()
-      const resolvedRoot = path.resolve(global.lx.dataPath)
-      const fullPath = resolveInside(resolvedRoot, filePath || '')
-      if (!isDirectory && (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 5 * 1024 * 1024)) {
-        return ctx.text('File content is missing or too large', 422)
-      }
-      if (isDirectory) {
-        fs.mkdirSync(fullPath, { recursive: true })
-      } else {
-        const dir = path.dirname(fullPath)
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-        fs.writeFileSync(fullPath, content as string)
-      }
-      return ctx.json({ success: true })
-    } catch (err: any) {
-      return ctx.json({ success: false, message: err.message }, 500)
-    }
-  })
-
-  router.delete('/api/files', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
-    try {
-      const { path: filePath } = await ctx.bodyJson<{ path?: string }>()
-      const resolvedRoot = path.resolve(global.lx.dataPath)
-      const fullPath = resolveInside(resolvedRoot, filePath || '')
-      if (fullPath === resolvedRoot) return ctx.text('Cannot delete data root', 422)
-      const stat = fs.statSync(fullPath)
-      if (stat.isDirectory()) {
-        fs.rmSync(fullPath, { recursive: true })
-      } else {
-        fs.unlinkSync(fullPath)
-      }
-      return ctx.json({ success: true })
-    } catch (err: any) {
-      return ctx.json({ success: false, message: err.message }, 500)
     }
   })
 

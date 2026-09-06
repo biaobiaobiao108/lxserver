@@ -283,20 +283,6 @@ body {
     box-shadow: var(--shadow-md);
 }
 
-.sidebar-divider {
-    height: 1px;
-    background: var(--glass-border);
-    margin: 0.5rem 0;
-    flex-shrink: 0;
-}
-
-.sidebar-nav-bottom {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-}
-
 .sidebar-footer {
     padding-top: 1rem;
     border-top: 1px solid var(--glass-border);

@@ -1,4 +1,5 @@
 import dns from 'node:dns/promises'
+import { isIP } from 'node:net'
 
 const ipv4ToNumber = (value: string): number | null => {
   const parts = value.split('.')
@@ -40,6 +41,20 @@ const isPrivateIpv6 = (value: string): boolean => {
     || /^fe[89ab]/.test(normalized) || normalized.startsWith('ff')
 }
 
+// Some desktop proxy clients use RFC 2544 benchmarking IPv4 addresses and a
+// fixed ULA IPv6 prefix as synthetic DNS answers. They are not routable
+// addresses of the requested host, but the proxy still needs to see the
+// original hostname in order to route the request. Keep these values separate
+// from real private addresses so normal DNS-rebinding protection remains in
+// place for LAN and loopback targets.
+const isSyntheticDnsAddress = (value: string): boolean => {
+  const number = ipv4ToNumber(value)
+  if (number != null) return number >= 0xc6120000 && number <= 0xc613ffff
+
+  const normalized = value.toLowerCase().replace(/^\[|\]$/g, '').split('%')[0]
+  return normalized.startsWith('fdfe:dcba:9876:')
+}
+
 const isPrivateAddress = (value: string): boolean => {
   if (value.includes('.')) return isPrivateIpv4(value)
   return isPrivateIpv6(value)
@@ -66,8 +81,14 @@ export const assertSafeRemoteHttpUrl = async (rawUrl: string): Promise<URL> => {
   }
   if (isBlockedHostname(url.hostname)) throw new Error('Private network URL is not allowed')
 
-  const addresses = await dns.lookup(url.hostname.replace(/^\[|\]$/g, ''), { all: true, verbatim: true })
-  if (addresses.length === 0 || addresses.some(address => isPrivateAddress(address.address))) {
+  const hostname = url.hostname.replace(/^\[|\]$/g, '')
+  const hostnameIsIpLiteral = isIP(hostname) !== 0
+  const addresses = await dns.lookup(hostname, { all: true, verbatim: true })
+  const hasPrivateAddress = addresses.some(address => isPrivateAddress(address.address))
+  const onlySyntheticAddresses = !hostnameIsIpLiteral
+    && addresses.length > 0
+    && addresses.every(address => isSyntheticDnsAddress(address.address))
+  if (addresses.length === 0 || (hasPrivateAddress && !onlySyntheticAddresses)) {
     throw new Error('Private network URL is not allowed')
   }
   return url

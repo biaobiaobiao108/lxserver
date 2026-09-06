@@ -12,8 +12,23 @@ import store from '@/utils/cache'
 import { getUserSpace, getUserName, setUserName, createClientKeyInfo } from '@/user'
 import { toMD5 } from '@/utils'
 
-const getAvailableIP = (req: http.IncomingMessage) => {
-  let ip = getIP(req)
+export const getAvailableIP = (reqOrIp: http.IncomingMessage | Request | string) => {
+  let ip: string | undefined
+  if (typeof reqOrIp === 'string') {
+    ip = reqOrIp
+  } else if ('headers' in reqOrIp && typeof (reqOrIp.headers as any)?.get === 'function') {
+    // Web Request
+    const headers = reqOrIp.headers as Headers
+    if (global.lx?.config?.['proxy.enabled']) {
+      const headerKey = (global.lx.config['proxy.header'] || 'x-forwarded-for').toLowerCase()
+      const proxyIp = headers.get(headerKey)
+      if (proxyIp) ip = proxyIp.split(',')[0].trim()
+    }
+    ip ||= headers.get('x-real-ip') || '127.0.0.1'
+  } else {
+    // IncomingMessage
+    ip = getIP(reqOrIp as http.IncomingMessage)
+  }
   return ip && (store.get<number>(ip) ?? 0) < 10 ? ip : null
 }
 
@@ -126,23 +141,23 @@ const verifyConnection = (encryptMsg: string, userId: string) => {
   // console.log(text)
   return text == SYNC_CODE.msgConnect
 }
-export const authConnect = async (req: http.IncomingMessage) => {
-  let ip = getAvailableIP(req)
+export const authConnect = async (reqOrUrl: http.IncomingMessage | Request | string, remoteAddress?: string) => {
+  let ip = getAvailableIP(typeof reqOrUrl === 'object' ? reqOrUrl : remoteAddress || '127.0.0.1')
   if (ip) {
-    const query = querystring.parse((req.url as string).split('?')[1])
+    let urlString = typeof reqOrUrl === 'string' ? reqOrUrl : reqOrUrl.url || ''
+    const [pathPart, queryPart] = urlString.split('?')
+    const query = querystring.parse(queryPart || '')
     const i = query.i
     const t = query.t
     if (typeof i == 'string' && typeof t == 'string' && verifyConnection(t, i)) {
       // 验证 URL 路径中的用户名是否与连接的客户端所属用户一致
       if (global.lx.config['user.enablePath']) {
-        const path = (req.url as string).split('?')[0]
+        const path = pathPart || ''
         const pathParts = path.split('/').filter(p => p)
         // 假设路径格式为 /<username>
         // 解码 URL 编码的用户名
         const urlUserName = pathParts[0] ? decodeURIComponent(pathParts[0]) : null
         const clientUserName = getUserName(i)
-
-        // console.log('Auth check path:', urlUserName, clientUserName)
 
         if (urlUserName && urlUserName !== 'socket' && clientUserName && urlUserName !== clientUserName) {
           // 如果路径中有用户名，且与客户端所属用户不一致，则拒绝连接

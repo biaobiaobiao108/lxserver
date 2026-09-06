@@ -1,5 +1,4 @@
-import http, { type IncomingMessage } from 'node:http'
-import { WebSocketServer, WebSocket } from 'ws'
+import type { ServerWebSocket, Server } from 'bun'
 import { registerLocalSyncEvent, callObj, sync } from './index'
 import { authConnect } from '../auth'
 import { getAddress, sendStatus, decryptMsg, encryptMsg } from '@/utils/tools'
@@ -9,18 +8,15 @@ import { getUserSpace, releaseUserSpace, getUserName } from '@/user'
 import { createMsg2call } from 'message2call'
 import { serverStatus } from '../state'
 
-let wss: LX.SocketServer | null = null
+let socketServerInstance: LX.SocketServer | null = null
 let currentHost = 'http://localhost'
+let heartbeatInterval: Timer | null = null
 
 function noop() {}
 
-function onSocketError(err: Error) {
-  console.error(err)
-}
-
 const checkDuplicateClient = (newSocket: LX.Socket) => {
-  if (!wss) return
-  for (const client of [...wss.clients]) {
+  if (!socketServerInstance) return
+  for (const client of [...socketServerInstance.clients]) {
     if (client === newSocket || client.keyInfo?.clientId !== newSocket.keyInfo?.clientId) continue
     syncLog.info('duplicate client', client.userInfo?.name, client.keyInfo?.deviceName)
     client.isReady = false
@@ -31,8 +27,8 @@ const checkDuplicateClient = (newSocket: LX.Socket) => {
   }
 }
 
-const handleConnection = async (socket: LX.Socket, request: IncomingMessage) => {
-  const queryData = new URL(request.url as string, currentHost).searchParams
+const handleConnection = async (socket: LX.Socket, reqUrl: string) => {
+  const queryData = new URL(reqUrl, currentHost).searchParams
   const clientId = queryData.get('i')
   if (!clientId) {
     socket.close(SYNC_CLOSE_CODE.failed)
@@ -85,30 +81,259 @@ const handleUnconnection = (userName: string) => {
   releaseUserSpace(userName)
 }
 
-const authConnection = (req: http.IncomingMessage, callback: (err: string | null | undefined, success: boolean) => void) => {
-  authConnect(req).then(() => {
-    callback(null, true)
-  }).catch(() => {
-    callback(null, false)
-  })
+/** 拦截并鉴权 WebSocket Upgrade 请求 */
+export const handleSocketUpgrade = async (
+  req: Request,
+  server: Server<LX.SocketData>
+): Promise<Response | null> => {
+  const remoteAddress = server.requestIP(req)?.address || '127.0.0.1'
+  const url = new URL(req.url)
+  const clientId = url.searchParams.get('i') || ''
+  const userName = getUserName(clientId) || ''
+
+  try {
+    await authConnect(req, remoteAddress)
+  } catch {
+    return new Response('HTTP/1.1 401 Unauthorized', { status: 401 })
+  }
+
+  const socketData: LX.SocketData = {
+    reqUrl: req.url,
+    clientId,
+    userName,
+    remoteAddress,
+  }
+
+  const upgraded = server.upgrade(req, { data: socketData })
+  if (upgraded) {
+    return new Response(null)
+  }
+  return new Response('WebSocket upgrade failed', { status: 400 })
 }
 
-/** 初始化 WebSocket 多设备同步服务 */
-export const setupSyncServer = (httpServer: http.Server, host: string): LX.SocketServer => {
-  currentHost = host
-  wss = new WebSocketServer({
-    noServer: true,
-    perMessageDeflate: false,
-  }) as LX.SocketServer
+/** 存储原生 ws 到 LX.Socket 适配代理的映射 */
+const socketMap = new WeakMap<ServerWebSocket<LX.SocketData>, LX.Socket>()
+const activeClients = new Set<LX.Socket>()
 
-  // WebDAV 同步进度向 WebSocket 客户端广播
+/** 创建或获取 LX.Socket 适配代理 */
+const getOrCreateSocketAdapter = (ws: ServerWebSocket<LX.SocketData>): LX.Socket => {
+  let adapter = socketMap.get(ws)
+  if (adapter) return adapter
+
+  let closeEvents: Array<(err: Error) => (void | Promise<void>)> = []
+  let messageListeners: Array<(event: { data: any }) => void> = []
+  let disconnected = false
+
+  const socket: Partial<LX.Socket> = {
+    isAlive: true,
+    isReady: false,
+    keyInfo: null as any,
+    userInfo: null as any,
+    feature: {
+      list: false,
+      dislike: false,
+    },
+    moduleReadys: {
+      list: false,
+      dislike: false,
+    },
+    get readyState() {
+      return ws.readyState
+    },
+    send(data: any) {
+      if (ws.readyState === 1) {
+        ws.send(data)
+      }
+    },
+    close(code?: number, reason?: string) {
+      try {
+        ws.close(code, reason)
+      } catch { }
+    },
+    ping(data?: any) {
+      try {
+        ws.ping(data)
+      } catch { }
+    },
+    terminate() {
+      try {
+        ws.terminate()
+      } catch { }
+    },
+    addEventListener(type: string, listener: (...args: any[]) => void) {
+      if (type === 'message') {
+        messageListeners.push(listener)
+      } else if (type === 'close') {
+        closeEvents.push(listener)
+      }
+    },
+    removeEventListener(type: string, listener: (...args: any[]) => void) {
+      if (type === 'message') {
+        messageListeners = messageListeners.filter(l => l !== listener)
+      } else if (type === 'close') {
+        closeEvents = closeEvents.filter(l => l !== listener)
+      }
+    },
+    onClose(handler: (err: Error) => (void | Promise<void>)) {
+      closeEvents.push(handler)
+      return () => {
+        closeEvents = closeEvents.filter(h => h !== handler)
+      }
+    },
+    broadcast(handler: (client: LX.Socket) => void) {
+      if (!socketServerInstance) return
+      for (const client of socketServerInstance.clients) {
+        handler(client)
+      }
+    },
+  }
+
+  const lxSocket = socket as LX.Socket
+  socketMap.set(ws, lxSocket)
+
+  // 绑定 message2call
+  const msg2call = createMsg2call<LX.Sync.ClientSyncActions>({
+    funcsObj: callObj,
+    timeout: 120 * 1000,
+    sendMessage(data: any) {
+      if (disconnected) throw new Error('disconnected')
+      void encryptMsg(lxSocket.keyInfo, JSON.stringify(data)).then((encryptedData: string) => {
+        lxSocket.send(encryptedData)
+      }).catch(err => {
+        syncLog.error('encrypt message error:', err)
+        lxSocket.close(SYNC_CLOSE_CODE.failed)
+      })
+    },
+    onCallBeforeParams(rawArgs: any[]) {
+      return [lxSocket, ...rawArgs]
+    },
+    onError(error: Error, path: string[], groupName: string | null) {
+      const name = groupName ?? ''
+      const userName = lxSocket.userInfo?.name ?? ''
+      const deviceName = lxSocket.keyInfo?.deviceName ?? ''
+      syncLog.error(`sync call ${userName} ${deviceName} ${name} ${path.join('.')} error:`, error)
+    },
+  })
+
+  lxSocket.remote = msg2call.remote
+  lxSocket.remoteQueueList = msg2call.createQueueRemote('list')
+  lxSocket.remoteQueueDislike = msg2call.createQueueRemote('dislike')
+
+  lxSocket.addEventListener('message', ({ data }: any) => {
+    if (typeof data !== 'string') return
+    void decryptMsg(lxSocket.keyInfo, data).then((decryptedData) => {
+      let syncData: any
+      try {
+        syncData = JSON.parse(decryptedData)
+      } catch (err) {
+        syncLog.error('parse message error:', err)
+        lxSocket.close(SYNC_CLOSE_CODE.failed)
+        return
+      }
+      msg2call.message(syncData)
+    }).catch(err => {
+      syncLog.error('decrypt message error:', err)
+      lxSocket.close(SYNC_CLOSE_CODE.failed)
+    })
+  })
+
+  // 挂载内部触发器供 Bun websocket handler 调度
+  ;(ws as any).__dispatchMessage = (data: any) => {
+    for (const listener of messageListeners) {
+      try {
+        listener({ data })
+      } catch (err) {
+        console.error('[WS dispatchMessage Error]:', err)
+      }
+    }
+  }
+
+  ;(ws as any).__dispatchClose = () => {
+    const err = new Error('closed')
+    for (const handler of closeEvents) {
+      try {
+        void handler(err)
+      } catch (err: any) {
+        syncLog.error(err?.message)
+      }
+    }
+    closeEvents = []
+    messageListeners = []
+    disconnected = true
+    msg2call.destroy()
+    activeClients.delete(lxSocket)
+
+    if (lxSocket.isReady) {
+      accessLog.info('deconnection', lxSocket.userInfo?.name, lxSocket.keyInfo?.deviceName)
+      if (!serverStatus.devices.map((d: any) => getUserName(d.clientId)).filter((n: any) => n === lxSocket.userInfo?.name).length) {
+        handleUnconnection(lxSocket.userInfo?.name)
+      }
+    } else {
+      const queryData = new URL(ws.data.reqUrl, currentHost).searchParams
+      accessLog.info('deconnection', queryData.get('i'))
+    }
+  }
+
+  return lxSocket
+}
+
+/** 提供给 Bun.serve 的原生 WebSocket 处理器 */
+export const createBunWebSocketHandlers = () => {
+  return {
+    open(ws: ServerWebSocket<LX.SocketData>) {
+      const socket = getOrCreateSocketAdapter(ws)
+      activeClients.add(socket)
+      void handleConnection(socket, ws.data.reqUrl)
+    },
+    message(ws: ServerWebSocket<LX.SocketData>, message: string | Buffer) {
+      const msg = typeof message === 'string' ? message : message.toString('utf-8')
+      const socket = getOrCreateSocketAdapter(ws)
+      socket.isAlive = true
+
+      if (msg === 'pong') return
+
+      if (typeof (ws as any).__dispatchMessage === 'function') {
+        ;(ws as any).__dispatchMessage(msg)
+      }
+    },
+    pong(ws: ServerWebSocket<LX.SocketData>) {
+      const socket = getOrCreateSocketAdapter(ws)
+      socket.isAlive = true
+    },
+    close(ws: ServerWebSocket<LX.SocketData>) {
+      if (typeof (ws as any).__dispatchClose === 'function') {
+        ;(ws as any).__dispatchClose()
+      }
+    },
+  }
+}
+
+/** 初始化 WebSocket 多设备同步服务与全局事件绑定 */
+export const setupSyncServer = (host: string): LX.SocketServer => {
+  currentHost = host
+
+  socketServerInstance = {
+    clients: activeClients,
+    close() {
+      if (heartbeatInterval) {
+        clearInterval(heartbeatInterval)
+        heartbeatInterval = null
+      }
+      for (const client of activeClients) {
+        client.close(SYNC_CLOSE_CODE.normal)
+      }
+      activeClients.clear()
+    },
+  }
+
+  // WebDAV 同步进度广播
   if (global.lx.webdavSync) {
     global.lx.webdavSync.removeAllListeners('progress')
     global.lx.webdavSync.on('progress', (data: any) => {
-      if (wss) {
+      if (socketServerInstance) {
         const msg = JSON.stringify({ type: 'webdav_progress', data })
-        for (const client of wss.clients) {
-          if (client.readyState === WebSocket.OPEN) {
+        for (const client of socketServerInstance.clients) {
+          if (client.readyState === 1) {
             client.send(msg)
           }
         }
@@ -116,136 +341,25 @@ export const setupSyncServer = (httpServer: http.Server, host: string): LX.Socke
     })
   }
 
-  wss.on('connection', function (socket: any, request: IncomingMessage) {
-    socket.isReady = false
-    socket.moduleReadys = {
-      list: false,
-      dislike: false,
-    }
-    socket.feature = {
-      list: false,
-      dislike: false,
-    }
-    socket.on('pong', () => {
-      socket.isAlive = true
-    })
-
-    let closeEvents: Array<(err: Error) => (void | Promise<void>)> = []
-    let disconnected = false
-    const msg2call = createMsg2call<LX.Sync.ClientSyncActions>({
-      funcsObj: callObj,
-      timeout: 120 * 1000,
-      sendMessage(data: any) {
-        if (disconnected) throw new Error('disconnected')
-        void encryptMsg(socket.keyInfo, JSON.stringify(data)).then((encryptedData: string) => {
-          socket.send(encryptedData)
-        }).catch(err => {
-          syncLog.error('encrypt message error:', err)
-          socket.close(SYNC_CLOSE_CODE.failed)
-        })
-      },
-      onCallBeforeParams(rawArgs: any[]) {
-        return [socket, ...rawArgs]
-      },
-      onError(error: Error, path: string[], groupName: string | null) {
-        const name = groupName ?? ''
-        const userName = socket.userInfo?.name ?? ''
-        const deviceName = socket.keyInfo?.deviceName ?? ''
-        syncLog.error(`sync call ${userName} ${deviceName} ${name} ${path.join('.')} error:`, error)
-      },
-    })
-    socket.remote = msg2call.remote
-    socket.remoteQueueList = msg2call.createQueueRemote('list')
-    socket.remoteQueueDislike = msg2call.createQueueRemote('dislike')
-    socket.addEventListener('message', ({ data }: any) => {
-      if (typeof data !== 'string') return
-      void decryptMsg(socket.keyInfo, data).then((decryptedData) => {
-        let syncData: any
-        try {
-          syncData = JSON.parse(decryptedData)
-        } catch (err) {
-          syncLog.error('parse message error:', err)
-          socket.close(SYNC_CLOSE_CODE.failed)
-          return
-        }
-        msg2call.message(syncData)
-      }).catch(err => {
-        syncLog.error('decrypt message error:', err)
-        socket.close(SYNC_CLOSE_CODE.failed)
-      })
-    })
-    socket.addEventListener('close', () => {
-      const err = new Error('closed')
-      try {
-        for (const handler of closeEvents) void handler(err)
-      } catch (err: any) {
-        syncLog.error(err?.message)
-      }
-      closeEvents = []
-      disconnected = true
-      msg2call.destroy()
-      if (socket.isReady) {
-        accessLog.info('deconnection', socket.userInfo.name, socket.keyInfo.deviceName)
-        if (!serverStatus.devices.map((d: any) => getUserName(d.clientId)).filter((n: any) => n === socket.userInfo.name).length) {
-          handleUnconnection(socket.userInfo.name)
-        }
-      } else {
-        const queryData = new URL(request.url as string, currentHost).searchParams
-        accessLog.info('deconnection', queryData.get('i'))
-      }
-    })
-    socket.onClose = function (handler: typeof closeEvents[number]) {
-      closeEvents.push(handler)
-      return () => {
-        closeEvents.splice(closeEvents.indexOf(handler), 1)
-      }
-    }
-    socket.broadcast = function (handler: (client: LX.Socket) => void) {
-      if (!wss) return
-      for (const client of wss.clients) handler(client)
-    }
-
-    void handleConnection(socket, request)
-  })
-
-  httpServer.on('upgrade', function upgrade(request, socket, head) {
-    socket.addListener('error', onSocketError)
-
-    authConnection(request, (err, success) => {
-      if (err || !success) {
-        socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')
-        socket.destroy()
-        return
-      }
-
-      socket.removeListener('error', onSocketError)
-      delete request.headers['sec-websocket-extensions']
-      wss?.handleUpgrade(request, socket, head, function done(ws) {
-        wss?.emit('connection', ws, request)
-      })
-    })
-  })
-
-  const interval = setInterval(() => {
-    wss?.clients.forEach(socket => {
+  // 30 秒心跳轮询保活
+  if (heartbeatInterval) clearInterval(heartbeatInterval)
+  heartbeatInterval = setInterval(() => {
+    if (!socketServerInstance) return
+    for (const socket of [...socketServerInstance.clients]) {
       if (socket.isAlive === false) {
         syncLog.info('alive check false:', socket.userInfo?.name, socket.keyInfo?.deviceName)
-        socket.terminate()
-        return
+        socket.terminate?.()
+        continue
       }
 
       socket.isAlive = false
-      socket.ping(noop)
-      if (socket.keyInfo?.isMobile) socket.send('ping', noop)
-    })
+      socket.ping()
+      if (socket.keyInfo?.isMobile) socket.send('ping')
+    }
   }, 30000)
 
-  wss.on('close', function close() {
-    clearInterval(interval)
-  })
-
-  void registerLocalSyncEvent(wss)
-  return wss
+  void registerLocalSyncEvent(socketServerInstance)
+  return socketServerInstance
 }
 
 export const getSyncDevices = async (userName: string) => {
@@ -254,8 +368,8 @@ export const getSyncDevices = async (userName: string) => {
 }
 
 export const removeSyncDevice = async (userName: string, clientId: string) => {
-  if (wss) {
-    for (const client of wss.clients) {
+  if (socketServerInstance) {
+    for (const client of socketServerInstance.clients) {
       if (client.userInfo?.name === userName && client.keyInfo?.clientId === clientId) {
         client.close(SYNC_CLOSE_CODE.normal)
       }

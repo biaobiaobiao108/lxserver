@@ -1,8 +1,16 @@
-import type { WebSocket, Server } from 'ws'
+export interface BunSocketData {
+  reqUrl: string
+  clientId: string
+  userName: string
+  remoteAddress: string
+}
 
 declare global {
   namespace LX {
-    interface Socket extends WebSocket {
+    type SocketData = BunSocketData
+
+    interface Socket {
+      readyState: number
       isAlive?: boolean
       isReady: boolean
       keyInfo: LX.Sync.KeyInfo
@@ -13,6 +21,14 @@ declare global {
         dislike: boolean
       }
 
+      send(data: string | ArrayBuffer | Uint8Array, cb?: (err?: Error) => void): void
+      close(code?: number, reason?: string): void
+      ping(data?: any): void
+      terminate?(): void
+
+      addEventListener(type: string, listener: (...args: any[]) => void): void
+      removeEventListener?(type: string, listener: (...args: any[]) => void): void
+
       onClose: (handler: (err: Error) => (void | Promise<void>)) => () => void
       broadcast: (handler: (client: LX.Socket) => void) => void
 
@@ -20,7 +36,11 @@ declare global {
       remoteQueueList: LX.Sync.ClientSyncListActions
       remoteQueueDislike: LX.Sync.ClientSyncDislikeActions
     }
-    type SocketServer = Omit<Server<any>, 'clients'> & { clients: Set<Socket> }
+
+    interface SocketServer {
+      clients: Set<Socket>
+      close(): void
+    }
   }
 }
 

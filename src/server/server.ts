@@ -1,81 +1,52 @@
-import http from 'node:http'
+import type { Server } from 'bun'
 import { createRootRouter } from './routes'
-import { dispatchWebResponse } from './core'
 import { initMusicServices } from './services/musicService'
-import { setupSyncServer, getSyncDevices, removeSyncDevice } from './sync/socketServer'
+import {
+  setupSyncServer,
+  handleSocketUpgrade,
+  createBunWebSocketHandlers,
+  getSyncDevices,
+  removeSyncDevice,
+} from './sync/socketServer'
 import { serverStatus, getServerStatus } from './state'
-import { getAddress, getIP } from '@/utils/tools'
+import { getAddress } from '@/utils/tools'
 import { startupLog } from '@/utils/log4js'
 
+let bunServerInstance: Server<LX.SocketData> | null = null
+
 /**
- * 现代全栈 Bun 服务端极简组装入口
+ * 现代全栈 Bun 原生极简组装入口 (HTTP + WebSocket 统一驱动)
  */
 const startHttpAndSync = async (port = 9527, bindIp = '127.0.0.1'): Promise<void> => {
   const rootRouter = createRootRouter()
+  const hostUrl = `http://${bindIp.includes(':') ? `[${bindIp}]` : bindIp}:${port}`
+  setupSyncServer(hostUrl)
 
-  return new Promise((resolve, reject) => {
-    const httpServer = http.createServer(async (req, res) => {
-      try {
-        const host = req.headers.host || `${bindIp}:${port}`
-        const webHeaders = new Headers()
-        for (const [k, v] of Object.entries(req.headers)) {
-          if (Array.isArray(v)) v.forEach(val => webHeaders.append(k, val))
-          else if (v !== undefined) webHeaders.set(k, v)
-        }
-
-        let webBody: ReadableStream | null = null
-        if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
-          webBody = new ReadableStream({
-            start(c) {
-              req.on('data', chunk => c.enqueue(chunk))
-              req.on('end', () => c.close())
-              req.on('error', err => c.error(err))
-            },
-          })
-        }
-
-        const webReq = new Request(`http://${host}${req.url}`, {
-          method: req.method,
-          headers: webHeaders,
-          body: webBody,
-          // @ts-ignore
-          duplex: 'half',
-        })
-
-        const webRes = await rootRouter.handle(webReq, { remoteAddress: getIP(req) })
-        if (webRes instanceof Response) {
-          await dispatchWebResponse(res, webRes)
-          return
-        }
-
-        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' })
-        res.end('Not Found')
-      } catch (err: any) {
-        console.error('[HttpServer Error]:', err)
-        if (!res.headersSent) {
-          res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' })
-          res.end(err?.message || 'Server Internal Error')
-        }
+  bunServerInstance = Bun.serve<LX.SocketData>({
+    port,
+    hostname: bindIp,
+    maxRequestBodySize: 1024 * 1024 * 100, // 100MB 支持大文件与源文件上传
+    async fetch(req, server) {
+      // 1. WebSocket 连接升级与鉴权拦截
+      if (req.headers.get('upgrade')?.toLowerCase() === 'websocket') {
+        const upgradeRes = await handleSocketUpgrade(req, server)
+        if (upgradeRes) return upgradeRes
       }
-    })
 
-    httpServer.on('error', (err) => {
-      console.error('[HttpServer Fatal]:', err)
-      reject(err)
-    })
+      // 2. Web 标准 HTTP 路由分发
+      const remoteAddress = server.requestIP(req)?.address || '127.0.0.1'
+      const webRes = await rootRouter.handle(req, { remoteAddress })
+      if (webRes instanceof Response) return webRes
 
-    httpServer.on('listening', () => {
-      const addr = httpServer.address()
-      const bind = typeof addr === 'string' ? `pipe ${addr}` : `port ${addr?.port}`
-      startupLog.info(`Listening on ${bindIp} ${bind}`)
-
-      const hostUrl = `http://${bindIp.includes(':') ? `[${bindIp}]` : bindIp}:${port}`
-      setupSyncServer(httpServer, hostUrl)
-      resolve()
-    })
-
-    httpServer.listen(port, bindIp)
+      return new Response('Not Found', {
+        status: 404,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      })
+    },
+    websocket: createBunWebSocketHandlers(),
   })
+
+  startupLog.info(`Listening on ${bindIp} port ${bunServerInstance.port}`)
 }
 
 export const startServer = async (port: number, ip: string): Promise<void> => {

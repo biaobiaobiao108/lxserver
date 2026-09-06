@@ -239,6 +239,16 @@ function closeOverlay(element: OverlayElement): void {
     restoreFocusElement = null;
 }
 
+function clearModalStateIfUnused(openOverlays: OverlayElement[]): void {
+    // A drawer can remain open while a confirmation modal above it is closed.
+    // In that transition closeOverlay(modal) is intentionally not the active
+    // close operation, so its old body lock would otherwise survive until the
+    // drawer closes and leave the whole page inert.
+    if (openOverlays.some(element => !isDrawer(element))) return;
+    clearBackgroundInert();
+    unlockBody();
+}
+
 function syncOverlays(): void {
     const overlays = getOverlays();
     const openOverlays = overlays.filter(isOpen);
@@ -259,6 +269,7 @@ function syncOverlays(): void {
     });
 
     if (!nextOverlay && activeOverlay) closeOverlay(activeOverlay);
+    clearModalStateIfUnused(openOverlays);
 }
 
 function findCloseButton(element: HTMLElement): HTMLElement | null {

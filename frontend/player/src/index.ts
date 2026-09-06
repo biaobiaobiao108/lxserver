@@ -12146,6 +12146,9 @@ window.setVolume = setVolume;
 window.toggleMute = toggleMute;
 window.setPlayMode = setPlayMode;
 window.showSelect = showSelect;
+window.showSuccess = showSuccess;
+window.showInfo = showInfo;
+window.showError = showError;
 
 // Lyrics
 window.toggleLyrics = toggleLyrics;

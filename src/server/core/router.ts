@@ -159,6 +159,8 @@ export class Router {
       return await dispatch(0)
     } catch (err: any) {
       console.error(`[Router Error] ${ctx.method} ${ctx.pathname}:`, err)
+      const fallback = await this.notFoundHandler(ctx)
+      if (fallback === null) return null as any
       return ctx.json({
         code: 500,
         message: 'Internal Server Error',

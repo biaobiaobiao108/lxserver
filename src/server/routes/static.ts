@@ -19,11 +19,17 @@ export const serveStaticFile = async (ctx: HttpContext, filePath: string): Promi
     return ctx.text('Forbidden', 403)
   }
 
-  const bunFile = Bun.file(filePath)
-  if (!(await bunFile.exists())) {
+  if (!fs.existsSync(filePath)) {
+    return null
+  }
+  try {
+    const stats = fs.statSync(filePath)
+    if (!stats.isFile()) return null
+  } catch {
     return null
   }
 
+  const bunFile = Bun.file(filePath)
   const size = bunFile.size
   const mtime = bunFile.lastModified
   const etag = `W/"${size}-${mtime}"`
@@ -116,13 +122,18 @@ export const createStaticRouter = (): Router => {
     const adminPath = config['admin.path'] ?? ''
 
     // (A) 管理后台路径映射
-    const isAdminRequest = adminPath && (ctx.pathname.startsWith(`${adminPath}/`) || ctx.pathname === adminPath)
+    const effectiveAdminPath = adminPath || '/'
+    const isAdminRequest = (ctx.pathname === effectiveAdminPath ||
+      ctx.pathname === `${effectiveAdminPath}/` ||
+      ctx.pathname === `${effectiveAdminPath}/index.html` ||
+      (effectiveAdminPath !== '/' && (ctx.pathname.startsWith(`${effectiveAdminPath}/`) || ctx.pathname === effectiveAdminPath)))
+
     if (isAdminRequest) {
-      if (ctx.pathname === adminPath) {
+      if (effectiveAdminPath !== '/' && ctx.pathname === effectiveAdminPath) {
         return ctx.redirect(`${ctx.pathname}/`, 301)
       }
-      const subPath = ctx.pathname.slice(adminPath.length)
-      const targetRel = (subPath === '/' || subPath === '')
+      const subPath = effectiveAdminPath === '/' ? ctx.pathname : ctx.pathname.slice(effectiveAdminPath.length)
+      const targetRel = (subPath === '/' || subPath === '' || subPath === '/index.html' || subPath === 'index.html')
         ? 'index.html'
         : (subPath.startsWith('/') ? subPath.slice(1) : subPath)
       const filePath = path.join(staticRoot, targetRel)

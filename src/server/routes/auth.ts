@@ -192,6 +192,20 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
 export const createAuthRouter = (): Router => {
   const router = new Router()
 
+  // 0. Web 播放器公共配置 API
+  router.get('/api/music/config', (ctx) => {
+    const config = (global.lx?.config ?? {}) as any
+    return ctx.json({
+      'player.enableAuth': config['player.enableAuth'] || false,
+      'user.enablePublicRestriction': config['user.enablePublicRestriction'] || false,
+      'user.enablePublicFavorites': config['user.enablePublicFavorites'] || false,
+      'user.enablePublicNonAdminAccess': config['user.enablePublicNonAdminAccess'] || false,
+      'user.enablePublicNonAdminLocalMusic': config['user.enablePublicNonAdminLocalMusic'] || false,
+    }, 200, {
+      'Cache-Control': 'no-cache',
+    })
+  })
+
   // 1. 管理后台密码校验
   router.post('/api/admin/verify', (ctx) => {
     if (verifyAdminAuth(ctx.request)) {

@@ -19,6 +19,10 @@ export const corsMiddleware: Middleware = async (ctx, next) => {
   }
 
   const response = await next()
+  if (!response || !(response instanceof Response)) {
+    return response
+  }
+
   const headers = new Headers(response.headers)
   headers.set('Access-Control-Allow-Origin', '*')
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')

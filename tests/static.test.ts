@@ -85,4 +85,24 @@ describe('Static Routing & Frontend Serving (routes/static.ts)', () => {
     // Should not redirect to login, either 200 or 404
     expect(res.status).not.toBe(302)
   })
+
+  test('GET / serves index.html for default admin path', async () => {
+    const router = new Router()
+    router.mount('/', createStaticRouter())
+
+    const req = new Request('http://localhost:9527/')
+    const res = await router.handle(req)
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Content-Type')).toContain('text/html')
+  })
+
+  test('RootRouter with corsMiddleware handles unhandled routes with null fallback gracefully', async () => {
+    const { createRootRouter } = await import('@/server/routes')
+    const rootRouter = createRootRouter().setNotFound(() => null)
+
+    const req = new Request('http://localhost:9527/api/music/search?name=test')
+    const res = await rootRouter.handle(req)
+    // Should return null (fallback to legacy server handler) without throwing TypeError
+    expect(res).toBeNull()
+  })
 })

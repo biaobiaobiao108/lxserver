@@ -27,6 +27,8 @@ import * as remasterQueue from './remasterQueue'
 import { getDownloadQualityCandidates } from './downloadQuality'
 import crypto from 'node:crypto'
 import needle from 'needle'
+import { createRootRouter } from './routes'
+import { dispatchWebResponse } from './core'
 const { MusicTagger, MetaPicture } = require('music-tag-native')
 
 // ===== Player Session Store =====
@@ -897,8 +899,52 @@ const serveStatic = (req: IncomingMessage, res: http.ServerResponse, filePath: s
   }
 }
 
-const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Promise((resolve, reject) => {
+const handleStartServer = async (port = 9527, bindIp = '127.0.0.1') => await new Promise((resolve, reject) => {
+  const rootRouter = createRootRouter().setNotFound(() => null)
+
   const httpServer = http.createServer(async (req, res) => {
+    // 优先通过现代 Web 标准路由器进行处理
+    try {
+      const host = req.headers.host || `${bindIp}:${port}`
+      const fullUrl = `http://${host}${req.url}`
+      const webHeaders = new Headers()
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (Array.isArray(v)) {
+          v.forEach(val => webHeaders.append(k, val))
+        } else if (v !== undefined) {
+          webHeaders.set(k, v)
+        }
+      }
+
+      let webBody: ReadableStream | null = null
+      if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+        webBody = new ReadableStream({
+          start(controller) {
+            req.on('data', chunk => controller.enqueue(chunk))
+            req.on('end', () => controller.close())
+            req.on('error', err => controller.error(err))
+          },
+        })
+      }
+
+      const webReq = new Request(fullUrl, {
+        method: req.method,
+        headers: webHeaders,
+        body: webBody,
+        // @ts-ignore
+        duplex: 'half',
+      })
+
+      const clientIp = getIP(req)
+      const webRes = await rootRouter.handle(webReq, { remoteAddress: clientIp })
+      if (webRes && webRes instanceof Response) {
+        await dispatchWebResponse(res, webRes)
+        return
+      }
+    } catch (routeErr) {
+      console.error('[RootRouter Dispatch Error]:', routeErr)
+    }
+
     // CORS 跨域处理
     res.setHeader('Access-Control-Allow-Origin', '*')
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
@@ -6144,7 +6190,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
     socket.remote = msg2call.remote
     socket.remoteQueueList = msg2call.createQueueRemote('list')
     socket.remoteQueueDislike = msg2call.createQueueRemote('dislike')
-    socket.addEventListener('message', ({ data }) => {
+    socket.addEventListener('message', ({ data }: any) => {
       if (typeof data != 'string') return
       void decryptMsg(socket.keyInfo, data).then((data) => {
         let syncData: any
@@ -6187,7 +6233,7 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
         closeEvents.splice(closeEvents.indexOf(handler), 1)
       }
     }
-    socket.broadcast = function (handler) {
+    socket.broadcast = function (handler: (client: LX.Socket) => void) {
       if (!wss) return
       for (const client of wss.clients) handler(client)
     }
@@ -6250,13 +6296,13 @@ const handleStartServer = async (port = 9527, ip = '127.0.0.1') => await new Pro
       return
     }
     const bind = typeof addr == 'string' ? `pipe ${addr}` : `port ${addr.port}`
-    startupLog.info(`Listening on ${ip} ${bind}`)
+    startupLog.info(`Listening on ${bindIp} ${bind}`)
     resolve(null)
     void registerLocalSyncEvent(wss as LX.SocketServer)
   })
 
-  host = `http://${ip.includes(':') ? `[${ip}]` : ip}:${port}`
-  httpServer.listen(port, ip)
+  host = `http://${bindIp.includes(':') ? `[${bindIp}]` : bindIp}:${port}`
+  httpServer.listen(port, bindIp)
 })
 
 // const handleStopServer = async() => new Promise<void>((resolve, reject) => {

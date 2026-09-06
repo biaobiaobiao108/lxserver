@@ -7,10 +7,10 @@
       "bun-types"
     ],
     "allowJs": true,
-    "strict": false,
+    "strict": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "noImplicitReturns": false,
+    "noImplicitReturns": true,
     "paths": {
       "@/*": [
         "./src/*"

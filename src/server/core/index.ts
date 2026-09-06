@@ -37,3 +37,38 @@ export const accessLogMiddleware: Middleware = async (ctx, next) => {
   accessLog.info(`${ctx.method} ${ctx.pathname} from ${ctx.remoteAddress}`)
   return await next()
 }
+
+/** 将 Web 标准 Response 流式写入 Node.js http.ServerResponse */
+export const dispatchWebResponse = async (res: any, webRes: Response): Promise<void> => {
+  const headers: Record<string, string | string[]> = {}
+  webRes.headers.forEach((val, key) => {
+    const lower = key.toLowerCase()
+    if (lower === 'set-cookie') {
+      const existing = headers['set-cookie']
+      if (existing) {
+        headers['set-cookie'] = Array.isArray(existing) ? [...existing, val] : [existing, val]
+      } else {
+        headers['set-cookie'] = val
+      }
+    } else {
+      headers[lower] = val
+    }
+  })
+
+  res.writeHead(webRes.status, headers)
+
+  if (webRes.body) {
+    const reader = webRes.body.getReader()
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        res.write(value)
+      }
+    } finally {
+      reader.releaseLock()
+    }
+  }
+  res.end()
+}
+

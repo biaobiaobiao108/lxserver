@@ -2,7 +2,7 @@ import { HttpContext, type ContextOptions } from './context'
 
 export type RouteHandler = (
   ctx: HttpContext
-) => Response | Promise<Response> | null | Promise<null> | void | Promise<void>
+) => Response | null | void | Promise<Response | null | void>
 
 export type Middleware = (
   ctx: HttpContext,
@@ -148,8 +148,9 @@ export class Router {
         }
       }
 
-      // 未命中路由，调用 404
+      // 未命中路由，调用 404 或回退处理器
       const fallback = await this.notFoundHandler(ctx)
+      if (fallback === null) return null as any
       if (fallback instanceof Response) return fallback
       return ctx.json({ code: 404, message: 'Not Found' }, 404)
     }

@@ -218,7 +218,7 @@ window.LeaderboardManager = (function () {
                 <!-- 封面 + 歌名 -->
                 <div class="col-span-9 sm:col-span-7 md:col-span-5 lg:col-span-4 flex items-center gap-3 min-w-0">
                     <div class="w-10 h-10 md:w-12 md:h-12 flex-shrink-0 relative rounded-lg overflow-hidden shadow-sm border t-border-main group-hover:shadow-md transition-all group-hover:scale-105 duration-300">
-                        <img data-src="${imgUrl}" src="/music/assets/logo.svg"
+                        <img data-src="${imgUrl}" src="/music/assets/logo.svg" alt="${song.name || '歌曲'}专辑封面" width="48" height="48" loading="lazy" decoding="async"
                              class="lazy-image w-full h-full object-cover dynamic-logo is-placeholder"
                              onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');">
                         <div class="absolute inset-0 bg-black/20 hidden group-hover:flex items-center justify-center transition-all">
@@ -535,4 +535,3 @@ function toggleLbSidebar(force) {
         }, 300);
     }
 }
-

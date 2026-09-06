@@ -57,17 +57,19 @@
 </head>
 
 <body>
+    <a href="#admin-main" class="skip-link">跳转到主要内容</a>
     <!-- 登录界面 -->
-    <div id="login-overlay" class="overlay">
+    <div id="login-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="login-title">
         <div class="login-box glass">
             <div class="login-header">
                 <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M9 18V5l12-2v13M6 15v8m6-8v8" />
                 </svg>
-                <h1>LX Sync Server</h1>
+                <h1 id="login-title">LX Sync Server</h1>
             </div>
             <p class="login-subtitle">管理控制台</p>
-            <input type="password" id="access-password" placeholder="请输入访问密码" autocomplete="off" />
+            <label for="access-password" class="sr-only">访问密码</label>
+            <input type="password" id="access-password" placeholder="请输入访问密码" autocomplete="current-password" />
             <button id="login-btn" class="btn-primary">
                 <span>登录</span>
             </button>
@@ -203,11 +205,11 @@
         </aside>
 
         <!-- 主内容区 -->
-        <main class="main-content">
+        <main id="admin-main" tabindex="-1" class="main-content">
             <header class="top-bar glass">
                 <div class="header-left-group">
                     <div class="mobile-header-row">
-                        <button id="mobile-menu-btn" class="btn-icon mobile-only" style="display: none;">
+                        <button id="mobile-menu-btn" aria-label="打开管理菜单" class="btn-icon mobile-only" style="display: none;">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                 style="width: 24px; height: 24px;">
                                 <line x1="3" y1="12" x2="21" y2="12"></line>
@@ -1327,24 +1329,24 @@
     </div>
 
     <!-- 模态框 -->
-    <div id="modal" class="modal hidden">
+    <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-hidden="true">
         <div class="modal-content glass">
             <div class="modal-header">
                 <h3 id="modal-title">模态框标题</h3>
-                <button class="modal-close">&times;</button>
+                <button type="button" class="modal-close" aria-label="关闭">&times;</button>
             </div>
             <div id="modal-body" class="modal-body"></div>
         </div>
     </div>
-    <div id="edit-password-modal" class="modal hidden">
+    <div id="edit-password-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="edit-password-title" aria-hidden="true">
         <div class="modal-content glass">
             <div class="modal-header">
-                <h3>修改密码</h3>
-                <button class="modal-close">×</button>
+                <h3 id="edit-password-title">修改密码</h3>
+                <button type="button" class="modal-close" aria-label="关闭">×</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label>新密码</label>
+                    <label for="edit-password-input">新密码</label>
                     <input type="text" id="edit-password-input" class="form-input" placeholder="请输入新密码">
                 </div>
             </div>
@@ -1354,15 +1356,15 @@
             </div>
         </div>
     </div>
-    <div id="rename-user-modal" class="modal hidden">
+    <div id="rename-user-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="rename-user-title" aria-hidden="true">
         <div class="modal-content glass">
             <div class="modal-header">
-                <h3>修改用户名</h3>
-                <button class="modal-close">×</button>
+                <h3 id="rename-user-title">修改用户名</h3>
+                <button type="button" class="modal-close" aria-label="关闭">×</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
-                    <label>新用户名</label>
+                    <label for="rename-user-input">新用户名</label>
                     <input type="text" id="rename-user-input" class="form-input" placeholder="请输入新用户名">
                 </div>
                 <p style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 10px;">

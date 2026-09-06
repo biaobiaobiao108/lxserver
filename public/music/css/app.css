@@ -1,4 +1,127 @@
 /* Custom scrollbar */
+:root {
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --radius-control: 0.75rem;
+    --radius-panel: 1rem;
+    --elevation-panel: 0 10px 30px rgb(15 23 42 / 0.08);
+    --control-height: 2.75rem;
+}
+
+.skip-link {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 1000;
+    padding: 0.65rem 0.9rem;
+    border-radius: 0.65rem;
+    background: var(--c-600, #059669);
+    color: #fff;
+    font-weight: 700;
+    transform: translateY(-160%);
+    transition: transform 160ms ease;
+}
+
+.skip-link:focus {
+    transform: translateY(0);
+}
+
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--c-500, #10b981) 72%, white);
+    outline-offset: 2px;
+}
+
+body[data-overlay-open="true"] {
+    overscroll-behavior: none;
+}
+
+body.overlay-open > *:not(.skip-link) {
+    /* The controller uses inert on the exact background tree; this rule only
+       keeps the page from visually shifting while a dialog is open. */
+    scrollbar-gutter: stable;
+}
+
+.player-menu-action {
+    min-block-size: 2.75rem;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: 0.65rem;
+    color: var(--text-main);
+    font-size: 0.8rem;
+    font-weight: 650;
+    text-align: left;
+    transition: background-color 160ms ease, color 160ms ease;
+}
+
+.player-menu-action:hover,
+.player-menu-action:focus-visible {
+    background: color-mix(in srgb, var(--c-500, #10b981) 12%, transparent);
+    color: var(--c-600, #059669);
+}
+
+.player-menu-action i {
+    inline-size: 1.25rem;
+    text-align: center;
+}
+
+:where([role="button"][tabindex="0"], .artist-album-card):focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--c-500, #10b981) 72%, white);
+    outline-offset: 2px;
+}
+
+.player-safe-drawer [role="button"][tabindex="0"]:focus-visible {
+    outline-offset: -2px;
+}
+
+@media (hover: none) {
+    .player-safe-drawer .group > .opacity-0 {
+        opacity: 1;
+    }
+}
+
+@media (max-width: 767px) {
+    #player-footer {
+        padding-top: 0.25rem;
+        padding-bottom: max(0.25rem, env(safe-area-inset-bottom, 0px));
+        padding-inline: 0.5rem;
+    }
+
+    #player-footer .player-secondary-action {
+        min-block-size: 2.75rem;
+        min-inline-size: 2.75rem;
+    }
+
+    #player-song-info {
+        gap: 0.25rem;
+    }
+
+    #player-song-info > div:first-child {
+        width: 2.25rem;
+        height: 2.25rem;
+    }
+
+    #player-footer > .flex-1 > div:last-child {
+        gap: 0.5rem;
+        margin-bottom: 0;
+    }
+
+    #player-footer > .flex-1 > div:first-child {
+        margin-bottom: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skip-link,
+    .player-menu-action {
+        transition: none;
+    }
+}
+
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;

@@ -1,3 +1,5 @@
+import { initAccessibleOverlays } from './accessible_overlays';
+
 /*
  * Copyright 2026 xcq0607 (https://github.com/xcq0607)
  *
@@ -36,6 +38,8 @@ let currentPlayingSong = null; // Track currently playing song independently of 
 window.batchCollectSongs = null; // Store songs for batch collection modal
 const audio = document.getElementById('audio-player');
 let currentPlaybackRate = 1.0;
+
+initAccessibleOverlays();
 
 // Initialize Unified Search for Global (Favorites/Search)
 window.goToPage = function (page) {
@@ -862,6 +866,7 @@ function handleDragMove(e) {
         // 1. Update UI immediately (Always smooth)
         document.getElementById('progress-bar').style.width = `${pct * 100}%`;
         document.getElementById('time-current').innerText = formatTime(pct * audio.duration);
+        document.getElementById('progress-container')?.setAttribute('aria-valuenow', String(Math.round(pct * 100)));
 
         // 2. Throttled update of audio position (Live Seeking)
         const now = Date.now();
@@ -1236,6 +1241,22 @@ function syncPlayerDrawerOffset() {
     const isHidden = footer.classList.contains('translate-y-[110%]');
     const footerHeight = isHidden ? 0 : Math.ceil(footer.getBoundingClientRect().height);
     document.documentElement.style.setProperty('--player-footer-offset', `${footerHeight}px`);
+    syncToastOffsets();
+}
+
+function syncToastOffsets() {
+    const footer = document.getElementById('player-footer');
+    const footerOffset = footer && !footer.classList.contains('translate-y-[110%]')
+        ? Math.ceil(footer.getBoundingClientRect().height)
+        : 0;
+    const toasts = Array.from(document.querySelectorAll<HTMLElement>('.toast-item'));
+    let nextOffset = footerOffset + 12;
+    for (let index = toasts.length - 1; index >= 0; index -= 1) {
+        const toast = toasts[index];
+        toast.style.bottom = `calc(${nextOffset}px + env(safe-area-inset-bottom, 0px))`;
+        toast.dataset.offset = String(nextOffset);
+        nextOffset += (toast.offsetHeight || 60) + 12;
+    }
 }
 
 function setPlayerDrawerOpen(drawerId, open) {
@@ -1248,6 +1269,9 @@ function setPlayerDrawerOpen(drawerId, open) {
         } else {
             drawer.classList.add('translate-x-full');
         }
+        document.querySelectorAll<HTMLElement>(`[aria-controls="${id}"]`).forEach(trigger => {
+            trigger.setAttribute('aria-expanded', String(open && id === drawerId));
+        });
     });
 
     syncPlayerDrawerOffset();
@@ -1349,13 +1373,15 @@ function renderQueue() {
     listContainer.innerHTML = currentPlaylist.map((song, index) => {
         const isActive = index === currentIndex;
         return `
-            <div class="group flex items-center gap-3 p-3 rounded-xl transition-all hover:t-bg-item-hover cursor-pointer relative ${isActive ? 't-bg-item-hover border-l-4 border-emerald-500 pl-2' : ''}"
-                 onclick="playSongFromQueue(${index})">
+            <div role="button" tabindex="0" aria-label="播放 ${escapeHtmlText(song.name || '未命名歌曲')}"
+                 class="group flex items-center gap-3 p-3 rounded-xl transition-all hover:t-bg-item-hover cursor-pointer relative ${isActive ? 't-bg-item-hover border-l-4 border-emerald-500 pl-2' : ''}"
+                 onclick="playSongFromQueue(${index})"
+                 onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); playSongFromQueue(${index}); }">
                 
                 <div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 relative">
-                    <img src="${getImgUrl(song)}"
+                    <img src="${getImgUrl(song)}" alt="${escapeHtmlText(song.name || '歌曲')}专辑封面" width="40" height="40"
                          onerror="this.src='/music/assets/logo.svg'"
-                         loading="lazy" fetchpriority="low"
+                         loading="lazy" decoding="async"
                          class="w-full h-full object-cover">
                     ${isActive ? '<div class="absolute inset-0 bg-emerald-500/20 flex items-center justify-center"><div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div></div>' : ''}
                 </div>
@@ -1369,8 +1395,8 @@ function renderQueue() {
                     </div>
                 </div>
 
-                <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button onclick="event.stopPropagation(); removeFromQueue(${index})" class="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                <div class="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <button aria-label="从队列移除 ${escapeHtmlText(song.name || '歌曲')}" onclick="event.stopPropagation(); removeFromQueue(${index})" class="p-2 text-gray-400 hover:text-red-500 transition-colors">
                         <i class="fas fa-trash-alt text-xs"></i>
                     </button>
                     <div class="p-2 text-gray-400 cursor-grab active:cursor-grabbing queue-drag-handle">
@@ -2001,7 +2027,7 @@ function renderSingerResults(list) {
         div.innerHTML = `
             <div class="relative mb-2 md:mb-3">
                 <div class="w-16 h-16 sm:w-24 sm:h-24 md:w-32 md:h-32 rounded-full overflow-hidden shadow-sm">
-                    <img src="${singer.picUrl || '/music/assets/logo.svg'}"
+                    <img src="${singer.picUrl || '/music/assets/logo.svg'}" alt="${escapeHtmlText(singer.name || '歌手')}头像" width="128" height="128" loading="lazy" decoding="async"
                          onerror="this.src='/music/assets/logo.svg'"
                          class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
                 </div>
@@ -2043,7 +2069,7 @@ function renderAlbumResults(list) {
         const publishDate = item.publishTime ? new Date(item.publishTime).toLocaleDateString() : '';
         div.innerHTML = `
             <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative">
-                <img src="${item.picUrl || '/music/assets/logo.svg'}"
+                <img src="${item.picUrl || '/music/assets/logo.svg'}" alt="${escapeHtmlText(item.name || '专辑')}封面" width="320" height="320" loading="lazy" decoding="async"
                      onerror="this.src='/music/assets/logo.svg'"
                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
                 <button id="album-fav-${item.id}" class="absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${isAlbumFavorited(item.id, item.source || 'wy') ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
@@ -2196,7 +2222,7 @@ function renderArtistHeader(info, activeTab, order) {
 
             <div id="artist-main-layout" class="flex flex-col md:flex-row gap-6 md:gap-8 ${isArtistFolded && isMobile ? 'items-start text-left' : 'items-center md:items-start text-center md:text-left'} transition-all duration-500">
                 <div id="artist-avatar-container" class="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden shadow-2xl ring-4 ring-emerald-500/20 flex-shrink-0 transition-all duration-500 origin-center" style="${isArtistFolded ? 'transform: scale(0); opacity: 0; width: 0; height: 0; margin: 0;' : ''}">
-                    <img src="${info.avatar || '/music/assets/logo.svg'}" 
+                    <img src="${info.avatar || '/music/assets/logo.svg'}" alt="${escapeHtmlText(info.name || '歌手')}头像" width="160" height="160" loading="lazy" decoding="async"
                          onerror="this.src='/music/assets/logo.svg'"
                          class="w-full h-full object-cover">
                 </div>
@@ -2461,7 +2487,10 @@ function renderArtistSongsUI(list, page) {
         if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
 
         return `
-                <div class="${rowClass}" data-song-id="${item.id}" onclick="window.batchMode ? handleBatchSelect('${item.id}', !window.selectedItems.has('${item.id}')) : playFromView(${index})">
+                <div role="button" tabindex="0" aria-label="${window.batchMode ? '选择' : '播放'} ${escapeHtmlText(item.name || '未命名歌曲')}"
+                     class="${rowClass}" data-song-id="${item.id}"
+                     onclick="window.batchMode ? handleBatchSelect('${item.id}', !window.selectedItems.has('${item.id}')) : playFromView(${index})"
+                     onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.batchMode ? handleBatchSelect('${item.id}', !window.selectedItems.has('${item.id}')) : playFromView(${index}); }">
                     <!-- Index -->
                     <div class="col-span-1 sm:col-span-1 text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
                         ${window.batchMode ? `
@@ -2476,7 +2505,7 @@ function renderArtistSongsUI(list, page) {
                     <!-- Title -->
                     <div class="col-span-9 sm:col-span-7 md:col-span-6 lg:col-span-4 flex items-center gap-3 min-w-0">
                         <div class="w-10 h-10 md:w-12 md:h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-sm relative">
-                            <img src="${item.img || '/music/assets/logo.svg'}" 
+                            <img src="${item.img || '/music/assets/logo.svg'}" alt="${escapeHtmlText(item.name || '歌曲')}专辑封面" width="48" height="48" loading="lazy" decoding="async"
                                  onerror="this.src='/music/assets/logo.svg'" 
                                  class="w-full h-full object-cover">
                             <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
@@ -2675,7 +2704,7 @@ function renderArtistAlbumsUI(list) {
                 return `
                 <div class="artist-album-card group flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20" data-album-index="${index}">
                     <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative bg-gray-100 dark:bg-gray-800">
-                        <img src="${escapeHtmlText(getImgUrl(album))}"
+                        <img src="${escapeHtmlText(getImgUrl(album))}" alt="${escapeHtmlText(albumName)}封面" width="320" height="320" loading="lazy" decoding="async"
                              onerror="this.src='/music/assets/logo.svg'" 
                              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
                         <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -3032,11 +3061,10 @@ function renderResults(list) {
             <!-- Title (Image + Text) -->
             <div class="col-span-9 sm:col-span-7 md:col-span-6 ${titleLgSpan} flex items-center overflow-hidden pr-2">
                 <div class="relative w-10 h-10 md:w-12 md:h-12 mr-3 md:mr-4 flex-shrink-0 group cursor-pointer">
-                     <img data-src="${imgUrl}" src="/music/assets/logo.svg"
-                          loading="lazy" fetchpriority="low"
+                     <img data-src="${imgUrl}" src="/music/assets/logo.svg" alt="${escapeHtmlText(item.name || '歌曲')}专辑封面" width="48" height="48"
+                          loading="lazy" decoding="async"
                           class="lazy-image w-full h-full rounded-lg object-cover shadow-sm group-hover:shadow-md transition-all group-hover:scale-105 duration-300 dynamic-logo is-placeholder" 
-                          alt="${item.name}"
-                          onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');">
+                           onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');">
                      <div class="absolute inset-0 bg-black/20 rounded-lg hidden group-hover:flex items-center justify-center transition-all">
                         <i class="fas fa-play text-white text-xs md:text-sm"></i>
                      </div>
@@ -5025,6 +5053,7 @@ function updatePlayerInfo(song, actualQuality) {
         btnLike.classList.remove('text-red-500');
         btnLike.classList.add('text-gray-300');
     }
+    btnLike.setAttribute('aria-pressed', String(isCollected));
 }
 
 async function togglePlay() {
@@ -5182,6 +5211,11 @@ audio.addEventListener('timeupdate', () => {
 
     const pct = (current / duration) * 100;
     document.getElementById('progress-bar').style.width = `${pct}%`;
+    const progressContainer = document.getElementById('progress-container');
+    if (progressContainer) {
+        progressContainer.setAttribute('aria-valuemax', String(Number.isFinite(duration) ? Math.round(duration) : 0));
+        progressContainer.setAttribute('aria-valuenow', String(Number.isFinite(current) ? Math.round(current) : 0));
+    }
 
     // [iOS Fix] Throttled Media Session Position update for Dynamic Island / Lock Screen
     // 每秒同步一次进度，防止 iOS 将 Web Audio 桥接流识别为不可拖拽的“直播”
@@ -5556,6 +5590,21 @@ function seek(e) {
     }
 }
 
+function handleProgressKeydown(event: KeyboardEvent) {
+    if (!audio.duration || !Number.isFinite(audio.duration)) return;
+    const step = audio.duration * 0.05;
+    let nextTime = audio.currentTime;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') nextTime -= step;
+    else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') nextTime += step;
+    else if (event.key === 'Home') nextTime = 0;
+    else if (event.key === 'End') nextTime = audio.duration;
+    else return;
+
+    event.preventDefault();
+    audio.currentTime = Math.max(0, Math.min(audio.duration, nextTime));
+}
+window.handleProgressKeydown = handleProgressKeydown;
+
 // ========== 音量控制 ==========
 let currentVolume = 0.75; // 默认音量 75%
 let isMuted = false;
@@ -5585,6 +5634,27 @@ function setVolume(e) {
     }
 }
 
+function handleVolumeKeydown(event: KeyboardEvent) {
+    let nextVolume = currentVolume;
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') nextVolume -= 0.05;
+    else if (event.key === 'ArrowRight' || event.key === 'ArrowUp') nextVolume += 0.05;
+    else if (event.key === 'Home') nextVolume = 0;
+    else if (event.key === 'End') nextVolume = 1;
+    else return;
+
+    event.preventDefault();
+    currentVolume = Math.max(0, Math.min(1, nextVolume));
+    audio.volume = currentVolume;
+    isMuted = false;
+    updateVolumeUI();
+    try {
+        localStorage.setItem('lx_volume', currentVolume.toString());
+    } catch (error) {
+        console.warn('[Volume] 保存音量失败:', error);
+    }
+}
+window.handleVolumeKeydown = handleVolumeKeydown;
+
 // 切换静音
 function toggleMute() {
     isMuted = !isMuted;
@@ -5600,6 +5670,7 @@ function updateVolumeUI() {
     if (volumeBar) {
         const displayVolume = isMuted ? 0 : currentVolume;
         volumeBar.style.width = `${displayVolume * 100}%`;
+        document.getElementById('volume-container')?.setAttribute('aria-valuenow', String(Math.round(displayVolume * 100)));
     }
 
     if (volumeIcon) {
@@ -5633,6 +5704,7 @@ function setPlayMode(mode) {
     // Close menu (Mobile/Click mode)
     const menu = document.getElementById('play-mode-menu');
     if (menu) menu.classList.remove('force-visible');
+    document.getElementById('play-mode-btn')?.setAttribute('aria-expanded', 'false');
 
     // 使用统一的 Toast 系统显示提示
     showSuccess(`播放模式：${getPlayModeName(mode)}`);
@@ -5643,7 +5715,9 @@ function togglePlayModeMenu(e) {
     if (e) e.stopPropagation();
     const menu = document.getElementById('play-mode-menu');
     if (menu) {
-        menu.classList.toggle('force-visible');
+        const isOpening = !menu.classList.contains('force-visible');
+        menu.classList.toggle('force-visible', isOpening);
+        document.getElementById('play-mode-btn')?.setAttribute('aria-expanded', String(isOpening));
     }
 }
 
@@ -5652,7 +5726,9 @@ function togglePlaybackRateMenu(e) {
     if (e) e.stopPropagation();
     const menu = document.getElementById('playback-rate-menu');
     if (menu) {
-        menu.classList.toggle('force-visible');
+        const isOpening = !menu.classList.contains('force-visible');
+        menu.classList.toggle('force-visible', isOpening);
+        document.getElementById('playback-rate-btn')?.setAttribute('aria-expanded', String(isOpening));
     }
 }
 
@@ -5672,6 +5748,7 @@ function setPlaybackRate(rate) {
     // 关闭菜单
     const menu = document.getElementById('playback-rate-menu');
     if (menu) menu.classList.remove('force-visible');
+    document.getElementById('playback-rate-btn')?.setAttribute('aria-expanded', 'false');
 
     // 增加提示
     showInfo(`播放速度：${rate}x`);
@@ -5683,6 +5760,7 @@ function updatePlaybackRateUI() {
     if (btn) {
         btn.innerText = currentPlaybackRate === 1.0 ? '1.0x' : `${currentPlaybackRate}x`;
         btn.classList.toggle('text-emerald-500', currentPlaybackRate !== 1.0);
+        btn.setAttribute('aria-label', `播放速度：${currentPlaybackRate} 倍`);
     }
 
     const options = document.querySelectorAll('.playback-rate-option');
@@ -5703,6 +5781,7 @@ document.addEventListener('click', (e) => {
     const pmBtn = document.getElementById('play-mode-btn');
     if (pmMenu && pmBtn && !pmMenu.contains(e.target) && !pmBtn.contains(e.target)) {
         pmMenu.classList.remove('force-visible');
+        pmBtn.setAttribute('aria-expanded', 'false');
     }
 
     // 关闭倍速菜单
@@ -5710,6 +5789,7 @@ document.addEventListener('click', (e) => {
     const prBtn = document.getElementById('playback-rate-btn');
     if (prMenu && prBtn && !prMenu.contains(e.target) && !prBtn.contains(e.target)) {
         prMenu.classList.remove('force-visible');
+        prBtn.setAttribute('aria-expanded', 'false');
     }
 });
 
@@ -5736,8 +5816,10 @@ function updatePlayModeUI() {
         const icon = btn.querySelector('i');
         if (icon) {
             icon.className = `fas ${icons[playMode]}`;
-            btn.className = `${colors[playMode]} hover:opacity-80 transition-colors`;
+            Object.values(colors).forEach(color => btn.classList.remove(color));
+            btn.classList.add(colors[playMode]);
             btn.title = getPlayModeName(playMode);
+            btn.setAttribute('aria-label', `播放模式：${getPlayModeName(playMode)}`);
         }
     }
 
@@ -6497,11 +6579,9 @@ function toggleCacheDrawer() {
         const isHidden = drawer.classList.contains('translate-x-full');
         if (isHidden) {
             setPlayerDrawerOpen('cache-drawer', true);
-            document.body.style.overflow = 'hidden';
             refreshCacheList();
         } else {
             setPlayerDrawerOpen('cache-drawer', false);
-            document.body.style.overflow = '';
             exitCacheBatchMode(); // 关闭时重置状态
         }
     }
@@ -6602,7 +6682,7 @@ function renderCacheList() {
                 ` : ''}
 
                 <div class="relative w-12 h-12 flex-shrink-0 group-hover:scale-105 transition-transform duration-500">
-                    <img class="w-full h-full object-cover rounded-xl shadow-md bg-gray-100" 
+                    <img class="w-full h-full object-cover rounded-xl shadow-md bg-gray-100" alt="${escapeHtmlText(item.filename || '缓存歌曲')}封面" width="48" height="48" loading="lazy" decoding="async"
                          src="${coverUrl}" 
                          onerror="this.src='/music/assets/logo.svg'">
                     <div class="absolute inset-0 bg-black/5 rounded-xl"></div>
@@ -7823,6 +7903,7 @@ function refreshFavoritesChildrenHeight() {
 function toggleFavorites() {
     const list = document.getElementById('favorites-children');
     const arrow = document.getElementById('favorites-arrow');
+    const trigger = document.getElementById('tab-favorites');
     if (!list) return;
 
     // Toggle logic
@@ -7834,15 +7915,18 @@ function toggleFavorites() {
             list.style.height = targetHeight + 'px';
         });
         if (arrow) arrow.style.transform = 'rotate(0deg)'; // Arrow down
+        trigger?.setAttribute('aria-expanded', 'true');
     } else {
         list.style.height = '0px';
         if (arrow) arrow.style.transform = 'rotate(-90deg)'; // Arrow right
+        trigger?.setAttribute('aria-expanded', 'false');
     }
 }
 
 // Initial rotate for collapsed state
 const favArrow = document.getElementById('favorites-arrow');
 if (favArrow) favArrow.style.transform = 'rotate(-90deg)';
+document.getElementById('tab-favorites')?.setAttribute('aria-expanded', 'false');
 
 // ========== Library 收藏歌手/专辑 ==========
 
@@ -8213,7 +8297,7 @@ function renderLibraryArtists(list) {
         div.innerHTML = `
             <div class="relative mb-2 md:mb-3">
                 <div class="w-16 h-16 sm:w-24 sm:h-24 md:w-32 md:h-32 rounded-full overflow-hidden shadow-sm">
-                    <img src="${singer.picUrl || '/music/assets/logo.svg'}"
+                    <img src="${singer.picUrl || '/music/assets/logo.svg'}" alt="${escapeHtmlText(singer.name || '歌手')}头像" width="128" height="128" loading="lazy" decoding="async"
                          onerror="this.src='/music/assets/logo.svg'"
                          class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
                 </div>
@@ -8296,7 +8380,7 @@ function renderLibraryAlbums(list) {
         };
         div.innerHTML = `
             <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative">
-                <img src="${item.picUrl || '/music/assets/logo.svg'}"
+                <img src="${item.picUrl || '/music/assets/logo.svg'}" alt="${escapeHtmlText(item.name || '专辑')}封面" width="320" height="320" loading="lazy" decoding="async"
                      onerror="this.src='/music/assets/logo.svg'"
                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
                 <div class="lib-batch-check absolute inset-0 bg-black/40 hidden items-center justify-center rounded-xl">
@@ -11777,6 +11861,8 @@ function showInput(title, message, options = {}) {
 
     return new Promise((resolve) => {
         const modal = document.createElement('div');
+        modal.id = `runtime-input-modal-${Date.now()}`;
+        modal.dataset.a11yOverlay = 'modal';
         modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-4 animate-fade-in";
         modal.innerHTML = `
             <div class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"></div>
@@ -11784,7 +11870,7 @@ function showInput(title, message, options = {}) {
                 <!-- Header -->
                 <div class="px-5 py-4 border-b border-emerald-100/50 flex justify-between items-center bg-emerald-50/50">
                     <h3 class="text-sm font-bold t-text-main">${title}</h3>
-                    <button id="modal-close-x" class="t-text-muted hover:text-emerald-500 transition-colors">
+                    <button id="modal-close-x" data-overlay-close aria-label="关闭" class="t-text-muted hover:text-emerald-500 transition-colors">
                         <i class="fas fa-times text-lg"></i>
                     </button>
                 </div>
@@ -11858,6 +11944,8 @@ function showSelect(title, message, options = {}) {
 
     return new Promise((resolve) => {
         const modal = document.createElement('div');
+        modal.id = `runtime-confirm-modal-${Date.now()}`;
+        modal.dataset.a11yOverlay = 'modal';
         modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-4 animate-fade-in";
         modal.innerHTML = `
             <div class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"></div>
@@ -11865,7 +11953,7 @@ function showSelect(title, message, options = {}) {
                 <!-- Header -->
                 <div class="px-5 py-4 border-b border-emerald-100/50 flex justify-between items-center bg-emerald-50/50">
                     <h3 class="text-sm font-bold t-text-main">${title}</h3>
-                    <button id="modal-close-x" class="t-text-muted hover:text-emerald-500 transition-colors">
+                    <button id="modal-close-x" data-overlay-close aria-label="关闭" class="t-text-muted hover:text-emerald-500 transition-colors">
                         <i class="fas fa-times text-lg"></i>
                     </button>
                 </div>
@@ -11919,6 +12007,8 @@ function showSelect(title, message, options = {}) {
 function showOptions(title, message, options = []) {
     return new Promise((resolve) => {
         const modal = document.createElement('div');
+        modal.id = `runtime-options-modal-${Date.now()}`;
+        modal.dataset.a11yOverlay = 'modal';
         modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-4 animate-fade-in";
 
         const optionsHtml = options.map(opt => `
@@ -11933,7 +12023,7 @@ function showOptions(title, message, options = []) {
             <div class="t-bg-panel rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all animate-slide-up relative z-10 border t-border-main">
                 <div class="px-5 py-4 border-b border-emerald-100/50 flex justify-between items-center bg-emerald-50/50">
                     <h3 class="text-sm font-bold t-text-main">${title}</h3>
-                    <button id="opt-close-x" class="t-text-muted hover:text-emerald-500 transition-colors">
+                    <button id="opt-close-x" data-overlay-close aria-label="关闭" class="t-text-muted hover:text-emerald-500 transition-colors">
                         <i class="fas fa-times text-lg"></i>
                     </button>
                 </div>
@@ -12000,6 +12090,9 @@ function showToast(type, message, duration = 3000) {
     const toast = document.createElement('div');
     // 添加 toast-item 类用于后续高度计算
     toast.className = `toast-item fixed right-4 ${conf.bg} text-white px-4 py-3 rounded-lg shadow-lg z-[1000] animate-slide-in flex items-center gap-3 w-80 md:w-96 max-w-[90vw] cursor-pointer transition-all duration-300`;
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    toast.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+    toast.setAttribute('aria-atomic', 'true');
 
     // 使用通用跑马灯逻辑，自动检测文字是否超出容器宽度
     const contentHtml = createMarqueeHtml(message, 'flex-1 font-medium');
@@ -12009,8 +12102,12 @@ function showToast(type, message, duration = 3000) {
         ${contentHtml}
     `;
 
-    // [Strategy] Newest at bottom: 96px. Push old ones UP.
-    const bottomBase = 96;
+    // Keep notifications above the real player height and the device safe area.
+    const footer = document.getElementById('player-footer');
+    const footerOffset = footer && !footer.classList.contains('translate-y-[110%]')
+        ? Math.ceil(footer.getBoundingClientRect().height)
+        : 0;
+    const bottomBase = footerOffset + 12;
     const gap = 12;
 
     toast.style.visibility = 'hidden';
@@ -12024,13 +12121,13 @@ function showToast(type, message, duration = 3000) {
 
     document.querySelectorAll('.toast-item').forEach(el => {
         if (el === toast) return;
-        const oldB = parseFloat(el.style.bottom || bottomBase);
+        const oldB = parseFloat(el.dataset.offset || String(bottomBase));
         const newB = oldB + shiftAmt;
-        el.style.bottom = `${newB}px`;
+        el.style.bottom = `calc(${newB}px + env(safe-area-inset-bottom, 0px))`;
         el.dataset.offset = newB;
     });
 
-    toast.style.bottom = `${bottomBase}px`;
+    toast.style.bottom = `calc(${bottomBase}px + env(safe-area-inset-bottom, 0px))`;
     toast.dataset.offset = bottomBase;
     toast.style.visibility = 'visible';
 
@@ -12044,10 +12141,10 @@ function showToast(type, message, duration = 3000) {
                 const h = toast.offsetHeight + gap;
                 toast.remove();
                 document.querySelectorAll('.toast-item').forEach(el => {
-                    const elB = parseFloat(el.style.bottom || 0);
+                    const elB = parseFloat(el.dataset.offset || '0');
                     if (elB > parseFloat(toast.dataset.offset)) {
                         const newB = elB - h;
-                        el.style.bottom = `${newB}px`;
+                        el.style.bottom = `calc(${newB}px + env(safe-area-inset-bottom, 0px))`;
                         el.dataset.offset = newB;
                     }
                 });
@@ -12633,6 +12730,29 @@ function startToggleLyricsBtnTimer() {
 }
 
 // 切换底部播放栏显示/隐藏 (移动端)
+function togglePlayerMoreMenu(event?: Event) {
+    event?.stopPropagation();
+    const menu = document.getElementById('player-more-menu');
+    const button = document.getElementById('player-more-btn');
+    if (!menu || !button) return;
+
+    const isOpening = menu.classList.contains('hidden');
+    menu.classList.toggle('hidden', !isOpening);
+    button.setAttribute('aria-expanded', String(isOpening));
+}
+
+window.togglePlayerMoreMenu = togglePlayerMoreMenu;
+
+document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || target.closest('#player-more-menu, #player-more-btn')) return;
+    const menu = document.getElementById('player-more-menu');
+    const button = document.getElementById('player-more-btn');
+    if (!menu || menu.classList.contains('hidden')) return;
+    menu.classList.add('hidden');
+    button?.setAttribute('aria-expanded', 'false');
+});
+
 function togglePlayerPanel() {
     const footer = document.getElementById('player-footer');
     const expandBtn = document.getElementById('btn-expand-panel');
@@ -12653,6 +12773,8 @@ function togglePlayerPanel() {
         footer.classList.remove('translate-y-[110%]');
         footer.style.opacity = '1';
         footer.style.pointerEvents = 'auto';
+        document.getElementById('btn-collapse-panel')?.setAttribute('aria-expanded', 'true');
+        expandBtn.setAttribute('aria-expanded', 'false');
 
         // 隐藏展开按钮
         expandBtn.classList.remove('translate-y-0', 'scale-100', 'opacity-100');
@@ -12688,6 +12810,8 @@ function togglePlayerPanel() {
         footer.classList.add('translate-y-[110%]');
         footer.style.opacity = '0';
         footer.style.pointerEvents = 'none';
+        document.getElementById('btn-collapse-panel')?.setAttribute('aria-expanded', 'false');
+        expandBtn.setAttribute('aria-expanded', 'true');
 
         // 停止动画并清除可视化画布，防止在偏移后仍有残留渲染
         if (window.musicVisualizer && window.musicVisualizer.clear) {

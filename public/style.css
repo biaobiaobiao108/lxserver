@@ -32,6 +32,31 @@ body {
     overflow-x: hidden;
 }
 
+.skip-link {
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 3000;
+    padding: 0.65rem 0.9rem;
+    border-radius: 0.65rem;
+    background: var(--accent-primary);
+    color: #fff;
+    font-weight: 700;
+    text-decoration: none;
+    transform: translateY(-160%);
+    transition: transform 160ms ease;
+}
+
+.skip-link:focus,
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--accent-primary) 72%, white);
+    outline-offset: 2px;
+}
+
+.skip-link:focus {
+    transform: translateY(0);
+}
+
 .hidden {
     display: none !important;
 }
@@ -1329,8 +1354,8 @@ select.form-input option:checked {
 }
 
 .modal-header .modal-close {
-    width: 32px;
-    height: 32px;
+    width: 44px;
+    height: 44px;
     border-radius: 8px;
     border: none;
     background: rgba(255, 255, 255, 0.05);
@@ -1341,6 +1366,15 @@ select.form-input option:checked {
     align-items: center;
     justify-content: center;
     transition: all 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skip-link,
+    .modal-content,
+    .modal-header .modal-close {
+        transition: none !important;
+        animation: none !important;
+    }
 }
 
 .modal-header .modal-close:hover {

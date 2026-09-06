@@ -328,9 +328,11 @@ window.SongListManager = (function () {
         }
 
         container.innerHTML = currentState.list.map(item => `
-            <div class="group cursor-pointer" onclick="window.SongListManager.openDetail('${item.id}', '${currentState.source}')">
+            <div role="button" tabindex="0" aria-label="打开歌单 ${item.name || ''}" class="group cursor-pointer"
+                 onclick="window.SongListManager.openDetail('${item.id}', '${currentState.source}')"
+                 onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.SongListManager.openDetail('${item.id}', '${currentState.source}'); }">
                 <div class="relative aspect-square overflow-hidden rounded-2xl shadow-md transition-all group-hover:shadow-xl group-hover:-translate-y-1">
-                    <img data-src="${item.img || '/music/assets/logo.svg'}" src="/music/assets/logo.svg" 
+                    <img data-src="${item.img || '/music/assets/logo.svg'}" src="/music/assets/logo.svg" alt="${item.name || '歌单'}封面" width="320" height="320" loading="lazy" decoding="async"
                          class="lazy-image w-full h-full object-cover dynamic-logo is-placeholder" 
                          onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');">
                     <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
@@ -466,8 +468,10 @@ window.SongListManager = (function () {
             if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
 
             return `
-            <div id="sl-row-${index}" class="${rowClass}" data-song-id="${String(song.id)}" 
-                 onclick="window.SongListManager.handleRowClick(${index})">
+            <div id="sl-row-${index}" role="button" tabindex="0" aria-label="${window.batchMode ? '选择' : '播放'} ${song.name || '未命名歌曲'}"
+                 class="${rowClass}" data-song-id="${String(song.id)}"
+                 onclick="window.SongListManager.handleRowClick(${index})"
+                 onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.SongListManager.handleRowClick(${index}); }">
                 <div class="col-span-1 sm:col-span-1 text-center text-gray-400 font-mono text-xs flex items-center justify-center">
                     ${window.batchMode ? `
                         <input type="checkbox" 
@@ -480,7 +484,7 @@ window.SongListManager = (function () {
                 <!-- Title & Info -->
                 <div class="col-span-9 sm:col-span-9 md:col-span-5 lg:col-span-4 flex items-center gap-3 min-w-0">
                     <div class="w-10 h-10 md:w-12 md:h-12 flex-shrink-0 relative rounded-lg overflow-hidden shadow-sm border t-border-main group-hover:shadow-md transition-all group-hover:scale-105 duration-300">
-                        <img data-src="${window.getImgUrl ? window.getImgUrl(song) : (song.img || song.albumImg || '/music/assets/logo.svg')}" src="/music/assets/logo.svg"
+                        <img data-src="${window.getImgUrl ? window.getImgUrl(song) : (song.img || song.albumImg || '/music/assets/logo.svg')}" src="/music/assets/logo.svg" alt="${song.name || '歌曲'}专辑封面" width="48" height="48" loading="lazy" decoding="async"
                              class="lazy-image w-full h-full object-cover dynamic-logo is-placeholder" 
                              onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');">
                         <div class="absolute inset-0 bg-black/20 hidden group-hover:flex items-center justify-center transition-all">
@@ -514,12 +518,12 @@ window.SongListManager = (function () {
                 </div>
                 <!-- Actions -->
                 <div class="col-span-2 md:col-span-1 flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors" 
+                    <button aria-label="播放 ${song.name || '歌曲'}" class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors"
                             title="播放" 
                             onclick="event.stopPropagation(); window.SongListManager.playSong(${index})">
                         <i class="fas fa-play w-3.5 h-3.5"></i>
                     </button>
-                    <button class="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors" 
+                    <button aria-label="下载 ${song.name || '歌曲'}" class="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors"
                             title="下载" 
                             onclick="event.stopPropagation(); downloadSong(${JSON.stringify(song).replace(/"/g, '&quot;')})">
                         <i class="fas fa-download w-3.5 h-3.5"></i>
@@ -728,10 +732,11 @@ window.SongListManager = (function () {
                 }
 
                 container.innerHTML = data.list.map(item => `
-                    <div class="flex items-center gap-4 p-3 rounded-xl hover:t-bg-main transition-all cursor-pointer group" 
-                         onclick="window.SongListManager.selectUserPlaylist('${item.id}')">
+                    <div role="button" tabindex="0" aria-label="打开歌单 ${item.name || ''}" class="flex items-center gap-4 p-3 rounded-xl hover:t-bg-main transition-all cursor-pointer group"
+                         onclick="window.SongListManager.selectUserPlaylist('${item.id}')"
+                         onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.SongListManager.selectUserPlaylist('${item.id}'); }">
                         <div class="relative flex-shrink-0">
-                            <img src="${item.img || '/music/assets/logo.svg'}" class="w-12 h-12 rounded-lg object-cover shadow-sm group-hover:scale-105 transition-transform">
+                            <img src="${item.img || '/music/assets/logo.svg'}" alt="${item.name || '歌单'}封面" width="48" height="48" loading="lazy" decoding="async" class="w-12 h-12 rounded-lg object-cover shadow-sm group-hover:scale-105 transition-transform">
                         </div>
                         <div class="flex-1 min-w-0">
                             <h4 class="text-sm font-bold t-text-main truncate">${item.name}</h4>

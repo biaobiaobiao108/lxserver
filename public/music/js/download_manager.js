@@ -1560,7 +1560,7 @@ class DownloadManager {
 
                 <!-- Cover -->
                 <div class="relative w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-sm border t-border-main">
-                    <img src="${this.escapeHtml(coverSrc)}" class="w-full h-full object-cover">
+                    <img src="${this.escapeHtml(coverSrc)}" alt="${this.escapeHtml(task.name || '下载歌曲')}封面" width="48" height="48" loading="lazy" decoding="async" class="w-full h-full object-cover">
                     ${(task.status === 'downloading') ? `
                     <div class="absolute inset-0 bg-black/40 flex items-center justify-center backdrop-blur-[2px]">
                         <i class="fas ${(isServerTask ? 'fa-cloud-upload-alt' : 'fa-spinner fa-spin')} text-white text-xs"></i>

@@ -38,6 +38,7 @@
 </head>
 
 <body class="t-bg-main h-screen flex flex-col overflow-hidden t-text-main font-sans">
+    <a href="#player-main-content" class="skip-link">跳转到主要内容</a>
 
     <!-- Main Container -->
     <div class="flex flex-1 overflow-hidden relative">
@@ -48,10 +49,10 @@
             class="fixed inset-0 bg-black/50 z-[55] hidden md:hidden glass"></div>
 
         <!-- Sidebar -->
-        <aside id="main-sidebar"
+        <aside id="main-sidebar" aria-label="主导航"
             class="w-64 t-bg-panel shadow-lg flex flex-col z-[60] fixed inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 md:z-30 h-full pb-28 transition-all duration-300">
             <div class="h-16 flex items-center justify-center border-b t-border-main relative">
-                <svg viewBox="0 0 447.942 447.943" class="w-8 h-8 mr-2 rounded-lg shadow-sm"
+                    <svg aria-hidden="true" viewBox="0 0 447.942 447.943" class="w-8 h-8 mr-2 rounded-lg shadow-sm"
                     xmlns="http://www.w3.org/2000/svg">
                     <path style="fill: var(--c-400)"
                         d="M203.806.482c-19.668-3.346-35.76 11.139-35.76 31.086v206.166c-11.642-4.271-24.165-6.725-37.281-6.725-59.905 0-108.469 48.566-108.469 108.473 0 59.903 48.564 108.461 108.469 108.461 34.141 0 64.54-15.82 84.406-40.482l-49.658-49.664c-15.116-15.112-11.708-28.901-9.542-34.14 2.166-5.233 9.514-17.4 30.883-17.4h18.082v-56.885c0-21.132 14.617-38.862 34.266-43.745.032-44.373.032-81.808.032-81.808 140.147 0 131.724 83.974 115.325 132.196-6.42 18.884-2.601 22.05 10.893 7.354C536.473 77.106 298.38 16.566 203.806.482z" />
@@ -60,7 +61,7 @@
                 </svg>
                 <h1 class="text-xl font-bold text-emerald-600 tracking-wider">LX MUSIC</h1>
                 <!-- Close button for mobile -->
-                <button onclick="toggleSidebar()" class="md:hidden absolute right-4 text-gray-500 hover:text-red-500">
+                <button onclick="toggleSidebar()" aria-label="关闭导航菜单" class="md:hidden absolute right-4 text-gray-500 hover:text-red-500">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -89,15 +90,16 @@
                         </a>
                     </li>
                     <li>
-                        <div onclick="handleFavoritesClick()" id="tab-favorites"
-                            class="flex items-center justify-between px-6 py-3 t-text-muted hover:t-bg-main transition-colors duration-200 cursor-pointer select-none">
+                        <button type="button" onclick="handleFavoritesClick()" id="tab-favorites"
+                            aria-expanded="false" aria-controls="favorites-children"
+                            class="w-full flex items-center justify-between px-6 py-3 t-text-muted hover:t-bg-main transition-colors duration-200 cursor-pointer select-none text-left">
                             <div class="flex items-center">
                                 <i class="fas fa-folder w-6 text-center"></i>
                                 <span class="ml-3 font-medium">我的收藏</span>
                             </div>
                             <i id="favorites-arrow"
                                 class="fas fa-chevron-down text-xs transition-transform duration-200"></i>
-                        </div>
+                        </button>
                         <ul id="favorites-children" class="t-bg-main/50 overflow-hidden transition-all duration-300">
                             <li class="px-6 py-2">
                                 <div id="my-lists-container" class="space-y-1 pb-2">
@@ -140,9 +142,9 @@
             <!-- Mini Player Info (Optional, cover art here) -->
             <div class="hidden md:block [@media(max-height:535px)]:!hidden sidebar-song-info-wrapper mt-auto">
                 <div id="sidebar-song-info" class="p-4 border-t t-border-main hidden">
-                    <img id="sidebar-cover" src="/music/assets/logo.svg" loading="lazy" fetchpriority="low"
-                        onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');" alt="Cover"
-                        class="w-full rounded-lg shadow-md mb-3 dynamic-logo is-placeholder">
+                    <img id="sidebar-cover" src="/music/assets/logo.svg" loading="eager" decoding="async"
+                        onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');" alt="当前歌曲封面"
+                        width="192" height="192" class="w-full aspect-square rounded-lg shadow-md mb-3 dynamic-logo is-placeholder">
                     <div class="text-center flex flex-col items-center">
                         <div id="sidebar-song-name" class="font-bold text-sm truncate max-w-full block">Song Name
                         </div>
@@ -161,12 +163,12 @@
         </aside>
 
         <!-- Content Area -->
-        <main class="flex-1 flex flex-col t-bg-main relative overflow-hidden">
+        <main id="player-main-content" tabindex="-1" class="flex-1 flex flex-col t-bg-main relative overflow-hidden">
 
             <!-- Header / Search Bar Helper (Top strip) -->
             <header class="h-16 t-bg-panel glass shadow-sm flex items-center justify-between px-3 md:px-6 z-10">
                 <div class="flex items-center gap-1.5 md:gap-3 min-w-0">
-                    <button onclick="toggleSidebar()"
+                    <button onclick="toggleSidebar()" aria-label="打开导航菜单"
                         class="md:hidden t-text-muted p-2 hover:t-bg-track rounded-lg shrink-0">
                         <i class="fas fa-bars text-xl"></i>
                     </button>
@@ -263,12 +265,13 @@
                         <!-- Source Selector & Manage Button -->
                         <div class="flex items-center gap-2 justify-end">
                             <!-- Search Button -->
-                            <button onclick="doSearch()"
+                            <button onclick="doSearch()" aria-label="搜索"
                                 class="p-2 t-text-main hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
                                 title="搜索 (Enter)">
                                 <i class="fas fa-search"></i>
                             </button>
 
+                            <label for="search-type" class="sr-only">搜索类型</label>
                             <select id="search-type" onchange="handleSearchTypeChange()"
                                 class="flex-1 md:flex-none px-4 py-3 t-bg-panel border t-border-main rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm t-text-main font-medium text-sm md:text-base">
                                 <option value="song">歌曲</option>
@@ -276,6 +279,7 @@
                                 <option value="album">专辑</option>
                             </select>
 
+                            <label for="search-source" class="sr-only">搜索来源</label>
                             <select id="search-source" onchange="doSearch()"
                                 class="flex-1 md:flex-none px-4 py-3 t-bg-panel border t-border-main rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm t-text-main font-medium text-sm md:text-base">
                                 <option value="wy">网易云</option>
@@ -285,7 +289,7 @@
                                 <option value="mg">咪咕</option>
                             </select>
 
-                            <button onclick="openCustomSourceModal()"
+                            <button onclick="openCustomSourceModal()" aria-label="管理自定义源"
                                 class="p-3 t-bg-panel border t-border-main rounded-xl hover:t-bg-main t-text-muted hover:text-emerald-600 transition-colors shadow-sm"
                                 title="管理自定义源">
                                 <i class="fas fa-plug"></i>
@@ -591,7 +595,7 @@
                             <!-- Info Section -->
                             <div id="sl-detail-header"
                                 class="p-4 md:p-6 flex gap-4 md:gap-6 border-b t-border-main t-bg-panel/30 overflow-hidden transition-all duration-300 ease-in-out max-h-[1000px]">
-                                <img id="sl-detail-cover" loading="lazy" fetchpriority="low"
+                                <img id="sl-detail-cover" loading="lazy" decoding="async" alt="歌单封面"
                                     class="w-24 h-24 md:w-48 md:h-48 rounded-2xl shadow-xl flex-shrink-0 object-cover dynamic-logo is-placeholder"
                                     src="/music/assets/logo.svg">
                                 <div class="flex flex-col justify-center gap-1 md:gap-3 flex-1 min-w-0">
@@ -726,7 +730,7 @@
                                     <div class="col-span-2 md:col-span-1 text-right">操作</div>
                                 </div>
 
-                                <div id="sl-detail-list"
+                                <div id="sl-detail-list" role="list"
                                     class="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar pb-20">
                                     <!-- Song items -->
                                 </div>
@@ -2128,7 +2132,7 @@
                                             class="py-2 px-3 t-bg-panel border t-border-main t-text-muted hover:text-blue-600 hover:border-blue-200 rounded-lg text-xs font-bold transition-colors">
                                             <i class="fas fa-sync-alt mr-1"></i> 刷新缓存统计
                                         </button>
-                                        <button onclick="toggleCacheDrawer()"
+                                        <button aria-controls="cache-drawer" aria-expanded="false" onclick="toggleCacheDrawer()"
                                             class="py-2 px-3 t-bg-panel border t-border-main t-text-muted hover:text-blue-600 hover:border-blue-200 rounded-lg text-xs font-bold transition-colors">
                                             <i class="fas fa-server mr-1"></i> 管理服务器缓存
                                         </button>
@@ -3207,11 +3211,11 @@
     </div>
 
     <!-- Player Detail View (Overlay) -->
-    <div id="view-player-detail" ondblclick="toggleDetailCover()"
+    <div id="view-player-detail" data-a11y-overlay="modal" aria-label="正在播放" ondblclick="toggleDetailCover()"
         class="fixed inset-0 z-30 t-bg-panel hidden flex flex-col transform translate-y-[100%] opacity-0 pb-24">
         <!-- Blurry Background -->
         <div class="absolute inset-0 overflow-hidden">
-            <img id="detail-bg-cover" src=""
+            <img id="detail-bg-cover" src="" alt="" aria-hidden="true" width="1600" height="1600"
                 class="w-full h-full object-cover filter blur-[60px] opacity-40 scale-125 transition-opacity duration-1000">
             <div id="player-detail-bg-overlay" class="absolute inset-0 t-bg-panel/30 backdrop-blur-3xl"></div>
             <!-- Detail Visualizer Canvas (Raised to avoid being blocked by footer) -->
@@ -3222,7 +3226,7 @@
         <!-- Navbar / Controls -->
         <div onclick="event.stopPropagation()"
             class="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-6 h-20 pointer-events-none transition-all duration-300 [@media(max-height:500px)]:opacity-0 [@media(max-height:500px)]:pointer-events-none">
-            <button onclick="toggleLyrics()" id="btn-toggle-lyrics"
+            <button onclick="toggleLyrics()" id="btn-toggle-lyrics" data-overlay-close aria-label="关闭正在播放详情"
                 class="pointer-events-auto t-text-muted hover:text-emerald-600 t-bg-panel/40 hover:t-bg-panel/80 rounded-full w-10 h-10 flex items-center justify-center transition-all shadow-sm backdrop-blur-md">
                 <i class="fas fa-chevron-down text-lg"></i>
             </button>
@@ -3239,7 +3243,7 @@
             <!-- Left: Image -->
             <div id="mobile-player-cover-container" ondblclick="toggleDetailCover()"
                 class="w-auto h-auto max-w-[48vw] max-h-[32vh] [@media(max-height:500px)]:max-h-[40vh] aspect-square md:w-[60vh] md:h-[60vh] md:max-w-[35rem] md:max-h-[35rem] md:min-w-[20rem] md:min-h-[20rem] flex-shrink-0 shadow-2xl rounded-3xl overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] border-4 border-white/20 origin-top t-bg-track cursor-pointer">
-                <img id="detail-cover" src="/music/assets/logo.svg" loading="lazy" fetchpriority="low"
+                <img id="detail-cover" src="/music/assets/logo.svg" loading="lazy" decoding="async" alt="正在播放歌曲封面"
                     onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');"
                     class="w-full h-full object-cover dynamic-logo is-placeholder">
             </div>
@@ -3296,21 +3300,22 @@
     </div>
 
     <!-- Player Bar -->
-    <footer id="player-footer"
-        class="fixed bottom-0 left-0 w-full h-auto md:min-h-[5rem] py-1 md:py-2 t-bg-panel/90 backdrop-blur-lg border-t t-border-main shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] flex flex-col md:flex-row items-center px-3 md:px-5 z-[60] transition-all duration-300">
+    <footer id="player-footer" aria-label="当前播放控制"
+        class="fixed bottom-0 left-0 w-full h-auto md:min-h-[4.75rem] py-1 md:py-1 t-bg-panel/90 backdrop-blur-lg border-t t-border-main shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] flex flex-col md:flex-row items-center px-3 md:px-5 z-[60] transition-all duration-300">
 
         <!-- Song Info -->
         <div id="player-song-info"
             class="w-full md:w-1/4 flex items-start md:items-center gap-1.5 md:gap-3 mb-0 md:mb-0 pr-6 md:pr-0 transition-all duration-300">
             <div
                 class="w-10 h-10 md:w-12 md:h-12 bg-gray-200 rounded-md overflow-hidden shadow-sm relative group flex-shrink-0">
-                <img id="player-cover" src="/music/assets/logo.svg" loading="lazy" fetchpriority="low"
+                <img id="player-cover" src="/music/assets/logo.svg" loading="eager" fetchpriority="high" decoding="async" width="48" height="48"
                     onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');"
                     class="w-full h-full object-cover dynamic-logo is-placeholder" alt="专辑封面">
-                <div class="absolute inset-0 bg-black/30 hidden group-hover:flex items-center justify-center cursor-pointer"
+                <button type="button" aria-label="打开歌词详情"
+                    class="absolute inset-0 bg-black/30 hidden group-hover:flex items-center justify-center cursor-pointer"
                     onclick="toggleLyrics()">
                     <i class="fas fa-expand text-white"></i>
-                </div>
+                </button>
             </div>
             <div class="overflow-hidden flex-1 flex flex-col justify-center">
                 <div class="flex items-center gap-2 min-w-0">
@@ -3328,39 +3333,44 @@
             </div>
             <!-- Action Buttons (Mobile Compact) -->
             <div
-                class="flex flex-wrap items-center justify-end max-[440px]:justify-center gap-1 ml-auto flex-shrink-0 max-[440px]:max-w-[80px] max-w-[180px] md:max-w-none">
+                class="flex flex-nowrap items-center justify-end gap-1 ml-auto flex-shrink-0">
                 <!-- Like button -->
-                <button id="player-like-btn" class="min-w-6 min-h-6 text-gray-300 hover:text-red-500 transition-colors">
+                <button id="player-like-btn" aria-label="收藏当前歌曲" aria-pressed="false"
+                    class="min-w-10 min-h-10 flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors">
                     <i class="fas fa-heart text-base md:text-lg"></i>
                 </button>
-                <!-- Download Button (Mobile) -->
-                <button
-                    class="md:hidden min-w-6 min-h-6 text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
-                    onclick="handleDownloadClick(event)" title="下载/缓存">
-                    <i class="fas fa-download text-[10px]"></i>
-                </button>
-                <!-- Sound Effects Button (Mobile) -->
-                <button
-                    class="md:hidden min-w-6 min-h-6 text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
-                    onclick="window.soundEffects && window.soundEffects.toggle()" title="均衡器 & 音效">
-                    <i class="fas fa-sliders-h text-[10px]"></i>
-                </button>
-                <!-- Comment button (Mobile) -->
-                <button
-                    class="md:hidden min-w-6 min-h-6 text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
-                    onclick="toggleCommentModal()">评</button>
-                <!-- Share Card button (Mobile) -->
-                <button
-                    class="md:hidden min-w-6 min-h-6 text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
-                    onclick="window.lyricCard && window.lyricCard.open()" title="分享歌词卡片">
-                    <i class="fas fa-image text-[10px]"></i>
-                </button>
-                <!-- Queue Button (Mobile) -->
-                <button
-                    class="md:hidden min-w-6 min-h-6 text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
-                    onclick="toggleQueueDrawer()" title="播放队列">
-                    <i class="fas fa-list text-[10px]"></i>
-                </button>
+                <!-- Secondary actions stay in one compact, keyboard-accessible menu on mobile. -->
+                <div class="relative md:hidden">
+                    <button id="player-more-btn" type="button" aria-label="更多播放操作" aria-expanded="false"
+                        aria-controls="player-more-menu"
+                        class="min-w-10 min-h-10 flex items-center justify-center text-gray-500 hover:text-emerald-600 border border-gray-300 rounded-lg transition-colors"
+                        onclick="togglePlayerMoreMenu(event)">
+                        <i class="fas fa-ellipsis-h"></i>
+                    </button>
+                    <div id="player-more-menu" role="menu" aria-label="更多播放操作"
+                        class="hidden absolute right-0 bottom-full mb-2 w-48 p-2 t-bg-panel border t-border-main rounded-xl shadow-xl z-[80]">
+                        <button type="button" role="menuitem" aria-label="下载或缓存" onclick="handleDownloadClick(event)"
+                            class="player-menu-action" title="下载/缓存">
+                            <i class="fas fa-download"></i><span>下载或缓存</span>
+                        </button>
+                        <button type="button" role="menuitem" aria-label="均衡器与音效"
+                            onclick="window.soundEffects && window.soundEffects.toggle()" class="player-menu-action">
+                            <i class="fas fa-sliders-h"></i><span>均衡器与音效</span>
+                        </button>
+                        <button type="button" role="menuitem" aria-label="查看评论" onclick="toggleCommentModal()"
+                            class="player-menu-action">
+                            <i class="fas fa-comment"></i><span>查看评论</span>
+                        </button>
+                        <button type="button" role="menuitem" aria-label="分享歌词卡片"
+                            onclick="window.lyricCard && window.lyricCard.open()" class="player-menu-action">
+                            <i class="fas fa-image"></i><span>分享歌词卡片</span>
+                        </button>
+                        <button type="button" role="menuitem" aria-label="播放队列" aria-controls="queue-drawer" onclick="toggleQueueDrawer()"
+                            class="player-menu-action">
+                            <i class="fas fa-list"></i><span>播放队列</span>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -3375,12 +3385,13 @@
                 <div class="flex-1 h-5 md:h-6 flex items-center relative group">
                     <!-- Footer Info/Visualizer Canvas (Moved to match progress bar width) -->
                     <div id="visualizer-container"
-                        class="absolute bottom-6 left-0 w-full h-12 pointer-events-none overflow-hidden flex justify-center items-end transition-all duration-300">
+                        class="absolute bottom-6 left-0 w-full h-8 pointer-events-none overflow-hidden flex justify-center items-end transition-all duration-300">
                         <canvas id="footer-visualizer" class="h-full opacity-40"></canvas>
                     </div>
 
                     <div class="w-full bg-gray-200 rounded-full h-1.5 cursor-pointer relative z-10"
-                        id="progress-container" onclick="seek(event)">
+                        id="progress-container" role="slider" tabindex="0" aria-label="播放进度" aria-valuemin="0"
+                        aria-valuemax="0" aria-valuenow="0" onclick="seek(event)" onkeydown="handleProgressKeydown(event)">
                         <div id="progress-bar" class="bg-emerald-500 h-full rounded-full w-0 relative">
                             <div
                                 class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 t-bg-panel border t-border-main rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity">
@@ -3394,7 +3405,7 @@
             <div class="flex items-center gap-4 md:gap-4 w-full justify-center md:mb-1 relative">
                 <!-- Play Mode Button with Dropdown -->
                 <div class="relative group">
-                    <button id="play-mode-btn" onclick="togglePlayModeMenu(event)"
+                <button id="play-mode-btn" aria-label="播放模式" aria-expanded="false" onclick="togglePlayModeMenu(event)"
                         class="t-text-muted hover:text-emerald-500 transition-colors p-2" title="播放模式">
                         <i class="fas fa-redo"></i>
                     </button>
@@ -3429,19 +3440,19 @@
                     </div>
                 </div>
 
-                <button class="t-text-muted hover:text-emerald-600 text-lg transition-colors p-2"
-                    onclick="playPrev()"><i class="fas fa-step-backward"></i></button>
-                <button id="btn-play"
+                <button aria-label="上一首" class="t-text-muted hover:text-emerald-600 text-lg transition-colors p-2"
+                    onclick="playPrev()"><i class="fas fa-step-backward" aria-hidden="true"></i></button>
+                <button id="btn-play" aria-label="播放或暂停"
                     class="w-10 h-10 md:w-10 md:h-10 rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-200 hover:bg-emerald-600 hover:scale-105 transition-all flex items-center justify-center"
                     onclick="togglePlay()">
                     <i class="fas fa-play ml-1 text-lg"></i>
                 </button>
-                <button class="t-text-muted hover:text-emerald-600 text-lg transition-colors p-2"
-                    onclick="playNext()"><i class="fas fa-step-forward"></i></button>
+                <button aria-label="下一首" class="t-text-muted hover:text-emerald-600 text-lg transition-colors p-2"
+                    onclick="playNext()"><i class="fas fa-step-forward" aria-hidden="true"></i></button>
 
                 <!-- Playback Rate Button -->
                 <div class="relative group">
-                    <button id="playback-rate-btn" onclick="togglePlaybackRateMenu(event)"
+                    <button id="playback-rate-btn" aria-label="播放速度" aria-expanded="false" onclick="togglePlaybackRateMenu(event)"
                         class="t-text-muted hover:text-emerald-500 transition-colors p-2 text-[10px] md:text-sm font-black w-10 md:w-12"
                         title="播放速度">
                         1.0x
@@ -3479,40 +3490,41 @@
         <div
             class="w-full md:w-1/4 hidden md:flex flex-wrap items-center justify-end gap-x-2 gap-y-2 lg:gap-4 order-2 md:order-none mr-8">
             <!-- Download Button (Desktop) -->
-            <button id="btn-player-download"
+            <button id="btn-player-download" aria-label="下载或缓存"
                 class="text-gray-500 hover:text-emerald-600 text-sm font-bold border border-gray-300 rounded px-2 py-0.5 transition-colors"
                 onclick="handleDownloadClick(event)" title="下载/缓存">
                 <i class="fas fa-download text-sm"></i>
             </button>
             <!-- Sound Effects Button -->
-            <button id="btn-sound-effects"
+            <button id="btn-sound-effects" aria-label="均衡器与音效"
                 class="text-gray-500 hover:text-emerald-600 text-sm font-bold border border-gray-300 rounded px-2 py-0.5 transition-colors"
                 onclick="window.soundEffects && window.soundEffects.toggle()" title="均衡器 & 音效">
                 <i class="fas fa-sliders-h text-sm"></i>
             </button>
             <!-- Share Card button (Desktop) -->
-            <button
+            <button aria-label="分享歌词卡片"
                 class="text-gray-500 hover:text-emerald-600 text-sm font-bold border border-gray-300 rounded px-2 py-0.5 transition-colors"
                 onclick="window.lyricCard && window.lyricCard.open()" title="分享歌词卡片">
                 <i class="fas fa-image text-sm"></i>
             </button>
-            <button
+            <button aria-label="查看评论"
                 class="text-gray-500 hover:text-emerald-600 text-sm font-bold border border-gray-300 rounded px-2 py-0.5"
                 onclick="toggleCommentModal()">评</button>
-            <button
+            <button aria-label="打开歌词详情"
                 class="text-gray-500 hover:text-emerald-600 text-sm font-bold border border-gray-300 rounded px-2 py-0.5"
                 onclick="toggleLyrics()">词</button>
-            <button
+                    <button aria-label="播放队列" aria-controls="queue-drawer" aria-expanded="false"
                 class="text-gray-500 hover:text-emerald-600 text-sm font-bold border border-gray-300 rounded px-2 py-0.5"
                 onclick="toggleQueueDrawer()" title="当前播放队列">
                 <i class="fas fa-list"></i>
             </button>
             <div class="flex items-center gap-2 group">
-                <button onclick="toggleMute()" class="t-text-muted hover:text-emerald-500 transition-colors">
+                <button aria-label="静音或取消静音" onclick="toggleMute()" class="t-text-muted hover:text-emerald-500 transition-colors">
                     <i id="volume-icon" class="fas fa-volume-up w-4"></i>
                 </button>
                 <div class="w-20 bg-gray-200 rounded-full h-1.5 cursor-pointer relative" id="volume-container"
-                    onclick="setVolume(event)">
+                    role="slider" tabindex="0" aria-label="音量" aria-valuemin="0" aria-valuemax="100" aria-valuenow="75"
+                    onclick="setVolume(event)" onkeydown="handleVolumeKeydown(event)">
                     <div id="volume-bar" class="bg-emerald-500 h-full rounded-full w-3/4 relative">
                         <div
                             class="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 t-bg-panel border t-border-main rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity">
@@ -3523,7 +3535,7 @@
         </div>
 
         <!-- Collapse Panel Button -->
-        <button id="btn-collapse-panel"
+        <button id="btn-collapse-panel" aria-label="收起播放栏" aria-expanded="true"
             class="absolute right-2 md:right-6 top-2 md:top-1/2 md:-translate-y-1/2 t-text-muted p-2 hover:t-text-muted transition-all z-10"
             onclick="togglePlayerPanel()">
             <i class="fas fa-chevron-down text-lg"></i>
@@ -3531,7 +3543,7 @@
     </footer>
 
     <!-- Expand Panel Button (Hidden by default, shown when panel is collapsed) -->
-    <button id="btn-expand-panel" onclick="togglePlayerPanel()"
+    <button id="btn-expand-panel" aria-label="展开播放栏" aria-expanded="false" onclick="togglePlayerPanel()"
         class="fixed bottom-24 right-6 z-40 w-12 h-12 flex items-center justify-center t-bg-panel/80 backdrop-blur-md rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] text-gray-500 hover:text-emerald-500 transform transition-all duration-300 translate-y-20 opacity-0 border border-white/50">
         <i class="fas fa-chevron-up text-lg"></i>
     </button>
@@ -3633,7 +3645,7 @@
             id="user-playlist-modal-content">
             <div class="p-6 border-b t-border-main flex justify-between items-center t-bg-main">
                 <div class="flex items-center gap-4">
-                    <img id="user-playlist-avatar" src=""
+                    <img id="user-playlist-avatar" src="" alt="用户歌单头像" loading="lazy" decoding="async"
                         class="hidden w-12 h-12 rounded-full border-2 border-emerald-400/30 object-cover">
                     <div class="flex-1">
                         <h3 class="text-xl font-bold t-text-main" id="user-playlist-title">选择歌单</h3>
@@ -4216,17 +4228,17 @@
     </div>
 
     <!-- Queue Drawer (播放队列) -->
-    <div id="queue-drawer"
+    <div id="queue-drawer" role="dialog" aria-modal="false" aria-labelledby="queue-drawer-title" aria-hidden="true"
         class="player-safe-drawer fixed inset-y-0 right-0 w-full md:w-96 t-bg-panel/95 backdrop-blur-xl z-[60] shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transform translate-x-full transition-transform duration-300 ease-out border-l t-border-main flex flex-col">
         <!-- Header -->
         <div class="p-6 border-b t-border-main flex items-center justify-between">
             <div class="flex flex-col">
                 <div class="flex items-center gap-2">
-                    <h3 class="text-xl font-black t-text-main flex items-center gap-2">
+                    <h3 id="queue-drawer-title" class="text-xl font-black t-text-main flex items-center gap-2">
                         <i class="fas fa-list text-emerald-500"></i>
                         播放队列
                     </h3>
-                    <button onclick="scrollToCurrentSongInQueue()" title="定位当前播放"
+                    <button aria-label="定位当前播放" onclick="scrollToCurrentSongInQueue()" title="定位当前播放"
                         class="w-6 h-6 flex items-center justify-center text-emerald-500 hover:bg-emerald-500/10 rounded-full transition-all">
                         <i class="fas fa-crosshairs text-xs"></i>
                     </button>
@@ -4235,11 +4247,11 @@
                 </p>
             </div>
             <div class="flex items-center gap-2">
-                <button onclick="clearQueue()" title="清空队列"
+                <button aria-label="清空队列" onclick="clearQueue()" title="清空队列"
                     class="p-2 t-text-muted hover:text-red-500 transition-colors">
                     <i class="fas fa-trash-alt"></i>
                 </button>
-                <button onclick="toggleQueueDrawer()" title="关闭"
+                <button aria-label="关闭播放队列" data-overlay-close onclick="toggleQueueDrawer()" title="关闭"
                     class="p-2 t-text-muted hover:text-emerald-500 transition-colors">
                     <i class="fas fa-times text-lg"></i>
                 </button>
@@ -4253,18 +4265,18 @@
         </div>
 
         <!-- List Area -->
-        <div id="queue-list" class="flex-1 overflow-y-auto no-scrollbar custom-scrollbar p-2 space-y-1">
+        <div id="queue-list" role="list" class="flex-1 overflow-y-auto no-scrollbar custom-scrollbar p-2 space-y-1">
             <!-- Items injected by JS -->
         </div>
     </div>
 
     <!-- Cache Management Drawer (服务器缓存管理) -->
-    <div id="cache-drawer"
+    <div id="cache-drawer" role="dialog" aria-modal="false" aria-labelledby="cache-drawer-title" aria-hidden="true"
         class="player-safe-drawer fixed inset-y-0 right-0 w-full md:w-96 t-bg-panel/95 backdrop-blur-xl z-[60] shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transform translate-x-full transition-transform duration-300 ease-out border-l t-border-main flex flex-col">
         <!-- Header -->
         <div class="p-6 border-b t-border-main flex items-center justify-between">
             <div class="flex flex-col">
-                <h3 class="text-xl font-black t-text-main flex items-center gap-2">
+                <h3 id="cache-drawer-title" class="text-xl font-black t-text-main flex items-center gap-2">
                     <i class="fas fa-server text-blue-500"></i>
                     缓存管理
                 </h3>
@@ -4273,19 +4285,19 @@
                 </p>
             </div>
             <div class="flex items-center gap-2">
-                <button onclick="downloadAllCacheLyrics()" title="一键下载缺失歌词"
+                <button aria-label="一键下载缺失歌词" onclick="downloadAllCacheLyrics()" title="一键下载缺失歌词"
                     class="p-2 t-text-muted hover:text-pink-500 transition-colors">
                     <i class="fas fa-file-audio"></i>
                 </button>
-                <button onclick="toggleDownloadDrawer()" title="下载管理"
+                <button aria-label="打开下载管理" onclick="toggleDownloadDrawer()" title="下载管理"
                     class="p-2 t-text-muted hover:text-emerald-500 transition-colors">
                     <i class="fas fa-cloud-download-alt"></i>
                 </button>
-                <button onclick="refreshCacheList()" title="刷新列表"
+                <button aria-label="刷新缓存列表" onclick="refreshCacheList()" title="刷新列表"
                     class="p-2 t-text-muted hover:text-blue-500 transition-colors">
                     <i class="fas fa-sync-alt"></i>
                 </button>
-                <button onclick="toggleCacheDrawer()" title="关闭"
+                <button aria-label="关闭缓存管理" data-overlay-close onclick="toggleCacheDrawer()" title="关闭"
                     class="p-2 t-text-muted hover:text-blue-500 transition-colors">
                     <i class="fas fa-times text-lg"></i>
                 </button>
@@ -4342,12 +4354,12 @@
     </div>
 
     <!-- Download Management Drawer (下载管理) -->
-    <div id="download-drawer"
+    <div id="download-drawer" role="dialog" aria-modal="false" aria-labelledby="download-drawer-title" aria-hidden="true"
         class="player-safe-drawer fixed inset-y-0 right-0 w-full md:w-[450px] t-bg-panel/95 backdrop-blur-xl z-[60] shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transform translate-x-full transition-transform duration-300 ease-out border-l t-border-main flex flex-col">
         <!-- Header -->
         <div class="p-6 border-b t-border-main flex items-center justify-between">
             <div class="flex flex-col">
-                <h3 class="text-xl font-black t-text-main flex items-center gap-2">
+                <h3 id="download-drawer-title" class="text-xl font-black t-text-main flex items-center gap-2">
                     <i class="fas fa-cloud-download-alt text-emerald-500"></i>
                     下载管理
                 </h3>
@@ -4356,19 +4368,19 @@
                 </p>
             </div>
             <div class="flex items-center gap-2">
-                <button onclick="window.SystemDownloadManager && window.SystemDownloadManager.retryAllLyrics()"
+                <button aria-label="一键补全缺失歌词" onclick="window.SystemDownloadManager && window.SystemDownloadManager.retryAllLyrics()"
                     title="一键补全缺失歌词" class="p-2 t-text-muted hover:text-pink-500 transition-colors">
                     <i class="fas fa-file-audio"></i>
                 </button>
-                <button onclick="window.SystemDownloadManager && window.SystemDownloadManager.pauseAll()" title="全部暂停"
+                <button aria-label="全部暂停" onclick="window.SystemDownloadManager && window.SystemDownloadManager.pauseAll()" title="全部暂停"
                     class="p-2 t-text-muted hover:text-yellow-500 transition-colors">
                     <i class="fas fa-pause"></i>
                 </button>
-                <button onclick="window.SystemDownloadManager && window.SystemDownloadManager.resumeAll()" title="全部继续"
+                <button aria-label="全部继续" onclick="window.SystemDownloadManager && window.SystemDownloadManager.resumeAll()" title="全部继续"
                     class="p-2 t-text-muted hover:text-emerald-500 transition-colors">
                     <i class="fas fa-play"></i>
                 </button>
-                <button onclick="toggleDownloadDrawer()" title="关闭"
+                <button aria-label="关闭下载管理" data-overlay-close onclick="toggleDownloadDrawer()" title="关闭"
                     class="p-2 t-text-muted hover:text-red-500 transition-colors">
                     <i class="fas fa-times text-lg"></i>
                 </button>
@@ -4404,7 +4416,7 @@
         </div>
 
         <!-- List Content -->
-        <div id="download-list-container" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+        <div id="download-list-container" role="list" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
             <!-- Items injected here by JS -->
             <div class="flex flex-col items-center justify-center h-full text-center p-10 space-y-4">
                 <i class="fas fa-inbox text-4xl t-text-muted opacity-20"></i>

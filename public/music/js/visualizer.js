@@ -70,6 +70,15 @@ const musicVisualizer = (function () {
     function applySettings() {
         if (!isInitialized) return;
 
+        const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        if (document.hidden || reducedMotion) {
+            waveFooter?.clearAnimations();
+            waveDetail?.clearAnimations();
+            if (footerCanvas) footerCanvas.style.opacity = '0';
+            if (detailCanvas) detailCanvas.style.opacity = '0';
+            return;
+        }
+
         // 每次应用设置前同步一次尺寸，确保全宽对齐
         syncSize();
 
@@ -155,7 +164,7 @@ const musicVisualizer = (function () {
                 playerFooter.style.transition = 'height 0.3s ease';
                 if (window.innerWidth >= 768) {
                     // 保持播放栏紧凑，并让实际高度继续由 ResizeObserver 同步给抽屉布局
-                    playerFooter.style.height = isShortWindow ? '82px' : '88px';
+                    playerFooter.style.height = isShortWindow ? '76px' : '80px';
                     playerFooter.style.justifyContent = 'center'; // [Fix] 增加高度后内容保持垂直居中
                 } else {
                     // 手机端保持自适应高度，避免 flex-center 导致内容溢出屏幕外
@@ -296,6 +305,14 @@ const musicVisualizer = (function () {
 
     window.addEventListener('resize', () => {
         syncSize();
+        if (isInitialized) applySettings();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (isInitialized) applySettings();
+    });
+
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').addEventListener?.('change', () => {
         if (isInitialized) applySettings();
     });
 

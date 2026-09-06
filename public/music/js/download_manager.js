@@ -551,10 +551,12 @@ class DownloadManager {
     // [New] 检测任务歌词是否存在
     async checkTaskLyric(task) {
         if (!task || !task.isServer || task.status !== 'finished') return;
+        if (task.lyricCheckInFlight) return;
 
         // [优化] 如果已经有结果，或者重试超过 3 次，则不再请求
         if ((task.hasLyric === true || task.hasLyric === false) || (task.lyricRetryCount || 0) >= 3) return;
 
+        task.lyricCheckInFlight = true;
         try {
             // 记录重试次数
             task.lyricRetryCount = (task.lyricRetryCount || 0) + 1;
@@ -579,7 +581,20 @@ class DownloadManager {
             if (resp.ok) {
                 task.hasLyric = true;
             } else if (resp.status === 404) {
-                task.hasLyric = false;
+                // The audio task can finish just before the cache index is
+                // synchronized. Give the server a few short retries before
+                // presenting a real missing-lyric state to the user.
+                if ((task.lyricRetryCount || 0) < 3) {
+                    task.hasLyric = undefined;
+                    const retryDelay = Math.min(8000, 1200 * (task.lyricRetryCount || 1));
+                    setTimeout(() => {
+                        if (this.tasks.includes(task) && task.status === 'finished' && task.hasLyric === undefined) {
+                            this.checkTaskLyric(task);
+                        }
+                    }, retryDelay);
+                } else {
+                    task.hasLyric = false;
+                }
             } else {
                 // 发生非 404 错误（如 401/500/网络错误）时才重置状态以便下次重试（受次数限制）
                 task.hasLyric = undefined;
@@ -589,6 +604,8 @@ class DownloadManager {
         } catch (e) {
             console.warn('[DownloadManager] Failed to check lyric cache:', task.id, e);
             task.hasLyric = undefined;
+        } finally {
+            task.lyricCheckInFlight = false;
         }
     }
 

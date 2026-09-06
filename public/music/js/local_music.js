@@ -1037,8 +1037,10 @@ window.LocalMusicManager = {
                 const isUnindexed = item.source === 'unknown' || (item.songmid && item.songmid.includes(' - '));
                 const isNoTag = (n) => !n || n === '未知歌曲' || n === '未知歌手' || n.toLowerCase() === 'unknown';
                 const missingID3 = isNoTag(item.name) || isNoTag(item.singer) || isUnindexed;
-                const missingCover = !item.hasCover;
-                const missingLyric = !item.hasLyric && !item.lyricFilename;
+                const itemHasCover = item.hasCover || ['embedded', 'cached', 'remote'].includes(item.coverType);
+                const itemHasLyric = item.hasLyric || !!item.lyricFilename;
+                const missingCover = !itemHasCover;
+                const missingLyric = !itemHasLyric;
                 const missingEmbedLyric = !item.hasEmbedLyric;
 
                 const statusMap = {
@@ -1256,8 +1258,10 @@ window.LocalMusicManager = {
             const isUnindexed = item.source === 'unknown' || (item.songmid && item.songmid.includes(' - '));
             const isNoTag = (n) => !n || n === '未知歌曲' || n === '未知歌手' || n.toLowerCase() === 'unknown';
             const missingID3 = isNoTag(item.name) || isNoTag(item.singer) || isUnindexed;
-            const missingCover = !item.hasCover;
-            const missingLyric = !item.hasLyric && !item.lyricFilename;
+            const itemHasCover = item.hasCover || ['embedded', 'cached', 'remote'].includes(item.coverType);
+            const itemHasLyric = item.hasLyric || !!item.lyricFilename;
+            const missingCover = !itemHasCover;
+            const missingLyric = !itemHasLyric;
             const metadataUnsupported = item.metadataWritable === false;
             const coverStatusTitle = item.coverType === 'embedded'
                 ? '封面已嵌入音频标签'
@@ -1268,7 +1272,7 @@ window.LocalMusicManager = {
                         : '已有封面';
             const lyricStatusBadge = item.hasEmbedLyric
                 ? '<span class="text-[10px] text-emerald-500 border border-gray-400/40 dark:border-gray-600/50 rounded px-1 scale-90 hidden sm:inline-block" title="已嵌入歌词标签">词</span>'
-                : metadataUnsupported && item.hasLyric
+                : metadataUnsupported && itemHasLyric
                     ? `<span class="text-[10px] text-amber-500 border border-amber-400/40 rounded px-1 scale-90 hidden sm:inline-block" title="${this.escapeAttr(item.embedLyricError || item.metadataError || '音频容器不支持嵌入歌词，已保留外置歌词')}">外置词</span>`
                     : '';
 
@@ -1279,7 +1283,7 @@ window.LocalMusicManager = {
             let coverHtml = `<div class="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-gray-100/50 flex-shrink-0 flex items-center justify-center border t-border-main mr-2.5 md:mr-4 ml-0.5 md:ml-3">
                                 <i class="fas fa-music t-text-muted text-xs"></i>
                              </div>`;
-            if (item.hasCover) {
+            if (itemHasCover) {
                 const coverVersion = [
                     item.coverCheckedVersion || 0,
                     Math.round(item.coverCheckedMtime || item.mtime || 0),
@@ -1330,7 +1334,7 @@ window.LocalMusicManager = {
                             ${item.sampleRate ? `<span class="text-[10px] opacity-60 font-mono hidden sm:inline-block">${(item.sampleRate / 1000).toFixed(1)}kHz</span>` : ''}
                             ${item.bitDepth && item.bitDepth > 16 ? `<span class="text-[10px] opacity-60 font-mono hidden sm:inline-block">${item.bitDepth}bit</span>` : ''}
                             ${lyricStatusBadge}
-                            ${item.hasCover ? `<span class="text-[10px] text-emerald-500 border border-gray-400/40 dark:border-gray-600/50 rounded px-1 scale-90 hidden sm:inline-block" title="${this.escapeAttr(coverStatusTitle)}">封</span>` : ''}
+                            ${itemHasCover ? `<span class="text-[10px] text-emerald-500 border border-gray-400/40 dark:border-gray-600/50 rounded px-1 scale-90 hidden sm:inline-block" title="${this.escapeAttr(coverStatusTitle)}">封</span>` : ''}
                         </div>
                         <!-- Mobile extra info (second row) -->
                         <div class="sm:hidden text-[9px] mt-1.5 flex items-center gap-1.5 flex-wrap">
@@ -1356,8 +1360,8 @@ window.LocalMusicManager = {
                             ` : ''}
                             
                             <div class="ml-auto flex items-center gap-1">
-                                ${item.hasEmbedLyric ? '<span class="w-4 h-4 flex items-center justify-center bg-emerald-500 text-white rounded text-[8px] font-bold shadow-sm shadow-emerald-500/20" title="已嵌入歌词标签">词</span>' : (metadataUnsupported && item.hasLyric ? `<span class="h-4 px-1 flex items-center justify-center bg-amber-500 text-white rounded text-[8px] font-bold" title="${this.escapeAttr(item.embedLyricError || item.metadataError || '音频容器不支持嵌入歌词，已保留外置歌词')}">外置词</span>` : '')}
-                                ${item.hasCover ? `<span class="w-4 h-4 flex items-center justify-center bg-blue-500 text-white rounded text-[8px] font-bold shadow-sm shadow-blue-500/20" title="${this.escapeAttr(coverStatusTitle)}">封</span>` : ''}
+                                ${item.hasEmbedLyric ? '<span class="w-4 h-4 flex items-center justify-center bg-emerald-500 text-white rounded text-[8px] font-bold shadow-sm shadow-emerald-500/20" title="已嵌入歌词标签">词</span>' : (metadataUnsupported && itemHasLyric ? `<span class="h-4 px-1 flex items-center justify-center bg-amber-500 text-white rounded text-[8px] font-bold" title="${this.escapeAttr(item.embedLyricError || item.metadataError || '音频容器不支持嵌入歌词，已保留外置歌词')}">外置词</span>` : '')}
+                                ${itemHasCover ? `<span class="w-4 h-4 flex items-center justify-center bg-blue-500 text-white rounded text-[8px] font-bold shadow-sm shadow-blue-500/20" title="${this.escapeAttr(coverStatusTitle)}">封</span>` : ''}
                             </div>
                         </div>
                     </div>
@@ -1788,7 +1792,7 @@ window.LocalMusicManager = {
 
     async batchFetchLyrics() {
         // Find items that don't have lyrics
-        const targets = this.getSelectedEntries().filter(item => !item.hasLyric);
+        const targets = this.getSelectedEntries().filter(item => !item.hasLyric && !item.lyricFilename);
 
         if (targets.length === 0) {
             if (typeof showInfo === 'function') showInfo('选中的歌曲中没有需要补充歌词的项');

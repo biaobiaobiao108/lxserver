@@ -273,7 +273,7 @@ class CacheIndexManager {
 
 export const indexManager = new CacheIndexManager()
 
-const COVER_CHECK_VERSION = 4
+const COVER_CHECK_VERSION = 5
 
 const getCoverCacheHash = (filename: string, stats?: Stats) => {
     const version = stats ? `${stats.size}:${stats.mtimeMs}` : ''
@@ -349,6 +349,113 @@ export const resolveCacheRelativePath = (dir: string, filename: string) => {
     } catch {
         return null
     }
+}
+
+type CompanionLyricFile = {
+    filename: string
+    path: string
+}
+
+/**
+ * Resolve the lyric file next to an audio file. Older downloads can contain
+ * an upper-case extension, so the lookup is intentionally case-insensitive.
+ */
+const findCompanionLyricFile = (root: string, audioFilename: string): CompanionLyricFile | null => {
+    const normalizedAudioFilename = String(audioFilename || '').replace(/\\/g, '/')
+    const extension = path.extname(normalizedAudioFilename)
+    if (!extension) return null
+
+    const baseFilename = normalizedAudioFilename.slice(0, -extension.length)
+    const expectedName = `${path.basename(baseFilename)}.lrc`.toLowerCase()
+    const parentRelativePath = path.dirname(baseFilename).replace(/\\/g, '/')
+    const parentPath = resolveCacheRelativePath(root, parentRelativePath === '.' ? '' : parentRelativePath)
+    if (!parentPath || !fs.existsSync(parentPath)) return null
+
+    try {
+        const entry = fs.readdirSync(parentPath, { withFileTypes: true }).find(candidate => (
+            candidate.isFile() && candidate.name.toLowerCase() === expectedName
+        ))
+        if (entry) {
+            const filename = path.join(parentRelativePath === '.' ? '' : parentRelativePath, entry.name).replace(/\\/g, '/')
+            const lyricPath = resolveCacheRelativePath(root, filename)
+            return lyricPath ? { filename, path: lyricPath } : null
+        }
+
+        const exactFilename = `${baseFilename}.lrc`
+        const exactPath = resolveCacheRelativePath(root, exactFilename)
+        return exactPath && fs.existsSync(exactPath) && fs.statSync(exactPath).isFile()
+            ? { filename: exactFilename, path: exactPath }
+            : null
+    } catch {
+        return null
+    }
+}
+
+export const resolveCompanionLyricFilename = (root: string, audioFilename: string) => (
+    findCompanionLyricFile(root, audioFilename)?.filename
+)
+
+const invalidateCacheListSync = (username?: string) => {
+    const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
+    cacheListSyncState.delete(`${currentCacheLocation}:${normalizedUsername}`)
+}
+
+const reconcileCacheItemFromDisk = (
+    username: string,
+    folder: 'cache' | 'music',
+    item: CacheItem,
+    filePath: string,
+    stats?: Stats,
+) => {
+    if (!fs.existsSync(filePath)) return false
+
+    let actualStats: Stats
+    try {
+        actualStats = stats || fs.statSync(filePath)
+        if (!actualStats.isFile()) return false
+    } catch {
+        return false
+    }
+
+    const root = getCacheDir(username, folder === 'music')
+    const lyricFile = findCompanionLyricFile(root, item.filename)
+    const hasLyric = !!lyricFile
+    const hasEmbeddedCover = readEmbeddedCoverState(filePath)
+    const hasExternalCover = !hasEmbeddedCover && hasCachedCover(item.filename, username, actualStats)
+    const coverType: CacheItem['coverType'] = hasEmbeddedCover
+        ? 'embedded'
+        : hasExternalCover
+            ? 'cached'
+            : hasUsableRemoteCover(item.img)
+                ? 'remote'
+                : 'none'
+    const hasCover = coverType !== 'none'
+    const nextLyricFilename = lyricFile?.filename
+
+    const changed = item.hasLyric !== hasLyric ||
+        item.lyricFilename !== nextLyricFilename ||
+        item.hasCover !== hasCover ||
+        item.coverType !== coverType ||
+        item.size !== actualStats.size ||
+        item.mtime !== actualStats.mtimeMs ||
+        item.coverCheckedVersion !== COVER_CHECK_VERSION ||
+        item.coverCheckedMtime !== actualStats.mtimeMs ||
+        item.coverCheckedSize !== actualStats.size
+
+    if (!changed) return false
+
+    item.hasLyric = hasLyric
+    item.lyricFilename = nextLyricFilename
+    item.hasCover = hasCover
+    item.coverType = coverType
+    item.size = actualStats.size
+    item.mtime = actualStats.mtimeMs
+    item.coverCheckedVersion = COVER_CHECK_VERSION
+    item.coverCheckedMtime = actualStats.mtimeMs
+    item.coverCheckedSize = actualStats.size
+    indexManager.update(username, item, folder)
+    invalidateCacheListSync(username)
+    return true
 }
 
 const hasValidPictureData = (picture: any) => {
@@ -730,6 +837,9 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
             let existingEntry = filenameToItemMap.get(file)
             let existing = existingEntry?.item
             let oldKey = existingEntry?.key
+            const originalItemId = existing?.id
+            const originalItemQuality = existing?.quality
+            let itemChanged = false
 
             let songId = existing?.id || ''
             let songName = existing?.name || ''
@@ -776,9 +886,11 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
             // Normalize ID
             const normalizedId = songId.includes('_') ? songId : `${source || 'unknown'}_${songId}`
 
-            // Always check for companion lyric file
-            const lrcFile = file.substring(0, file.length - ext.length) + '.lrc'
-            const hasLyricOnDisk = await fs.promises.access(path.join(dir, lrcFile)).then(() => true).catch(() => false)
+            // Always check for a companion lyric file. Use the actual filename
+            // so legacy `.LRC` files and nested download folders are repaired too.
+            const companionLyric = findCompanionLyricFile(dir, file)
+            const lrcFile = companionLyric?.filename
+            const hasLyricOnDisk = !!companionLyric
 
             let finalQuality = quality || 'unknown'
 
@@ -792,12 +904,16 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
             const qualityCorrectionNeeded = !!existing && needsQualityCorrection(existing.quality, currentAudioContainer)
 
             // Update or add to index if anything changed (size, mtime, lyric status, or cover status)
-            if (!existing || existing.size !== stats.size || existing.hasLyric !== hasLyricOnDisk || needsCoverCheck || !existing.interval || existing.quality === 'unknown' || !existing.bitrate || qualityCorrectionNeeded) {
+            if (!existing || existing.size !== stats.size || existing.hasLyric !== hasLyricOnDisk || existing.lyricFilename !== lrcFile || needsCoverCheck || !existing.interval || existing.quality === 'unknown' || !existing.bitrate || qualityCorrectionNeeded) {
+                itemChanged = true
                 if (existing) {
+                    const lyricStateChanged = existing.hasLyric !== hasLyricOnDisk || existing.lyricFilename !== lrcFile
+                    const fileStateChanged = existing.size !== stats.size || existing.mtime !== stats.mtimeMs
+                    if (lyricStateChanged || fileStateChanged) updated = true
                     existing.size = stats.size
                     existing.mtime = stats.mtimeMs
                     existing.hasLyric = hasLyricOnDisk
-                    existing.lyricFilename = hasLyricOnDisk ? lrcFile : undefined
+                    existing.lyricFilename = lrcFile
 
                     if (existing.subPath !== subPath) {
                         existing.subPath = subPath
@@ -815,7 +931,7 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
                                     ? 'remote'
                                     : 'none'
                         const actualHasCover = coverType !== 'none'
-                        if (existing.hasCover !== actualHasCover) updated = true
+                        if (existing.hasCover !== actualHasCover || existing.coverType !== coverType) updated = true
                         existing.hasCover = actualHasCover
                         existing.coverType = coverType
                         existing.coverCheckedVersion = COVER_CHECK_VERSION
@@ -856,7 +972,6 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
                         }
                         updated = true
                     }
-                    if (existing.size !== stats.size || existing.hasLyric !== hasLyricOnDisk) updated = true
                     finalQuality = existing.quality
                 } else {
                     // (New file logic remains same but uses hasLyricOnDisk)
@@ -919,7 +1034,7 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
                         subPath,
                         mtime: stats.mtimeMs,
                         size: stats.size,
-                        lyricFilename: hasLyricOnDisk ? lrcFile : undefined,
+                        lyricFilename: lrcFile,
                         ext: ext.replace('.', ''),
                         hasCover: hasCover,
                         coverType,
@@ -949,6 +1064,16 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
                 updated = true
             } else if (!oldKey) {
                 index.set(compositeKey, existing!)
+            }
+
+            // The SQLite-backed index does not persist the in-memory Map from
+            // `load()`. Write each changed item explicitly so disk discovery
+            // repairs lyric/cover flags in the actual database.
+            if (itemChanged && existing) {
+                if (oldKey && oldKey !== compositeKey && originalItemId && originalItemQuality) {
+                    indexManager.remove(normalizedUsername, originalItemId, folder, originalItemQuality)
+                }
+                indexManager.update(normalizedUsername, existing, folder)
             }
 
             // Yield control back to Node.js event loop
@@ -1606,25 +1731,62 @@ export const checkCache = (songInfo: any, username?: string, isLyricCheck: boole
     return { exists: false }
 }
 
-export const checkLyricCache = (songInfo: any, username?: string) => {
+type LyricCacheResult =
+    | { exists: true; path: string; content: any; filename: string }
+    | { exists: false }
+
+export const checkLyricCache = (songInfo: any, username?: string): LyricCacheResult => {
     const id = normalizeSongId(songInfo)
     const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
 
-    // Check index first
+    const readLyricForIndexedItem = (folder: 'cache' | 'music', item: CacheItem): Exclude<LyricCacheResult, { exists: false }> | null => {
+        const dir = getCacheDir(normalizedUsername, folder === 'music')
+        const audioPath = resolveCacheRelativePath(dir, item.filename)
+        if (!audioPath || !fs.existsSync(audioPath)) return null
+
+        const companion = findCompanionLyricFile(dir, item.filename)
+        const indexedLyricPath = item.lyricFilename
+            ? resolveCacheRelativePath(dir, item.lyricFilename)
+            : null
+        const lyricFile = indexedLyricPath && fs.existsSync(indexedLyricPath)
+            ? { filename: item.lyricFilename!, path: indexedLyricPath }
+            : companion
+        if (!lyricFile || !fs.existsSync(lyricFile.path)) return null
+
+        try {
+            const content = parseLyrics(fs.readFileSync(lyricFile.path, 'utf-8'))
+            if (item.hasLyric !== true || item.lyricFilename !== lyricFile.filename) {
+                item.hasLyric = true
+                item.lyricFilename = lyricFile.filename
+                indexManager.update(normalizedUsername, item, folder)
+                invalidateCacheListSync(normalizedUsername)
+            }
+            return {
+                exists: true,
+                path: lyricFile.path,
+                content,
+                filename: lyricFile.filename,
+            }
+        } catch {
+            return null
+        }
+    }
+
+    // Check every indexed quality first. A download can finish with a quality
+    // different from the requested one, and an old index may still say that
+    // the lyric is missing even though the companion file is already present.
     const folderTypes: Array<'cache' | 'music'> = ['cache', 'music']
     for (const folder of folderTypes) {
-        const cached = indexManager.get(normalizedUsername, id, folder, songInfo.quality)
-        if (cached && cached.hasLyric && cached.lyricFilename) {
-            const dir = getCacheDir(normalizedUsername, folder === 'music')
-            const lrcPath = resolveCacheRelativePath(dir, cached.lyricFilename)
-            if (lrcPath && fs.existsSync(lrcPath)) {
-                return {
-                    exists: true,
-                    path: lrcPath,
-                    content: parseLyrics(fs.readFileSync(lrcPath, 'utf-8')),
-                    filename: cached.lyricFilename
-                }
-            }
+        const candidates = indexManager.getAll(normalizedUsername, folder)
+            .filter(item => item.id === id || normalizeSongId(item) === id)
+            .sort((a, b) => {
+                const requestedQuality = String(songInfo.quality || '')
+                if (!requestedQuality) return 0
+                return (a.quality === requestedQuality ? -1 : 0) - (b.quality === requestedQuality ? -1 : 0)
+            })
+        for (const item of candidates) {
+            const lyric = readLyricForIndexedItem(folder, item)
+            if (lyric) return lyric
         }
     }
 
@@ -1635,23 +1797,13 @@ export const checkLyricCache = (songInfo: any, username?: string) => {
         const targetSinger = String(songInfo.singer).toLowerCase()
         for (const folder of folderTypes) {
             const allItems = indexManager.getAll(normalizedUsername, folder)
-            const matched = allItems.find(item =>
-                item.hasLyric &&
-                item.lyricFilename &&
+            const matchedItems = allItems.filter(item =>
                 item.name.toLowerCase() === targetName &&
                 item.singer.toLowerCase() === targetSinger
             )
-            if (matched && matched.lyricFilename) {
-                const dir = getCacheDir(normalizedUsername, folder === 'music')
-                const lrcPath = resolveCacheRelativePath(dir, matched.lyricFilename)
-                if (lrcPath && fs.existsSync(lrcPath)) {
-                    return {
-                        exists: true,
-                        path: lrcPath,
-                        content: parseLyrics(fs.readFileSync(lrcPath, 'utf-8')),
-                        filename: matched.lyricFilename
-                    }
-                }
+            for (const matched of matchedItems) {
+                const lyric = readLyricForIndexedItem(folder, matched)
+                if (lyric) return lyric
             }
         }
     }
@@ -1758,15 +1910,23 @@ export const saveLyricCache = (songInfo: any, lyricsObj: any, username?: string,
         fs.writeFileSync(finalPath, formattedLrc, { encoding: 'utf-8' })
         console.log(`[FileCache] Lyric cached saved to: ${finalPath}`)
 
-        // Update index — use normalizeSongId to ensure the ID has source prefix, matching index keys
-        const foldersToUpdate: Array<'cache' | 'music'> = isOnlyDownload ? ['music', 'cache'] : ['cache', 'music']
+        // Update the exact indexed audio item. Prefer the item that owns the
+        // resolved audio path because an older task may have used a different
+        // source-prefixed ID or an automatically downgraded quality.
+        const foldersToUpdate: Array<'cache' | 'music'> = [audioResult.folder, ...(isOnlyDownload ? ['music', 'cache'] : ['cache', 'music'])]
+            .filter((folder, index, folders): folder is 'cache' | 'music' => folders.indexOf(folder) === index)
         for (const folder of foldersToUpdate) {
-            const existing = indexManager.get(normalizedUsername, id, folder, quality)
+            const root = getCacheDir(normalizedUsername, folder === 'music')
+            const relativeAudioPath = path.relative(root, audioResult.path).replace(/\\/g, '/')
+            const existing = indexManager.getAll(normalizedUsername, folder).find(candidate => (
+                candidate.filename === relativeAudioPath ||
+                (candidate.id === id && candidate.quality === quality)
+            ))
             if (existing) {
-                const root = getCacheDir(normalizedUsername, folder === 'music')
                 existing.lyricFilename = path.relative(root, finalPath).replace(/\\/g, '/')
                 existing.hasLyric = true
-                indexManager.save(normalizedUsername, folder)
+                indexManager.update(normalizedUsername, existing, folder)
+                invalidateCacheListSync(normalizedUsername)
                 break
             }
         }
@@ -1900,6 +2060,9 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
         const targetFolder: 'cache' | 'music' = isOnlyDownload ? 'music' : 'cache'
         if (result.folder === targetFolder && result.path) {
             await ensureCachedLyrics(songInfo, quality || result.quality, username, isOnlyDownload, result.path, targetFolder, shouldCacheLyric, shouldEmbedLyric)
+            const existing = indexManager.getAll(normalizeCacheUsername(username), targetFolder)
+                .find(item => item.filename === result.filename)
+            if (existing) reconcileCacheItemFromDisk(normalizeCacheUsername(username), targetFolder, existing, result.path)
             console.log(`[FileCache] Song already exists in ${targetFolder}, skipping download: ${result.filename}`)
             // 通知前端轮询：目标目录文件已存在，视为立即完成
             cacheProgress.set(songKey, { progress: 100, status: 'exists' })
@@ -1982,6 +2145,9 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
             }, 'music')
 
             await ensureCachedLyrics(songInfo, actualQuality, username, true, finalPath, 'music', shouldCacheLyric, shouldEmbedLyric)
+            const finalizedItem = indexManager.getAll(normalizedUsername, 'music')
+                .find(item => item.filename === path.basename(finalPath))
+            if (finalizedItem) reconcileCacheItemFromDisk(normalizedUsername, 'music', finalizedItem, finalPath)
 
             console.log(`[FileCache] Copied cached song to music folder: ${path.basename(finalPath)}`)
             cacheProgress.set(songKey, { progress: 100, status: 'finished', total: stat.size, received: stat.size })
@@ -2216,6 +2382,9 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                     }
 
                     await ensureCachedLyrics(songInfo, actualQuality, username, isOnlyDownload, finalPath, folderType, shouldCacheLyric, shouldEmbedLyric)
+                    const finalizedItem = indexManager.getAll(normalizedUsername, folderType)
+                        .find(item => item.filename === finalBaseName + ext)
+                    if (finalizedItem) reconcileCacheItemFromDisk(normalizedUsername, folderType, finalizedItem, finalPath)
                     } catch (postProcessError: any) {
                         console.warn(`[FileCache] Optional post-processing failed for ${path.basename(finalPath)}: ${postProcessError?.message || postProcessError}`)
                     } finally {

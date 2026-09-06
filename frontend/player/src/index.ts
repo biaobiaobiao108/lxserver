@@ -66,7 +66,9 @@ document.addEventListener('DOMContentLoaded', () => {
 const DEFAULT_SETTINGS = {
     itemsPerPage: 20, // Default 20 items per page, can be 'all'
     defaultEntry: 'favorites', // 默认入口: 'search' | 'songlist' | 'leaderboard' | 'favorites' | 'localmusic'
-    preferredQuality: 'flac', // 默认音质偏好
+    preferredQuality: 'flac', // 默认播放音质偏好
+    defaultDownloadTarget: 'server', // 默认下载目标: server | browser
+    defaultDownloadQuality: 'flac', // 默认下载音质
     enablePublicSources: true, // 是否显示公开源
     enableProxyPlayback: false, // 播放音乐代理
     enableProxyDownload: false, // 下载音乐代理
@@ -136,6 +138,12 @@ function normalizeDownloadConcurrency(value) {
 function normalizeStoredSettings(nextSettings) {
     if (!nextSettings || typeof nextSettings !== 'object') return nextSettings;
     delete nextSettings.remasterRetryManifest;
+    if (!['server', 'browser'].includes(nextSettings.defaultDownloadTarget)) {
+        nextSettings.defaultDownloadTarget = DEFAULT_SETTINGS.defaultDownloadTarget;
+    }
+    if (!['128k', '192k', '320k', 'flac', 'flac24bit', 'hires', 'atmos', 'atmos_plus', 'master'].includes(nextSettings.defaultDownloadQuality)) {
+        nextSettings.defaultDownloadQuality = DEFAULT_SETTINGS.defaultDownloadQuality;
+    }
     if (nextSettings.downloadConcurrency !== undefined) {
         nextSettings.downloadConcurrency = normalizeDownloadConcurrency(nextSettings.downloadConcurrency);
     }
@@ -1163,11 +1171,9 @@ async function loadAboutContent() {
 
         // Render Markdown
         if (window.marked) {
-            // Replace {{version}} and {{buildHash}} placeholder
-            const version = (window.CONFIG && window.CONFIG.version) || 'v1.0.0';
+            // Replace the build hash placeholder; application version is intentionally not shown in the UI.
             const buildHash = (window.CONFIG && window.CONFIG.buildHash) || 'unknown';
-            let content = text.replace(/{{version}}/g, version);
-            content = content.replace(/{{buildHash}}/g, buildHash);
+            const content = text.replace(/{{buildHash}}/g, buildHash);
             aboutContainer.innerHTML = window.marked.parse(content);
         } else {
             aboutContainer.innerText = text; // Fallback
@@ -1179,15 +1185,7 @@ async function loadAboutContent() {
     }
 }
 
-// Set Version on Load
 document.addEventListener('DOMContentLoaded', () => {
-    if (window.CONFIG && window.CONFIG.version) {
-        const versionEl = document.getElementById('app-version');
-        if (versionEl) {
-            versionEl.innerText = window.CONFIG.version + ' Web';
-        }
-    }
-
     // 恢复搜索来源缓存
     const cachedSearchSource = localStorage.getItem('search-source');
     if (cachedSearchSource) {
@@ -1229,6 +1227,54 @@ document.addEventListener('DOMContentLoaded', () => {
 // ==================== 播放队列 (Queue) 逻辑 ====================
 let isQueueRendered = false;
 
+const PLAYER_DRAWER_IDS = ['queue-drawer', 'cache-drawer', 'download-drawer'];
+
+function syncPlayerDrawerOffset() {
+    const footer = document.getElementById('player-footer');
+    if (!footer) return;
+
+    const isHidden = footer.classList.contains('translate-y-[110%]');
+    const footerHeight = isHidden ? 0 : Math.ceil(footer.getBoundingClientRect().height);
+    document.documentElement.style.setProperty('--player-footer-offset', `${footerHeight}px`);
+}
+
+function setPlayerDrawerOpen(drawerId, open) {
+    PLAYER_DRAWER_IDS.forEach((id) => {
+        const drawer = document.getElementById(id);
+        if (!drawer) return;
+
+        if (open && id === drawerId) {
+            drawer.classList.remove('translate-x-full');
+        } else {
+            drawer.classList.add('translate-x-full');
+        }
+    });
+
+    syncPlayerDrawerOffset();
+}
+
+window.setPlayerDrawerOpen = setPlayerDrawerOpen;
+
+function initPlayerDrawerLayout() {
+    const footer = document.getElementById('player-footer');
+    if (!footer) return;
+
+    syncPlayerDrawerOffset();
+
+    if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(syncPlayerDrawerOffset).observe(footer);
+    }
+
+    new MutationObserver(syncPlayerDrawerOffset).observe(footer, {
+        attributes: true,
+        attributeFilter: ['class', 'style'],
+    });
+
+    window.addEventListener('resize', syncPlayerDrawerOffset, { passive: true });
+}
+
+document.addEventListener('DOMContentLoaded', initPlayerDrawerLayout);
+
 function toggleQueueDrawer() {
     const drawer = document.getElementById('queue-drawer');
     if (!drawer) return;
@@ -1236,7 +1282,7 @@ function toggleQueueDrawer() {
     const isHidden = drawer.classList.contains('translate-x-full');
     if (isHidden) {
         renderQueue();
-        drawer.classList.remove('translate-x-full');
+        setPlayerDrawerOpen('queue-drawer', true);
         // 自动定位当前歌曲
         setTimeout(() => {
             scrollToCurrentSongInQueue(false);
@@ -1250,7 +1296,7 @@ function toggleQueueDrawer() {
             }
         }
     } else {
-        drawer.classList.add('translate-x-full');
+        setPlayerDrawerOpen('queue-drawer', false);
     }
 }
 window.toggleQueueDrawer = toggleQueueDrawer;
@@ -1307,8 +1353,8 @@ function renderQueue() {
                  onclick="playSongFromQueue(${index})">
                 
                 <div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 relative">
-                    <img src="${getImgUrl(song)}" 
-                         onerror="this.src='/music/assets/logo.svg'" 
+                    <img src="${getImgUrl(song)}"
+                         onerror="this.src='/music/assets/logo.svg'"
                          loading="lazy" fetchpriority="low"
                          class="w-full h-full object-cover">
                     ${isActive ? '<div class="absolute inset-0 bg-emerald-500/20 flex items-center justify-center"><div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div></div>' : ''}
@@ -2983,7 +3029,7 @@ function renderResults(list) {
             <!-- Title (Image + Text) -->
             <div class="col-span-9 sm:col-span-7 md:col-span-6 ${titleLgSpan} flex items-center overflow-hidden pr-2">
                 <div class="relative w-10 h-10 md:w-12 md:h-12 mr-3 md:mr-4 flex-shrink-0 group cursor-pointer">
-                     <img data-src="${imgUrl}" src="/music/assets/logo.svg" 
+                     <img data-src="${imgUrl}" src="/music/assets/logo.svg"
                           loading="lazy" fetchpriority="low"
                           class="lazy-image w-full h-full rounded-lg object-cover shadow-sm group-hover:shadow-md transition-all group-hover:scale-105 duration-300 dynamic-logo is-placeholder" 
                           alt="${item.name}"
@@ -5966,6 +6012,16 @@ async function updateSetting(key, value) {
 const SETTINGS_UI_MAP = {
     // 逻辑 (Logic)
     defaultEntry: { id: 'setting-default-entry', type: 'value' },
+    defaultDownloadTarget: { id: 'setting-default-download-target', type: 'value' },
+    defaultDownloadQuality: {
+        id: 'setting-default-download-quality',
+        type: 'value',
+        action: (v, isSingle) => {
+            if (isSingle && window.showSuccess && window.QualityManager) {
+                window.showSuccess(`默认下载音质已设置为: ${window.QualityManager.getQualityDisplayName(v)}`);
+            }
+        }
+    },
     switchPlaylistOnSearchPlay: { id: 'setting-switch-playlist-search', type: 'checkbox' },
     switchPlaylistOnSongListPlay: { id: 'setting-switch-playlist-songlist', type: 'checkbox' },
     autoResume: { id: 'setting-auto-resume', type: 'checkbox' },
@@ -6437,11 +6493,11 @@ function toggleCacheDrawer() {
     if (drawer) {
         const isHidden = drawer.classList.contains('translate-x-full');
         if (isHidden) {
-            drawer.classList.remove('translate-x-full');
+            setPlayerDrawerOpen('cache-drawer', true);
             document.body.style.overflow = 'hidden';
             refreshCacheList();
         } else {
-            drawer.classList.add('translate-x-full');
+            setPlayerDrawerOpen('cache-drawer', false);
             document.body.style.overflow = '';
             exitCacheBatchMode(); // 关闭时重置状态
         }
@@ -6530,7 +6586,7 @@ function renderCacheList() {
 
         return `
             <div class="group flex items-center p-2.5 rounded-2xl hover:t-bg-panel-light transition-all duration-300 gap-3 border border-transparent 
-                ${isSelected ? 't-bg-panel-light border-blue-500/30 ring-1 ring-blue-500/10' : ''}" 
+                ${isSelected ? 't-bg-panel-light border-blue-500/30 ring-1 ring-blue-500/10' : ''}"
                 onclick="${cacheBatchMode ? `toggleCacheSelection(${idx})` : ''}">
                 
                 ${cacheBatchMode ? `
@@ -11922,53 +11978,10 @@ async function handleDownloadClick(event) {
         return;
     }
 
-    // 权限校验：公开受限模式下，如果管理员关闭了“缓存歌曲文件”功能，则下载/缓存歌曲需要验证管理员身份
-    const isPublic = !isUserLoggedIn() || !window.currentListData?.username || window.currentListData?.username === 'default' || window.currentListData?.username === '_open';
-    const enablePublicRestriction = window.lx_config?.['user.enablePublicRestriction'];
-    const isAdmin = !!localStorage.getItem('lx_admin_password');
-    const isServerCacheAllowed = window.settings?.enableServerCache === true;
-
-    if (isPublic && enablePublicRestriction && !isServerCacheAllowed && !isAdmin) {
-        showError('权限限制：管理员已关闭缓存歌曲功能，下载歌曲需要验证管理员身份。');
-        if (typeof window.handleAdminAuth === 'function') {
-            const authorized = await window.handleAdminAuth('管理员已关闭缓存歌曲文件功能，下载歌曲需要验证管理员身份');
-            if (!authorized) return;
-        } else {
-            return;
-        }
-    }
-
-    const song = currentPlayingSong;
-    
-    // [优化] 检测是否已缓存
-    const prefQuality = window.settings?.preferredQuality || 'flac';
-    const checkResult = await window.checkServerCache?.(song, prefQuality);
-    const cacheSuffix = (checkResult?.exists && !checkResult?.isCollision) ? ' (已缓存)' : '';
-
-    const isOnlyDownload = window.settings?.enableOnlyDownloadMode === true;
-    const actionLabel = isOnlyDownload ? '下载到服务器' : '缓存到服务器';
-    const options = ['浏览器下载', `${actionLabel}${cacheSuffix}`];
-    const modeText = isOnlyDownload ? '仅下载模式' : '缓存模式';
-    const selected = await showOptions('下载与缓存', `[${modeText}] 选择对 [${song.name}] 的操作：`, options);
-
-    if (selected === '浏览器下载') {
-        if (typeof downloadSong === 'function') {
-            downloadSong(song, null, false, '浏览器下载');
-        } else {
-            showError('下载功能未就绪');
-        }
-    } else if (selected && (selected.startsWith('缓存到服务器') || selected.startsWith('下载到服务器'))) {
-        const isCached = checkResult?.exists && !checkResult?.isCollision;
-        if (!isOnlyDownload && isCached) {
-            showInfo('该歌曲已在服务器缓存');
-            return;
-        }
-
-        if (typeof downloadSong === 'function') {
-            downloadSong(song, null, false, actionLabel);
-        } else {
-            showError('服务器缓存逻辑未就绪');
-        }
+    if (typeof downloadSong === 'function') {
+        await downloadSong(currentPlayingSong);
+    } else {
+        showError('下载功能未就绪');
     }
 }
 
@@ -12312,6 +12325,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (qualitySelect && settings.preferredQuality) {
         qualitySelect.value = settings.preferredQuality;
     }
+
+    const downloadTargetSelect = document.getElementById('setting-default-download-target');
+    if (downloadTargetSelect) downloadTargetSelect.value = settings.defaultDownloadTarget;
+
+    const downloadQualitySelect = document.getElementById('setting-default-download-quality');
+    if (downloadQualitySelect) downloadQualitySelect.value = settings.defaultDownloadQuality;
 
     // [优化] 延迟执行非关键初始化逻辑（设置恢复、状态重置、自动登录等）
     // 允许浏览器先完成主要的渲染和 load 事件，释放 PWA 安装按钮并显示刷新图标
@@ -12987,19 +13006,19 @@ function renderTokenList(tokens) {
                     </div>
                     
                     <div class="flex items-center gap-1">
-                        <button onclick="openTokenLogsModal('${masked}', '${t.name}')" 
+                        <button onclick="openTokenLogsModal('${masked}', '${t.name}')"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:t-bg-primary hover:text-white transition-all group/btn" title="查看日志">
                             <i class="fas fa-list-ul text-[13px] md:text-[14px]"></i>
                         </button>
-                        <button onclick="openEditTokenModal('${masked}', '${t.name}', ${t.expiresAt})" 
+                        <button onclick="openEditTokenModal('${masked}', '${t.name}', ${t.expiresAt})"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:t-bg-primary hover:text-white transition-all group/btn" title="编辑信息">
                             <i class="fas fa-pencil-alt text-[13px] md:text-[14px]"></i>
                         </button>
-                        <button onclick="copyTokenToClipboard('${t.token}')" 
+                        <button onclick="copyTokenToClipboard('${t.token}')"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:bg-blue-500 hover:text-white transition-all group/btn" title="复制 Token">
                             <i class="far fa-copy text-[13px] md:text-[14px]"></i>
                         </button>
-                        <button onclick="handleRemoveToken('${t.token}')" 
+                        <button onclick="handleRemoveToken('${t.token}')"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:bg-red-500 hover:text-white transition-all group/btn" title="删除 Token">
                             <i class="far fa-trash-alt text-[13px] md:text-[14px]"></i>
                         </button>

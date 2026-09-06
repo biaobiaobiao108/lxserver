@@ -331,8 +331,14 @@ async function requestServerLyricCache(song, quality = null, force = false) {
     }
 }
 
-// Placeholder for download function
-// Download single song
+function getDefaultDownloadTarget() {
+    return window.settings?.defaultDownloadTarget === 'browser' ? 'browser' : 'server';
+}
+
+function getDefaultDownloadQuality() {
+    return window.settings?.defaultDownloadQuality || window.settings?.preferredQuality || 'flac';
+}
+
 // Download single song
 async function downloadSong(songOrId, forceQuality = null, suppressAlerts = false, skipPromptTarget = null) {
     let song;
@@ -368,27 +374,12 @@ async function downloadSong(songOrId, forceQuality = null, suppressAlerts = fals
     const actionLabel = isOnlyDownload ? '下载到服务器' : '缓存到服务器';
 
     let selected = skipPromptTarget;
-    if (!selected) {
-        // [优化] 检测是否已缓存
-        const prefQuality = window.settings?.preferredQuality || 'flac';
-        const checkResult = await window.checkServerCache?.(song, prefQuality);
-        const cacheSuffix = (checkResult?.exists && !checkResult?.isCollision) ? ' (已缓存)' : '';
-
-        const options = ['浏览器下载', `${actionLabel}${cacheSuffix}`];
-        const modeText = isOnlyDownload ? '仅下载模式' : '缓存模式';
-        selected = await showOptions('下载与缓存', `[${modeText}] 选择对 [${song.name}] 的操作：`, options);
-    }
+    if (!selected) selected = getDefaultDownloadTarget() === 'browser' ? '浏览器下载' : actionLabel;
     if (!selected) return false;
 
     if (selected === '浏览器下载') {
         if (window.SystemDownloadManager) {
-            const availableQualities = getSelectableQualityOrder(song);
-            const qualityDisplayNames = await buildQualityOptionLabels(song, availableQualities);
-            const selectedQualityDisplay = await showOptions('选择下载音质', `请选择对 [${song.name}] 的下载音质：`, qualityDisplayNames);
-            if (!selectedQualityDisplay) return false;
-
-            const selectedQualityIndex = qualityDisplayNames.indexOf(selectedQualityDisplay);
-            const targetQuality = availableQualities[selectedQualityIndex];
+            const targetQuality = forceQuality || getDefaultDownloadQuality();
 
             window.SystemDownloadManager.addTasks([{
                 ...song,
@@ -405,27 +396,14 @@ async function downloadSong(songOrId, forceQuality = null, suppressAlerts = fals
             return false;
         }
     } else if (selected && (selected.startsWith('缓存到服务器') || selected.startsWith('下载到服务器'))) {
-        // [优化] 检测是否已缓存
-        const prefQuality = window.settings?.preferredQuality || 'flac';
-        const checkResult = await window.checkServerCache?.(song, prefQuality);
+        const targetQuality = forceQuality || getDefaultDownloadQuality();
+        const checkResult = await window.checkServerCache?.(song, targetQuality);
         const isCached = checkResult?.exists && !checkResult?.isCollision;
 
         if (!isOnlyDownload && isCached) {
             showInfo('该歌曲已在服务器缓存');
             return false;
         }
-        let targetQuality = forceQuality;
-        if (!targetQuality) {
-            // 收藏中的旧元数据可能缺少平台实际可解析的高音质。
-            const availableQualities = getSelectableQualityOrder(song);
-            const qualityDisplayNames = await buildQualityOptionLabels(song, availableQualities);
-            const selectedQualityDisplay = await showOptions('选择缓存音质', `请选择对 [${song.name}] 的缓存音质：`, qualityDisplayNames);
-            if (!selectedQualityDisplay) return false;
-
-            const selectedQualityIndex = qualityDisplayNames.indexOf(selectedQualityDisplay);
-            targetQuality = availableQualities[selectedQualityIndex];
-        }
-
         if (isPublic && enablePublicRestriction && !isServerCacheAllowed && !isAdmin) {
             showError('权限限制：缓存到服务器需要验证管理员。');
             if (typeof window.handleAdminAuth === 'function') {
@@ -483,24 +461,13 @@ async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
     }
 
     const clearSelection = batchOptions.clearSelection !== false;
-    const selectionLabel = batchOptions.selectionLabel || `选择了 ${songsToDownload.length} 首歌曲`;
-    const targetOptions = ['浏览器下载', '缓存到服务器'];
-    const modeText = window.settings?.['enableOnlyDownloadMode'] ? '仅下载模式' : '缓存模式';
-    const selected = await showOptions('批量下载与缓存', `[${modeText}] ${selectionLabel}，请选择操作：`, targetOptions);
+    const selectedTarget = batchOptions.target === 'browser' || batchOptions.target === 'server'
+        ? batchOptions.target
+        : getDefaultDownloadTarget();
+    const targetQuality = batchOptions.quality || getDefaultDownloadQuality();
 
-    if (!selected) return false;
-
-    if (selected === '浏览器下载') {
+    if (selectedTarget === 'browser') {
         if (window.SystemDownloadManager) {
-            // 使用全局音质优先级展示可选音质
-            const availableQualities = getSelectableQualityOrder();
-            const qualityDisplayNames = availableQualities.map(q => window.QualityManager ? window.QualityManager.getQualityDisplayName(q) : q);
-            const selectedQualityDisplay = await showOptions('选择下载音质', `请选择批量下载的音质：\n将优先请求所选音质，解析失败时按自动降级设置处理`, qualityDisplayNames);
-
-            if (!selectedQualityDisplay) return false;
-            const selectedQualityIndex = qualityDisplayNames.indexOf(selectedQualityDisplay);
-            const targetQuality = availableQualities[selectedQualityIndex];
-
             const tasks = songsToDownload.map(s => ({
                 ...s,
                 quality: targetQuality
@@ -527,16 +494,7 @@ async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
             showError('下载管理器未就绪');
             return false;
         }
-    } else if (selected === '缓存到服务器') {
-        // 使用全局音质优先级展示可选音质
-        const availableQualities = getSelectableQualityOrder();
-        const qualityDisplayNames = availableQualities.map(q => window.QualityManager ? window.QualityManager.getQualityDisplayName(q) : q);
-        const selectedQualityDisplay = await showOptions('选择全局缓存音质', `请选择批量请求服务器缓存的音质，下载歌曲的音质将取不超过该音质的最大音质`, qualityDisplayNames);
-
-        if (!selectedQualityDisplay) return false;
-        const selectedQualityIndex = qualityDisplayNames.indexOf(selectedQualityDisplay);
-        const targetQuality = availableQualities[selectedQualityIndex];
-
+    } else if (selectedTarget === 'server') {
         if (isPublic && enablePublicRestriction && !isServerCacheAllowed && !isAdmin) {
             showError('权限限制：缓存到服务器需要验证管理员。');
             if (typeof window.handleAdminAuth === 'function') {

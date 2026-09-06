@@ -225,13 +225,12 @@
                         <span class="hidden sm:inline text-xs font-medium">退出</span>
                     </button>
 
-                    <!-- Hide social/version info on mobile -->
+                    <!-- Social links -->
                     <div class="hidden lg:flex items-center gap-4">
                         <a href="https://github.com/XCQ0607/lxserver" target="_blank"
                             class="t-text-muted hover:t-text-muted transition-colors" title="GitHub">
                             <i class="fab fa-github text-xl"></i>
                         </a>
-                        <div class="text-sm t-text-muted" id="app-version">v1.0.0 Web</div>
                     </div>
                 </div>
             </header>
@@ -652,14 +651,10 @@
                                         <span>#</span>
                                         <div class="flex items-center gap-1">
                                             <button onclick="toggleBatchMode()"
-                                                class="text-[10px] text-emerald-600 hover:text-emerald-700"
-                                                title="批量操作">
-                                                <i class="fas fa-tasks"></i>
-                                            </button>
-                                            <button onclick="window.ListSearch.toggleBar()"
-                                                class="text-[10px] text-emerald-600 hover:text-emerald-700"
-                                                title="歌单内搜索">
-                                                <i class="fas fa-search"></i>
+                                                class="playlist-batch-toggle inline-flex min-w-11 min-h-11 items-center justify-center gap-1 rounded-lg bg-emerald-50 px-2.5 text-xs font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-200 transition-all hover:bg-emerald-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:scale-95"
+                                                title="多选操作" aria-label="多选操作">
+                                                <i class="fas fa-tasks text-sm"></i>
+                                                <span class="hidden sm:inline">多选</span>
                                             </button>
                                         </div>
                                     </div>
@@ -670,61 +665,6 @@
                                     <div class="col-span-2 md:col-span-1 text-right">操作</div>
                                 </div>
 
-                                <!-- Local Search Bar (Hidden by default) -->
-                                <div id="sl-local-search-bar"
-                                    class="hidden p-3 t-bg-main border-b t-border-main animate-fade-in">
-                                    <div class="flex items-center gap-2 sm:gap-3">
-                                        <!-- Search Input -->
-                                        <div class="relative flex-1 min-w-[24px]">
-                                            <input type="text" id="sl-local-search-input"
-                                                class="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border t-border-main rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 t-text-main transition-all"
-                                                placeholder="搜索歌曲名、歌手..." oninput="window.ListSearch.handleSearch()"
-                                                onkeydown="window.ListSearch.handleKeydown(event)">
-                                            <i
-                                                class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
-                                        </div>
-
-                                        <div id="sl-local-search-nav"
-                                            class="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-2 opacity-0 pointer-events-none transition-opacity">
-                                            <div
-                                                class="flex border t-border-main rounded-lg overflow-hidden order-1 sm:order-2">
-                                                <button onclick="window.ListSearch.navigate(-1)"
-                                                    class="p-1 sm:p-1.5 hover:t-bg-track t-text-main transition-colors border-r t-border-main"
-                                                    title="上一个">
-                                                    <i class="fas fa-chevron-left text-[10px]"></i>
-                                                </button>
-                                                <button onclick="window.ListSearch.navigate(1)"
-                                                    class="p-1 sm:p-1.5 hover:t-bg-track t-text-main transition-colors"
-                                                    title="下一个">
-                                                    <i class="fas fa-chevron-right text-[10px]"></i>
-                                                </button>
-                                            </div>
-                                            <span id="sl-local-search-count"
-                                                class="text-[9px] sm:text-xs font-mono t-text-muted order-2 sm:order-1 leading-none">0/0</span>
-                                        </div>
-
-                                        <!-- Filter Toggle -->
-                                        <div class="flex items-center gap-3 ml-auto">
-                                            <label class="flex items-center cursor-pointer group">
-                                                <span
-                                                    class="text-xs t-text-muted mr-2 group-hover:t-text-main transition-colors hidden sm:block">仅显示匹配项</span>
-                                                <div class="relative inline-flex items-center">
-                                                    <input type="checkbox" id="sl-local-search-filter"
-                                                        class="sr-only peer"
-                                                        onchange="window.ListSearch.toggleFilter()">
-                                                    <div
-                                                        class="w-10 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 transition-all">
-                                                    </div>
-                                                </div>
-                                            </label>
-                                            <button onclick="window.ListSearch.toggleBar(false)"
-                                                class="p-2 t-text-muted hover:text-red-500 transition-colors"
-                                                title="关闭搜索">
-                                                <i class="fas fa-times"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
                                 <div id="sl-detail-list"
                                     class="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar pb-20">
                                     <!-- Song items -->
@@ -1446,11 +1386,11 @@
                                         </div>
                                     </div>
 
-                                    <!-- 默认音质 -->
+                                    <!-- 默认播放音质 -->
                                     <div
                                         class="t-bg-panel rounded-xl border t-border-main p-4 hover:shadow-sm transition-shadow flex flex-col gap-3">
                                         <h4 class="text-sm font-bold t-text-main flex items-center">
-                                            <i class="fas fa-music mr-2 text-emerald-500"></i> 默认音质
+                                            <i class="fas fa-music mr-2 text-emerald-500"></i> 默认播放音质
                                             <span class="setting-tooltip-trigger ml-1">
                                                 <i class="fas fa-question-circle"></i>
                                                 <span class="setting-tooltip-content">实际播放音质取决于歌曲支持的最高音质，系统会自动降级</span>
@@ -1461,6 +1401,49 @@
                                             <option value="128k">标准音质</option>
                                             <option value="320k">高音质</option>
                                             <option value="flac" selected>无损音质</option>
+                                            <option value="flac24bit">24bit无损</option>
+                                            <option value="hires">高解析度</option>
+                                            <option value="atmos">空间音频</option>
+                                            <option value="atmos_plus">增强空间音频</option>
+                                            <option value="master">母带音质</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 默认下载目标 -->
+                                    <div
+                                        class="t-bg-panel rounded-xl border t-border-main p-4 hover:shadow-sm transition-shadow flex flex-col gap-3">
+                                        <h4 class="text-sm font-bold t-text-main flex items-center">
+                                            <i class="fas fa-download mr-2 text-emerald-500"></i> 默认下载目标
+                                            <span class="setting-tooltip-trigger ml-1">
+                                                <i class="fas fa-question-circle"></i>
+                                                <span class="setting-tooltip-content">点击下载按钮时直接使用此目标，不再弹出目标选择框。浏览器实际保存目录由浏览器管理。</span>
+                                            </span>
+                                        </h4>
+                                        <select id="setting-default-download-target"
+                                            onchange="updateSetting('defaultDownloadTarget', this.value)"
+                                            aria-label="默认下载目标" class="lm-select !w-full !py-2">
+                                            <option value="server">服务器下载</option>
+                                            <option value="browser">浏览器下载</option>
+                                        </select>
+                                    </div>
+
+                                    <!-- 默认下载音质 -->
+                                    <div
+                                        class="t-bg-panel rounded-xl border t-border-main p-4 hover:shadow-sm transition-shadow flex flex-col gap-3">
+                                        <h4 class="text-sm font-bold t-text-main flex items-center">
+                                            <i class="fas fa-headphones mr-2 text-emerald-500"></i> 默认下载音质
+                                            <span class="setting-tooltip-trigger ml-1">
+                                                <i class="fas fa-question-circle"></i>
+                                                <span class="setting-tooltip-content">下载或缓存时优先请求此音质，歌曲不支持时会按现有自动降级规则处理。</span>
+                                            </span>
+                                        </h4>
+                                        <select id="setting-default-download-quality"
+                                            onchange="updateSetting('defaultDownloadQuality', this.value)"
+                                            aria-label="默认下载音质" class="lm-select !w-full !py-2">
+                                            <option value="128k">标准音质</option>
+                                            <option value="192k">192k</option>
+                                            <option value="320k">高音质</option>
+                                            <option value="flac">无损音质</option>
                                             <option value="flac24bit">24bit无损</option>
                                             <option value="hires">高解析度</option>
                                             <option value="atmos">空间音频</option>
@@ -4173,7 +4156,7 @@
 
     <!-- Queue Drawer (播放队列) -->
     <div id="queue-drawer"
-        class="fixed inset-y-0 right-0 w-full md:w-96 t-bg-panel/95 backdrop-blur-xl z-[60] shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transform translate-x-full transition-transform duration-300 ease-out border-l t-border-main flex flex-col">
+        class="player-safe-drawer fixed inset-y-0 right-0 w-full md:w-96 t-bg-panel/95 backdrop-blur-xl z-[60] shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transform translate-x-full transition-transform duration-300 ease-out border-l t-border-main flex flex-col">
         <!-- Header -->
         <div class="p-6 border-b t-border-main flex items-center justify-between">
             <div class="flex flex-col">
@@ -4216,7 +4199,7 @@
 
     <!-- Cache Management Drawer (服务器缓存管理) -->
     <div id="cache-drawer"
-        class="fixed inset-y-0 right-0 w-full md:w-96 t-bg-panel/95 backdrop-blur-xl z-[60] shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transform translate-x-full transition-transform duration-300 ease-out border-l t-border-main flex flex-col">
+        class="player-safe-drawer fixed inset-y-0 right-0 w-full md:w-96 t-bg-panel/95 backdrop-blur-xl z-[60] shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transform translate-x-full transition-transform duration-300 ease-out border-l t-border-main flex flex-col">
         <!-- Header -->
         <div class="p-6 border-b t-border-main flex items-center justify-between">
             <div class="flex flex-col">
@@ -4299,7 +4282,7 @@
 
     <!-- Download Management Drawer (下载管理) -->
     <div id="download-drawer"
-        class="fixed inset-y-0 right-0 w-full md:w-[450px] t-bg-panel/95 backdrop-blur-xl z-[60] shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transform translate-x-full transition-transform duration-300 ease-out border-l t-border-main flex flex-col">
+        class="player-safe-drawer fixed inset-y-0 right-0 w-full md:w-[450px] t-bg-panel/95 backdrop-blur-xl z-[60] shadow-[-10px_0_30px_rgba(0,0,0,0.1)] transform translate-x-full transition-transform duration-300 ease-out border-l t-border-main flex flex-col">
         <!-- Header -->
         <div class="p-6 border-b t-border-main flex items-center justify-between">
             <div class="flex flex-col">

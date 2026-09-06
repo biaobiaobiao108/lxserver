@@ -79,6 +79,60 @@
     border-left-width: 0 !important;
 }
 
+/* 抽屉始终避让底部播放器，并在小屏幕上保持可用的触控宽度 */
+:root {
+    --player-footer-offset: 0px;
+}
+
+#queue-drawer.player-safe-drawer,
+#cache-drawer.player-safe-drawer,
+#download-drawer.player-safe-drawer {
+    top: env(safe-area-inset-top, 0px) !important;
+    bottom: calc(var(--player-footer-offset, 0px) + env(safe-area-inset-bottom, 0px)) !important;
+    inset-block-start: env(safe-area-inset-top, 0px) !important;
+    inset-block-end: calc(var(--player-footer-offset, 0px) + env(safe-area-inset-bottom, 0px)) !important;
+    block-size: auto !important;
+    max-block-size: calc(100dvh - var(--player-footer-offset, 0px) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) !important;
+    inline-size: min(100%, 30rem) !important;
+    max-inline-size: 100dvw;
+    overscroll-behavior: contain;
+}
+
+#download-drawer.player-safe-drawer {
+    inline-size: min(100%, 32rem) !important;
+}
+
+.player-safe-drawer .custom-scrollbar {
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+}
+
+.player-safe-drawer button {
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
+}
+
+.playlist-batch-toggle {
+    min-block-size: 2.75rem;
+    min-inline-size: 2.75rem;
+}
+
+@media (max-width: 767px) {
+    #queue-drawer.player-safe-drawer,
+    #cache-drawer.player-safe-drawer,
+    #download-drawer.player-safe-drawer {
+        inline-size: 100% !important;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #queue-drawer.player-safe-drawer,
+    #cache-drawer.player-safe-drawer,
+    #download-drawer.player-safe-drawer {
+        transition-duration: 0.01ms !important;
+    }
+}
+
 /* Setting Tooltip Styles */
 .setting-tooltip-trigger {
     position: relative;
@@ -1029,5 +1083,4 @@ aside {
     border-color: #f87171 !important;
     box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.4) !important;
 }
-
 

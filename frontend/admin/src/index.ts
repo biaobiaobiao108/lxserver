@@ -39,7 +39,7 @@ class App {
         this.processMemHistory = [];
         this.monitorTimer = null;
         this.init();
-        this.initVersion();
+        this.initPlayerLink();
     }
 
     init() {
@@ -350,11 +350,9 @@ class App {
 
             // Render Markdown
             if (window.marked) {
-                // Replace {{version}} and {{buildHash}} placeholder
-                const version = (window.CONFIG && window.CONFIG.version) || 'v1.0.0';
+                // Replace the build hash placeholder; application version is intentionally not shown in the UI.
                 const buildHash = (window.CONFIG && window.CONFIG.buildHash) || 'unknown';
-                let content = text.replace(/{{version}}/g, version);
-                content = content.replace(/{{buildHash}}/g, buildHash);
+                const content = text.replace(/{{buildHash}}/g, buildHash);
                 container.innerHTML = window.marked.parse(content);
             } else {
                 container.innerText = text;
@@ -373,19 +371,7 @@ class App {
         }
     }
 
-    initVersion() {
-        if (window.CONFIG && window.CONFIG.version) {
-            const versionEl = document.getElementById('console-version');
-            if (versionEl) {
-                versionEl.textContent = window.CONFIG.version;
-                versionEl.classList.remove('hidden');
-            }
-            const sidebarVersionEl = document.getElementById('sidebar-version');
-            if (sidebarVersionEl) {
-                sidebarVersionEl.textContent = window.CONFIG.version;
-                sidebarVersionEl.classList.remove('hidden');
-            }
-        }
+    initPlayerLink() {
         // 初始化播放器链接
         const navPlayerLink = document.getElementById('nav-player-link');
         if (navPlayerLink && window.CONFIG && window.CONFIG['player.path']) {

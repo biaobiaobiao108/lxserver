@@ -7,7 +7,6 @@
   <p>
     <img src="https://img.shields.io/badge/build-passing-brightgreen?style=flat-square" alt="Build Status">
     <img src="https://img.shields.io/badge/hash-{{buildHash}}-%2310b981?style=flat-square" alt="Build Hash">
-    <img src="https://img.shields.io/badge/version-{{version}}-blue?style=flat-square" alt="Version">
     <a href="/music/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-orange?style=flat-square" alt="License"></a>
   </p>
 </div>

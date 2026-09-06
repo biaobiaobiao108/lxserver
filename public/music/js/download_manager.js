@@ -602,7 +602,10 @@ class DownloadManager {
 
     // Toggle drawer
     toggleDrawer() {
-        if (this.drawer.classList.contains('translate-x-full')) {
+        const isHidden = this.drawer.classList.contains('translate-x-full');
+        if (window.setPlayerDrawerOpen) {
+            window.setPlayerDrawerOpen('download-drawer', isHidden);
+        } else if (isHidden) {
             this.drawer.classList.remove('translate-x-full');
         } else {
             this.drawer.classList.add('translate-x-full');

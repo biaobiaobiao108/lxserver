@@ -54,6 +54,19 @@ function setCurrentSearchScope(scope: string) {
     window.currentSearchScope = scope;
 }
 
+function isCurrentlyViewingLocalList(targetListId?: string): boolean {
+    const searchView = document.getElementById('view-search');
+    if (!searchView || searchView.classList.contains('hidden')) return false;
+
+    const slDetail = document.getElementById('songlist-detail-view');
+    if (slDetail && !slDetail.classList.contains('hidden') && !slDetail.classList.contains('translate-x-full')) return false;
+
+    if (window.currentSearchScope !== 'local_list') return false;
+    if (targetListId && window.currentViewingListId !== targetListId) return false;
+    return true;
+}
+(window as any).isCurrentlyViewingLocalList = isCurrentlyViewingLocalList;
+
 const lazyScriptPromises = new Map<string, Promise<void>>();
 
 function loadLazyScript(src, globalName) {
@@ -1196,10 +1209,20 @@ function switchTab(tabId) {
         el.classList.remove('active-tab', 'text-emerald-600');
         el.classList.add('t-text-muted');
     });
+    // Reset Sidebar Sub-items Highlight (e.g. Favorite lists)
+    document.querySelectorAll('[data-sidebar-list-id]').forEach(el => {
+        el.classList.remove('active-sub-item');
+        el.classList.add('t-text-muted');
+    });
     const activeTab = document.getElementById(`tab-${tabId}`);
     if (activeTab) {
         activeTab.classList.add('active-tab');
         activeTab.classList.remove('t-text-muted');
+    }
+
+    // If leaving search/local-list view, update search scope away from local_list
+    if (tabId !== 'search' && window.currentSearchScope === 'local_list') {
+        setCurrentSearchScope(tabId);
     }
 
     // Clear any pending timeouts
@@ -4913,7 +4936,6 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
                         currentPlaylist = currentListData.defaultList;
                         currentIndex = 0;
                         currentPlayingScope = 'local_list';
-                        window.currentViewingListId = 'default';
                     }
                 } else {
                     // 搜索结果：关闭"切换歌单"时，才退回 defaultList
@@ -4922,7 +4944,6 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
                         currentPlaylist = currentListData.defaultList;
                         currentIndex = 0;
                         currentPlayingScope = 'local_list';
-                        window.currentViewingListId = 'default';
                     }
                 }
             }
@@ -5676,7 +5697,6 @@ async function restorePlaybackState() {
         } else if (['local_list', 'local_all', 'songlist'].includes(state.scope)) {
             // 回退逻辑：如果队列没存，根据作用域恢复
             currentPlayingScope = state.scope;
-            window.currentViewingListId = state.listId || 'default';
         }
 
         currentIndex = state.index >= 0 ? state.index : 0;
@@ -5698,12 +5718,6 @@ async function restorePlaybackState() {
 
         // 5. 延迟加载播放源（静默模式）但不强制切换 Tab 破坏默认入口设置
         setTimeout(() => {
-            if (state.scope === 'network') {
-                renderResults(currentPlaylist);
-            } else if (state.scope === 'local_list' || state.scope === 'local_all') {
-                window._pendingResumeListId = state.listId || 'default';
-            }
-
             // 初始化音频源但不立即播放（除非设置了自动播放，当前 playSong handles resumeTime）
             playSong(state.song, currentIndex, null, true);
         }, 800);
@@ -9939,15 +9953,6 @@ function renderMyLists(data) {
     refreshLibrarySidebarCount();
     initFavoriteSidebarSortable(container);
     refreshFavoritesChildrenHeight();
-
-    // [Resume] 处理本地列表的自动恢复跳转
-    if (window._pendingResumeListId) {
-        const listId = window._pendingResumeListId;
-        delete window._pendingResumeListId;
-        console.log('[Resume] 正在同步本地播放列表上下文:', listId);
-        // 调用 handleListClick 以加载真实的列表数据并应用高亮
-        handleListClick(listId);
-    }
 }
 
 function handleListClick(listId, skipAutoUpdate = false) {
@@ -10136,7 +10141,7 @@ async function handleRenameList(listId, event) {
         if (typeof renderPlaylistAddGrid === 'function' && !document.getElementById('playlist-add-modal')?.classList.contains('hidden')) {
             renderPlaylistAddGrid();
         }
-        if (window.currentSearchScope === 'local_list' && window.currentViewingListId === listId) {
+        if (isCurrentlyViewingLocalList(listId)) {
             handleListClick(listId, true);
         }
         showSuccess('歌单名称已更新');
@@ -10384,7 +10389,7 @@ async function handleRefreshList(listId, event, silent = false) {
         renderMyLists(currentListData);
 
         // 如果当前正处于该列表视图，刷新结果列表显示
-        if (window.currentViewingListId === listId) {
+        if (isCurrentlyViewingLocalList(listId)) {
             handleListClick(listId, true); // Skip auto-update to avoid loop
         }
 
@@ -10643,8 +10648,8 @@ async function refreshUserListData() {
             renderMyLists(listData);
         }
 
-        // [New] If currently viewing a local list, refresh its contents in main view
-        if (window.currentSearchScope === 'local_list' && window.currentViewingListId) {
+        // If currently viewing a local list, refresh its contents in main view
+        if (isCurrentlyViewingLocalList(window.currentViewingListId)) {
             console.log('[Sync] Auto-refreshing current list view:', window.currentViewingListId);
             handleListClick(window.currentViewingListId, true); // true to skip background auto-update
         }
@@ -11684,7 +11689,7 @@ async function handleTogglePlaylist(listId, btnElement) {
 
         // 3. Immediate UI Refresh
         renderMyLists(currentListData);
-        if (window.currentSearchScope === 'local_list' && window.currentViewingListId) {
+        if (isCurrentlyViewingLocalList(window.currentViewingListId)) {
             handleListClick(window.currentViewingListId, true);
         }
 

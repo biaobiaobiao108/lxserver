@@ -88,7 +88,13 @@ function setAttributeIfChanged(element: HTMLElement, name: string, value: string
 }
 
 function getOverlays(): OverlayElement[] {
-    return Array.from(document.querySelectorAll<OverlayElement>(OVERLAY_SELECTOR));
+    return Array.from(document.querySelectorAll<OverlayElement>(OVERLAY_SELECTOR)).filter(element => {
+        // IDs such as `modal-add-token-content` and `modal-source-scope-info`
+        // belong to controls inside a modal, not to independent overlay roots.
+        // Only manage the outermost matching element to avoid keeping the app inert
+        // after the actual modal has been closed.
+        return !element.parentElement?.closest(OVERLAY_SELECTOR);
+    });
 }
 
 function isDrawer(element: HTMLElement): boolean {

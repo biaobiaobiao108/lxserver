@@ -1,8 +1,6 @@
 import * as path from 'path'
 import * as fs from 'fs'
 import * as crypto from 'crypto'
-import { ZipArchive } from 'archiver'
-import unzipper from 'unzipper'
 
 // elFinder 文件管理器连接器
 export class ElFinderConnector {
@@ -539,6 +537,7 @@ export class ElFinderConnector {
 
     // archive - 创建压缩包
     private async cmdArchive(params: any): Promise<any> {
+        const { ZipArchive } = await import('archiver')
         const targets = Array.isArray(params['targets[]']) ? params['targets[]'] : [params['targets[]']]
         const name = params.name || 'archive.zip'
         const type = params.type || 'application/zip'
@@ -585,6 +584,7 @@ export class ElFinderConnector {
 
     // extract - 解压
     private async cmdExtract(params: any): Promise<any> {
+        const { Extract } = await import('unzipper')
         const target = this.decode(params.target)
         const makedir = params.makedir === '1'
         const dir = path.dirname(target)
@@ -601,7 +601,7 @@ export class ElFinderConnector {
 
         return new Promise((resolve, reject) => {
             fs.createReadStream(target)
-                .pipe(unzipper.Extract({ path: extractPath }))
+                .pipe(Extract({ path: extractPath }))
                 .on('close', async () => {
                     // 简单起见，返回解压目录的信息，或者强制刷新
                     // elFinder 期望返回 added 列表，这里我们返回解压后的根目录（如果是 makedir）或父目录的更新
@@ -660,6 +660,7 @@ export class ElFinderConnector {
         }
 
         // 准备阶段
+        const { ZipArchive } = await import('archiver')
         const targets = Array.isArray(params['targets[]']) ? params['targets[]'] : [params['targets[]']]
         const zipName = 'download.zip'
         const tempDir = require('os').tmpdir()

@@ -2,7 +2,7 @@ import { LRUCache } from 'lru-cache'
 
 export default {
   store: new LRUCache({
-    max: 10000,
+    max: 2048,
     ttl: 1000 * 60 * 60 * 24 * 2,
     // updateAgeOnGet: true,
   }),

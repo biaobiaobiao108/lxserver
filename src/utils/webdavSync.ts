@@ -1,7 +1,5 @@
 import fs from 'fs'
 import path from 'path'
-import { ZipArchive } from 'archiver'
-import { Extract } from 'unzipper'
 import crypto from 'crypto'
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
@@ -357,6 +355,7 @@ class WebDAVSync extends EventEmitter {
 
     async createBackup(): Promise<string | null> {
         try {
+            const { ZipArchive } = await import('archiver')
             try {
                 const { getDb } = require('@/database')
                 const db = getDb()
@@ -644,6 +643,7 @@ class WebDAVSync extends EventEmitter {
     }
 
     public async extractZip(zipPath: string, targetPath: string): Promise<void> {
+        const { Extract } = await import('unzipper')
         await new Promise<void>((resolve, reject) => {
             fs.createReadStream(zipPath)
                 .pipe(Extract({ path: targetPath }))
@@ -822,14 +822,19 @@ class WebDAVSync extends EventEmitter {
             }
 
             // 增加 10 秒超时控制，避免请求无限挂起
-            const timeoutPromise = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('连接超时，请检查 WebDAV 地址及网络连接')), 10000)
-            )
+            let timeoutHandle: NodeJS.Timeout | null = null
+            const timeoutPromise = new Promise<never>((_, reject) => {
+                timeoutHandle = setTimeout(() => reject(new Error('连接超时，请检查 WebDAV 地址及网络连接')), 10000)
+            })
 
-            await Promise.race([
-                this.client.getDirectoryContents('/'),
-                timeoutPromise
-            ])
+            try {
+                await Promise.race([
+                    this.client.getDirectoryContents('/'),
+                    timeoutPromise,
+                ])
+            } finally {
+                if (timeoutHandle) clearTimeout(timeoutHandle)
+            }
 
             return { success: true, message: '连接成功！WebDAV配置正确' };
         } catch (err: any) {

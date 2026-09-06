@@ -417,7 +417,7 @@ export const createSystemRouter = (): Router => {
     if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
     const webdavSync = global.lx.webdavSync
     if (!webdavSync) return ctx.json({ success: false, message: 'WebDAV not initialized' }, 500)
-    return ctx.json({ success: true, logs: webdavSync.getLogs() })
+    return ctx.json({ success: true, logs: webdavSync.getSyncLogs() })
   })
 
   // 5.1 本地备份下载与上传

@@ -12,6 +12,16 @@ import path from 'node:path'
 
 /** 音乐解析进度 SSE 专属通道: requestId -> Controller */
 export const musicProgressControllers = new Map<string, ReadableStreamDefaultController<Uint8Array>>()
+const musicProgressTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const MUSIC_PROGRESS_TTL = 10 * 60 * 1000
+
+const cleanupMusicProgress = (reqId: string, controller?: ReadableStreamDefaultController<Uint8Array>) => {
+  if (controller && musicProgressControllers.get(reqId) !== controller) return
+  musicProgressControllers.delete(reqId)
+  const timer = musicProgressTimers.get(reqId)
+  if (timer) clearTimeout(timer)
+  musicProgressTimers.delete(reqId)
+}
 
 /** 格式化字节大小 */
 const formatBytes = (bytes: number): string => {
@@ -231,13 +241,24 @@ export const createMusicRouter = (): Router => {
     if (!reqId) return ctx.text('Missing reqId', 400)
 
     const encoder = new TextEncoder()
+    let streamController: ReadableStreamDefaultController<Uint8Array> | null = null
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
+        streamController = controller
         controller.enqueue(encoder.encode('retry: 3000\n\n'))
+        const previous = musicProgressControllers.get(reqId)
+        if (previous) {
+          try { previous.close() } catch { }
+          cleanupMusicProgress(reqId, previous)
+        }
         musicProgressControllers.set(reqId, controller)
+        musicProgressTimers.set(reqId, setTimeout(() => {
+          try { controller.close() } catch { }
+          cleanupMusicProgress(reqId, controller)
+        }, MUSIC_PROGRESS_TTL))
       },
       cancel() {
-        musicProgressControllers.delete(reqId)
+        cleanupMusicProgress(reqId, streamController || undefined)
       },
     })
 
@@ -274,7 +295,9 @@ export const createMusicRouter = (): Router => {
         try {
           const encoder = new TextEncoder()
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(attempt)}\n\n`))
-        } catch { }
+        } catch {
+          cleanupMusicProgress(reqId, controller)
+        }
         return
       }
       if (retries > 0) {

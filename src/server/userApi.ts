@@ -1,4 +1,3 @@
-import { VM } from 'vm2'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -10,6 +9,12 @@ import { promisify } from 'util'
 import * as tunnel from 'tunnel'
 const inflate = promisify(zlib.inflate)
 const deflate = promisify(zlib.deflate)
+
+let vm2ModulePromise: Promise<typeof import('vm2')> | null = null
+const loadVm2 = async () => {
+    vm2ModulePromise ||= import('vm2')
+    return vm2ModulePromise
+}
 
 // 彻底切断与沙箱上下文的联系
 function decontextify(obj: any): any {
@@ -121,7 +126,9 @@ export function extractMetadata(script: string): Partial<UserApiInfo> {
 }
 
 // 创建 lx.request 包装器（使用 needle）
-function createLxRequest(isUnsafe: boolean = false) {
+type CleanupRegistration = (cleanup: () => void) => () => void
+
+function createLxRequest(isUnsafe: boolean = false, registerCleanup?: CleanupRegistration) {
     return (url: string, options: any, callback: Function) => {
         const safeOptions = decontextify(options || {})
         const { method = 'get', timeout, headers, body, form, formData } = safeOptions
@@ -140,7 +147,11 @@ function createLxRequest(isUnsafe: boolean = false) {
             requestOptions.json = false
         }
 
+        let completed = false
+        let unregister = () => { }
         const request = needle.request(method, url, data, requestOptions, (err: any, resp: any, body: any) => {
+            completed = true
+            unregister()
             try {
                 if (err) {
                     callback.call(null, decontextify(err), null, null)
@@ -180,9 +191,16 @@ function createLxRequest(isUnsafe: boolean = false) {
             }
         })
 
-        return () => {
+        const abort = () => {
             const reqObj = (request as any).request
             if (reqObj && !reqObj.aborted) reqObj.abort()
+        }
+        unregister = registerCleanup ? registerCleanup(abort) : () => { }
+        if (completed) unregister()
+
+        return () => {
+            unregister()
+            abort()
         }
     }
 }
@@ -195,7 +213,59 @@ export async function loadUserApi(apiInfo: UserApiInfo): Promise<any> {
 
     // 创建事件处理映射
     const eventHandlers = new Map<string, Function>()
+    const unloadHandlers = new Set<Function>()
+    const cleanupHandlers = new Set<() => void>()
+    const timeoutHandles = new Set<ReturnType<typeof setTimeout>>()
+    const intervalHandles = new Set<ReturnType<typeof setInterval>>()
     let registeredSources: any = {}
+    let disposed = false
+
+    const registerCleanup = (cleanup: () => void) => {
+        cleanupHandlers.add(cleanup)
+        return () => cleanupHandlers.delete(cleanup)
+    }
+    const trackedSetTimeout = (handler: (...args: any[]) => void, delay?: number, ...args: any[]) => {
+        let timer: ReturnType<typeof setTimeout>
+        timer = setTimeout(() => {
+            timeoutHandles.delete(timer)
+            handler(...args)
+        }, delay)
+        timeoutHandles.add(timer)
+        return timer
+    }
+    const trackedClearTimeout = (timer: ReturnType<typeof setTimeout>) => {
+        clearTimeout(timer)
+        timeoutHandles.delete(timer)
+    }
+    const trackedSetInterval = (handler: (...args: any[]) => void, delay?: number, ...args: any[]) => {
+        const timer = setInterval(handler, delay, ...args)
+        intervalHandles.add(timer)
+        return timer
+    }
+    const trackedClearInterval = (timer: ReturnType<typeof setInterval>) => {
+        clearInterval(timer)
+        intervalHandles.delete(timer)
+    }
+
+    const dispose = async () => {
+        if (disposed) return
+        disposed = true
+        for (const handler of unloadHandlers) {
+            try { await handler() } catch (error: any) {
+                console.warn(`[UserApi-${fullApiInfo.name}] unload handler failed:`, error?.message || error)
+            }
+        }
+        unloadHandlers.clear()
+        for (const timer of timeoutHandles) clearTimeout(timer)
+        for (const timer of intervalHandles) clearInterval(timer)
+        timeoutHandles.clear()
+        intervalHandles.clear()
+        for (const cleanup of cleanupHandlers) {
+            try { cleanup() } catch { }
+        }
+        cleanupHandlers.clear()
+        eventHandlers.clear()
+    }
 
     // ========== 关键修改：提前创建 initPromise ==========
     let initResolve: (() => void) | null = null
@@ -255,7 +325,7 @@ export async function loadUserApi(apiInfo: UserApiInfo): Promise<any> {
     const lxObject = {
         ...lxDataInside,
         utils: lxUtils,
-        request: createLxRequest(!!apiInfo.allowUnsafeVM && !!global.lx.config['system.allowUnsafeVM']),
+        request: createLxRequest(!!apiInfo.allowUnsafeVM && !!global.lx.config['system.allowUnsafeVM'], registerCleanup),
         send: (eventName: string, data: any) => {
             const dData = decontextify(data)
             // console.log(`[UserApi-${fullApiInfo.name}] send:`, eventName)
@@ -274,6 +344,8 @@ export async function loadUserApi(apiInfo: UserApiInfo): Promise<any> {
             // console.log(`[UserApi-${fullApiInfo.name}] on:`, eventName)
             if (eventName === 'request') {
                 eventHandlers.set(eventName, handler)
+            } else if (eventName === 'unload') {
+                unloadHandlers.add(handler)
             }
         }
     }
@@ -290,17 +362,17 @@ export async function loadUserApi(apiInfo: UserApiInfo): Promise<any> {
         //     timeEnd: console.timeEnd
         // },
         console,
-        setTimeout,
-        clearTimeout,
-        setInterval,
-        clearInterval,
+        setTimeout: trackedSetTimeout,
+        clearTimeout: trackedClearTimeout,
+        setInterval: trackedSetInterval,
+        clearInterval: trackedClearInterval,
         Buffer,
         URL,
         URLSearchParams,
         TextEncoder,
         TextDecoder,
         process: {
-            nextTick: (fn: Function, ...args: any[]) => setTimeout(() => fn(...args), 0),
+            nextTick: (fn: Function, ...args: any[]) => trackedSetTimeout(() => fn(...args), 0),
             env: { NODE_ENV: process.env.NODE_ENV || 'production' }
         },
         lx: lxObject,
@@ -329,6 +401,7 @@ export async function loadUserApi(apiInfo: UserApiInfo): Promise<any> {
         } else {
             // 保持 vm2 逻辑用于安全模式
             try {
+                const { VM } = await loadVm2()
                 const vmInstance = new VM({
                     timeout: 10000,
                     sandbox,
@@ -347,17 +420,26 @@ export async function loadUserApi(apiInfo: UserApiInfo): Promise<any> {
         }
 
         // 等待脚本调用 lx.send('inited')（最多等待 3 秒）
-        await Promise.race([
-            initPromise,
-            new Promise((_, reject) => setTimeout(() => reject(new Error('初始化超时，请确保脚本调用了 lx.send("inited", ...)')), 3000))
-        ])
+        let initTimeout: ReturnType<typeof setTimeout> | null = null
+        try {
+            await Promise.race([
+                initPromise,
+                new Promise((_, reject) => {
+                    initTimeout = setTimeout(() => reject(new Error('初始化超时，请确保脚本调用了 lx.send("inited", ...)')), 3000)
+                })
+            ])
+        } finally {
+            if (initTimeout) clearTimeout(initTimeout)
+        }
 
         // 保存加载 of the API
         const apiInstance = {
             info: { ...fullApiInfo, sources: registeredSources },
             handlers: eventHandlers,
+            dispose,
             callRequest: async (action: string, source: string, info: any) => {
                 try {
+                    if (disposed) throw new Error(`源 ${fullApiInfo.name} 已卸载`)
                     const handler = eventHandlers.get('request')
                     if (!handler) throw new Error(`源 ${fullApiInfo.name} 未注册 request 处理器`)
 
@@ -381,6 +463,7 @@ export async function loadUserApi(apiInfo: UserApiInfo): Promise<any> {
         console.log(`[UserApi]   支持源: ${Object.keys(registeredSources).join(', ')}`)
         return { success: true, apiInstance, error: null }
     } catch (error: any) {
+        await dispose()
         console.error(`[UserApi] ✗ 加载失败 ${fullApiInfo.name}:`, error.message)
         if (error.stack && error.message !== 'REQUIRE_UNSAFE_VM') {
             console.error(`[UserApi] [Stack] ${fullApiInfo.name}:`, error.stack)
@@ -762,6 +845,17 @@ async function loadSourcesFromDir(dirPath: string, owner: string, stats: { loade
 // 文件监控相关
 let fsWatcher: fs.FSWatcher | null = null
 const lastReloadMap = new Map<string, number>() // 记录每个用户的最后加载时间
+let reloadChain: Promise<void> = Promise.resolve()
+
+const disposeLoadedApis = async (owner?: string) => {
+    const entries = Array.from(loadedApis.entries()).filter(([, api]) => !owner || api.info.owner === owner)
+    for (const [key, api] of entries) {
+        try { await api.dispose?.() } catch (error: any) {
+            console.warn(`[UserApi] 清理旧源失败 (${key}):`, error?.message || error)
+        }
+        loadedApis.delete(key)
+    }
+}
 
 // 启动文件监控
 function startWatcher(sourceRoot: string) {
@@ -797,6 +891,7 @@ function startWatcher(sourceRoot: string) {
             }
 
             debounceMap.set(username, setTimeout(() => {
+                debounceMap.delete(username)
                 // 检查是否是最近刚手动加载过 (避免面板上传造成的重复加载)
                 // 阈值设为 3000ms，假设手动上传触发的 reload 会在这个时间内完成
                 const lastReload = lastReloadMap.get(username) || 0
@@ -823,7 +918,7 @@ function startWatcher(sourceRoot: string) {
 
 // 从文件系统加载所有已启用的自定义源
 // 路径变更：DATA_PATH/users/source/{username} 和 DATA_PATH/users/source/_open
-export async function initUserApis(targetUser?: string) {
+async function initUserApisInternal(targetUser?: string) {
     const dataPath = process.env.DATA_PATH || path.join(process.cwd(), 'data')
     const sourceRoot = path.join(dataPath, 'users', 'source')
     const stats = { loadedCount: 0 }
@@ -839,6 +934,7 @@ export async function initUserApis(targetUser?: string) {
 
     // 如果根目录不存在，无需加载
     if (!fs.existsSync(sourceRoot)) {
+        await disposeLoadedApis(targetUser)
         console.log(`[UserApi] Source root directory not found: ${sourceRoot}`)
         console.log(`[UserApi] ========================================`)
         return
@@ -852,11 +948,7 @@ export async function initUserApis(targetUser?: string) {
     if (targetUser) {
         console.log(`[UserApi] 重新加载用户源: ${targetUser}`)
         // 清理该用户的旧源和状态
-        for (const [key, api] of loadedApis.entries()) {
-            if (api.info.owner === targetUser) {
-                loadedApis.delete(key)
-            }
-        }
+        await disposeLoadedApis(targetUser)
         for (const key of apiStatus.keys()) {
             if (key.startsWith(`${targetUser}_`)) {
                 apiStatus.delete(key)
@@ -878,7 +970,7 @@ export async function initUserApis(targetUser?: string) {
 
     } else {
         console.log(`[UserApi] 初始化所有自定义源...`)
-        loadedApis.clear()
+        await disposeLoadedApis()
 
         // 扫描 sourceRoot 下的所有子目录
         try {
@@ -903,6 +995,12 @@ export async function initUserApis(targetUser?: string) {
     console.log(`[UserApi] 本次加载: ${stats.loadedCount} 个源`)
     console.log(`[UserApi] 当前总计: ${loadedApis.size} 个源`)
     console.log(`[UserApi] ========================================`)
+}
+
+export function initUserApis(targetUser?: string) {
+    const nextReload = reloadChain.then(() => initUserApisInternal(targetUser))
+    reloadChain = nextReload.catch(() => { })
+    return nextReload
 }
 
 // 获取所有已加载的 API

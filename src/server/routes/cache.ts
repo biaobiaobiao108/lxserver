@@ -15,7 +15,16 @@ import musicSdkRaw from '@/modules/utils/musicSdk/index.js'
 const musicSdk = musicSdkRaw as any
 import { accessLog } from '@/utils/log4js'
 
-const { MusicTagger, MetaPicture } = require('music-tag-native')
+type MusicTagNative = {
+  MusicTagger: new () => any
+  MetaPicture: new (mime: string, data: Uint8Array, type: string) => any
+}
+
+let musicTagNative: MusicTagNative | null = null
+const getMusicTagNative = (): MusicTagNative => {
+  if (!musicTagNative) musicTagNative = require('music-tag-native') as MusicTagNative
+  return musicTagNative
+}
 
 /** 辅助获取缓存与下载任务的目标用户名 */
 const getCacheRequestUsername = (ctx: HttpContext): string | null => {
@@ -373,6 +382,7 @@ export const createCacheRouter = (): Router => {
               tasks.splice(idx, 1)
               console.log(`[Cache] Cleaned up active task: ${songKey} for user: "${username}"`)
             }
+            if (tasks.length === 0) fileCache.activeTasks.delete(username)
           }
         })
 
@@ -830,7 +840,7 @@ export const createCacheRouter = (): Router => {
           let checkTagger: any
           let existingLyrics = ''
           try {
-            checkTagger = new MusicTagger()
+            checkTagger = new (getMusicTagNative().MusicTagger)()
             checkTagger.loadPath(filePath)
             existingLyrics = checkTagger.lyrics || ''
           } catch (checkError: any) {
@@ -1039,6 +1049,7 @@ export const createCacheRouter = (): Router => {
               if ([301, 302, 303, 307, 308].includes(proxyRes.statusCode)) {
                 const location = proxyRes.headers.location
                 if (location) {
+                  proxyRes.resume()
                   const nextUrl = location.startsWith('http') ? location : new URL(location, targetUrl).href
                   doFetch(nextUrl, attempt + 1)
                   return
@@ -1074,21 +1085,40 @@ export const createCacheRouter = (): Router => {
                 const lyricHash = ctx.query.get('hash') || ''
                 const lyricInterval = ctx.query.get('interval') || ''
 
-                const chunks: any[] = []
                 let received = 0
                 const total = parseInt((proxyRes.headers['content-length'] as string) || '0', 10)
                 let lastSpeedAt = Date.now()
                 let lastSpeedBytes = 0
                 let currentSpeed = 0
+                const ext = path.extname(filename) || '.mp3'
+                const tempPath = path.join(os.tmpdir(), `lx_tag_${Date.now()}_${crypto.randomBytes(8).toString('hex')}${ext}`)
+                const tempStream = fs.createWriteStream(tempPath)
+                let tempStreamError: Error | null = null
+                let taggedResponseSettled = false
+                const settleTaggedResponse = (response: Response) => {
+                  if (taggedResponseSettled) return
+                  taggedResponseSettled = true
+                  resolve(response)
+                }
+                const markProgressError = (message: string) => {
+                  if (!taskId) return
+                  fileCache.cacheProgress.set(taskId, { progress: 0, status: 'error', errorMsg: message, updatedAt: Date.now() })
+                  setTimeout(() => {
+                    if (fileCache.cacheProgress.get(taskId)?.status === 'error') fileCache.cacheProgress.delete(taskId)
+                  }, 30000)
+                }
+                tempStream.on('error', (error) => {
+                  tempStreamError = error
+                  try { proxyRes.destroy(error) } catch { }
+                })
 
                 if (taskId) {
                   fileCache.cacheProgress.set(taskId, { progress: 0, status: 'downloading', total, received: 0, speed: 0, updatedAt: Date.now() })
                 }
 
                 proxyRes.on('data', (c: any) => {
-                  chunks.push(c)
+                  received += c.length
                   if (taskId) {
-                    received += c.length
                     const now = Date.now()
                     if (now - lastSpeedAt >= 1000) {
                       currentSpeed = Math.max(0, (received - lastSpeedBytes) / ((now - lastSpeedAt) / 1000))
@@ -1099,8 +1129,17 @@ export const createCacheRouter = (): Router => {
                     fileCache.cacheProgress.set(taskId, { progress, status: 'downloading', total, received, speed: currentSpeed, updatedAt: now })
                   }
                 })
+                proxyRes.pipe(tempStream)
+                proxyRes.on('error', (error: Error) => {
+                  if (taggedResponseSettled) return
+                  markProgressError(error.message || 'Download stream failed')
+                  try { tempStream.destroy() } catch { }
+                  fs.unlink(tempPath, () => { })
+                  settleTaggedResponse(ctx.text('Download stream failed', 502))
+                })
 
                 proxyRes.on('end', async () => {
+                  if (taggedResponseSettled) return
                   if (taskId) {
                     fileCache.cacheProgress.set(taskId, { progress: 100, status: 'tagging', total, received, speed: 0, updatedAt: Date.now() })
                   }
@@ -1110,17 +1149,46 @@ export const createCacheRouter = (): Router => {
                     setTimeout(() => fileCache.cacheProgress.delete(taskId), 30000)
                   }
 
-                  let tempPath = ''
                   let tagger: any = null
+                  const createTempFileResponse = () => {
+                    const readStream = fs.createReadStream(tempPath)
+                    let cleaned = false
+                    const cleanup = () => {
+                      if (cleaned) return
+                      cleaned = true
+                      readStream.destroy()
+                      fs.unlink(tempPath, () => { })
+                    }
+                    const stream = new ReadableStream({
+                      start(controller) {
+                        readStream.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)))
+                        readStream.on('end', () => {
+                          cleanup()
+                          controller.close()
+                        })
+                        readStream.on('error', (error) => {
+                          cleanup()
+                          controller.error(error)
+                        })
+                      },
+                      cancel() {
+                        cleanup()
+                      },
+                    })
+                    return new Response(stream, { status: 200, headers })
+                  }
                   try {
-                    const buffer = Buffer.concat(chunks)
-                    if (buffer.length < 100) throw new Error('File too small, possibly invalid')
+                    await new Promise<void>((resolveWrite, rejectWrite) => {
+                      if (tempStreamError) {
+                        rejectWrite(tempStreamError)
+                        return
+                      }
+                      tempStream.once('finish', () => resolveWrite())
+                      tempStream.once('error', rejectWrite)
+                    })
+                    if (fs.statSync(tempPath).size < 100) throw new Error('File too small, possibly invalid')
 
-                    const ext = path.extname(filename) || '.mp3'
-                    tempPath = path.join(os.tmpdir(), `lx_tag_${Date.now()}_${crypto.randomBytes(8).toString('hex')}${ext}`)
-                    fs.writeFileSync(tempPath, new Uint8Array(buffer))
-
-                    tagger = new MusicTagger()
+                    tagger = new (getMusicTagNative().MusicTagger)()
                     tagger.loadPath(tempPath)
                     if (songName) tagger.title = songName
                     if (artist) tagger.artist = artist
@@ -1139,7 +1207,7 @@ export const createCacheRouter = (): Router => {
                           if (imgResp.ok) imgBuf = Buffer.from(await imgResp.arrayBuffer())
                         }
                         if (imgBuf && imgBuf.length > 0) {
-                          tagger.pictures = [new MetaPicture('image/jpeg', new Uint8Array(imgBuf), 'Cover')]
+                          tagger.pictures = [new (getMusicTagNative().MetaPicture)('image/jpeg', new Uint8Array(imgBuf), 'Cover')]
                         }
                       } catch (e: any) {
                         console.warn('[DownloadProxy] Picture fetch/embed failed:', imageUrl, e.message)
@@ -1165,16 +1233,24 @@ export const createCacheRouter = (): Router => {
                     tagger.dispose()
                     tagger = null
 
-                    const tagged = fs.readFileSync(tempPath)
-                    headers['Content-Length'] = tagged.length.toString()
+                    headers['Content-Length'] = fs.statSync(tempPath).size.toString()
                     finishProgress()
-                    resolve(new Response(new Uint8Array(tagged), { status: 200, headers }))
+                    settleTaggedResponse(createTempFileResponse())
                   } catch (e: any) {
-                    finishProgress()
-                    resolve(new Response(new Uint8Array(Buffer.concat(chunks)), { status: 200, headers }))
+                    if (tempStreamError) {
+                      markProgressError(tempStreamError.message || 'Download stream failed')
+                      fs.unlink(tempPath, () => { })
+                      settleTaggedResponse(ctx.text('Download processing failed', 502))
+                    } else if (fs.existsSync(tempPath)) {
+                      finishProgress()
+                      if (!headers['Content-Length']) headers['Content-Length'] = fs.statSync(tempPath).size.toString()
+                      settleTaggedResponse(createTempFileResponse())
+                    } else {
+                      markProgressError(e?.message || 'Download processing failed')
+                      settleTaggedResponse(ctx.text('Download processing failed', 502))
+                    }
                   } finally {
                     if (tagger) tagger.dispose()
-                    if (tempPath) fs.unlink(tempPath, () => { })
                   }
                 })
                 return

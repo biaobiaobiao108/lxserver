@@ -177,8 +177,15 @@ export const SESSION_COOKIE_NAME = 'lx_player_session'
 const playerSessions = new Map<string, { createdAt: number }>()
 const PLAYER_SESSION_TTL = 24 * 60 * 60 * 1000
 
+const pruneExpiredPlayerSessions = (now = Date.now()) => {
+  for (const [sessionId, session] of playerSessions) {
+    if (now - session.createdAt > PLAYER_SESSION_TTL) playerSessions.delete(sessionId)
+  }
+}
+
 /** 生成新的播放器会话 ID */
 export const createPlayerSession = (): string => {
+  pruneExpiredPlayerSessions()
   const sessionId = crypto.randomBytes(32).toString('hex')
   playerSessions.set(sessionId, { createdAt: Date.now() })
   return sessionId
@@ -192,6 +199,7 @@ export const removePlayerSession = (sessionId: string): void => {
 /** 校验会话有效性 */
 export const checkPlayerAuthSession = (cookies: Record<string, string>): boolean => {
   if (!global.lx.config?.['player.enableAuth']) return true
+  pruneExpiredPlayerSessions()
   const sessionId = cookies[SESSION_COOKIE_NAME]
   if (!sessionId) return false
   const session = playerSessions.get(sessionId)
@@ -246,5 +254,3 @@ export const verifyAdminAuth = (
   }
   return false
 }
-
-

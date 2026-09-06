@@ -22,14 +22,17 @@ class DownloadManager {
         this.serverQueueSyncInFlight = false;
         this.serverQueuePending = false;
         this.serverQueueLoaded = false;
+        this.serverPollTimer = null;
+        this.serverPollDelay = 2000;
 
         // Speed calculation
         this.lastTotalBytes = 0;
         this.lastTime = Date.now();
         this.speedInterval = setInterval(() => this.updateGlobalSpeed(), 1000);
 
-        // [New] Poll for server-side caching progress
-        this.serverPollInterval = setInterval(() => this.pollServerProgress(), 2000);
+        // [New] Poll server-side progress only while the drawer or active tasks need it.
+        this.scheduleServerPoll(2000);
+        document.addEventListener('visibilitychange', () => this.scheduleServerPoll(0));
 
         if (this.listContainer) {
             this.listContainer.addEventListener('scroll', () => this.scheduleScrollRender());
@@ -237,6 +240,7 @@ class DownloadManager {
             if (render) this.renderList();
             else updatedTasks.forEach(task => this.renderTask(task));
             this.saveTasks();
+            if (this.shouldPollServer()) this.scheduleServerPoll(this.serverPollDelay);
         } catch (error) {
             console.warn('[DownloadManager] Failed to sync server queue:', error);
         } finally {
@@ -358,7 +362,34 @@ class DownloadManager {
         }
     }
 
+    hasPollableTasks() {
+        return this.tasks.some(task => (
+            task.isServer && ['waiting', 'downloading', 'tagging'].includes(task.status)
+        ) || (
+            !task.isServer && task.status === 'downloading'
+        ));
+    }
+
+    shouldPollServer() {
+        return !!(
+            this.drawer && !this.drawer.classList.contains('translate-x-full')
+        ) || this.hasPollableTasks();
+    }
+
+    scheduleServerPoll(delay = this.serverPollDelay) {
+        if (this.serverPollTimer) clearTimeout(this.serverPollTimer);
+        this.serverPollTimer = setTimeout(async () => {
+            this.serverPollTimer = null;
+            if (!this.shouldPollServer()) return;
+            await this.pollServerProgress();
+            if (!this.shouldPollServer()) return;
+            this.serverPollDelay = document.hidden && this.hasPollableTasks() ? 10000 : 2000;
+            this.scheduleServerPoll(this.serverPollDelay);
+        }, Math.max(0, delay));
+    }
+
     async pollServerProgress() {
+        if (!this.shouldPollServer()) return;
         if (this.serverPollInFlight) return;
         this.serverPollInFlight = true;
         try {
@@ -610,6 +641,7 @@ class DownloadManager {
         } else {
             this.drawer.classList.add('translate-x-full');
         }
+        this.scheduleServerPoll(0);
     }
 
     // Convert bytes to readable string
@@ -765,6 +797,7 @@ class DownloadManager {
         this.renderList();
         this.processQueue();
         this.saveTasks();
+        this.scheduleServerPoll(0);
         await this.enqueueServerTasks(addedServerTasks);
     }
 

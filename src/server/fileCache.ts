@@ -7,10 +7,20 @@ import http from 'http'
 import https from 'https'
 import crypto from 'crypto'
 import { PassThrough } from 'stream'
-const { MusicTagger, MetaPicture } = require('music-tag-native')
 import { buildLyrics, parseLyrics } from '../utils/lrcTool'
 import { formatPlayTime } from '../common/utils/common'
 import { getDb } from '@/database'
+
+type MusicTagNative = {
+    MusicTagger: new () => any
+    MetaPicture: new (mime: string, data: Uint8Array, type: string) => any
+}
+
+let musicTagNative: MusicTagNative | null = null
+const getMusicTagNative = (): MusicTagNative => {
+    if (!musicTagNative) musicTagNative = require('music-tag-native') as MusicTagNative
+    return musicTagNative
+}
 
 // --- Cache Naming Patterns ---
 export const CACHE_NAMING_PATTERNS = {
@@ -391,7 +401,7 @@ export const getAudioMetadataUnsupportedStatus = (filePath: string) => {
 const readEmbeddedCoverState = (filePath: string) => {
     let tagger: any
     try {
-        tagger = new MusicTagger()
+        tagger = new (getMusicTagNative().MusicTagger)()
         tagger.loadPath(filePath)
         return hasValidEmbeddedCover(tagger.pictures)
     } catch (e) {
@@ -405,7 +415,7 @@ export const embedLyricsIntoFile = (filePath: string, lyricText: string) => {
     const audioContainer = detectAudioContainer(filePath)
     let tagger: any
     try {
-        tagger = new MusicTagger()
+        tagger = new (getMusicTagNative().MusicTagger)()
         tagger.loadPath(filePath)
         tagger.lyrics = lyricText
         tagger.save()
@@ -423,7 +433,7 @@ export const embedLyricsIntoFile = (filePath: string, lyricText: string) => {
 
     let verifyTagger: any
     try {
-        verifyTagger = new MusicTagger()
+        verifyTagger = new (getMusicTagNative().MusicTagger)()
         verifyTagger.loadPath(filePath)
         const embeddedLyrics = verifyTagger.lyrics
         const hasEmbedLyric = !!(embeddedLyrics && embeddedLyrics.trim().length > 10)
@@ -550,7 +560,7 @@ const inspectAudioFile = (filePath: string, requestedQuality?: string) => {
         : `.${audioContainer === 'mp4' ? 'm4a' : audioContainer}`
     let tagger: any
     try {
-        tagger = new MusicTagger()
+        tagger = new (getMusicTagNative().MusicTagger)()
         tagger.loadPath(filePath)
         const bitrate = Number(tagger.bitRate) || undefined
         const detectedQuality = detectQualityFromBitrate(bitrate, ext, tagger)
@@ -807,7 +817,7 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
                     if (!existing.interval || existing.quality === 'unknown' || !existing.bitrate || existing.hasEmbedLyric === undefined || existing.metadataWritable === undefined || qualityCorrectionNeeded) {
                         let tagger: any
                         try {
-                            tagger = new MusicTagger()
+                            tagger = new (getMusicTagNative().MusicTagger)()
                             tagger.loadPath(filePath)
                             const dur = tagger.duration
                             if (dur && !existing.interval) existing.interval = formatPlayTime(dur / 1000)
@@ -850,7 +860,7 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
                     const audioContainer = detectAudioContainer(filePath)
 
                     try {
-                        const tagger = new MusicTagger()
+                        const tagger = new (getMusicTagNative().MusicTagger)()
                         tagger.loadPath(filePath)
                         if (tagger.title && !songName) songName = tagger.title
                         if (tagger.artist && !singer) singer = tagger.artist
@@ -1148,13 +1158,13 @@ export const batchUpdateMetadata = async (filenames: string[], username: string 
             let tagger: any
             let taggerError: any
             try {
-                tagger = new MusicTagger()
+                tagger = new (getMusicTagNative().MusicTagger)()
                 tagger.loadPath(filePath)
                 tagger.title = item.name || 'Unknown'
                 tagger.artist = item.singer || 'Unknown'
                 if (item.album) tagger.album = item.album
                 if (imageBuffer && imageBuffer.length > 0) {
-                    tagger.pictures = [new MetaPicture(imageMime, new Uint8Array(imageBuffer), 'Cover')]
+                    tagger.pictures = [new (getMusicTagNative().MetaPicture)(imageMime, new Uint8Array(imageBuffer), 'Cover')]
                 }
                 tagger.save()
             } catch (e) {
@@ -1369,7 +1379,7 @@ export const getCacheCover = async (filename: string, username?: string) => {
 
                 let tagger: any
                 try {
-                    tagger = new MusicTagger()
+                    tagger = new (getMusicTagNative().MusicTagger)()
                     tagger.loadPath(filePath)
                     const pics = tagger.pictures
                     const pic = Array.isArray(pics) ? pics.find(hasValidPictureData) : null
@@ -1779,7 +1789,7 @@ const ensureCachedLyrics = async (
     if (shouldEmbedLyric && !hasEmbedLyric && metadataWritable) {
         let tagger: any
         try {
-            tagger = new MusicTagger()
+            tagger = new (getMusicTagNative().MusicTagger)()
             tagger.loadPath(audioPath)
             const lyricsInTag = tagger.lyrics
             hasEmbedLyric = !!(lyricsInTag && lyricsInTag.trim().length > 10)
@@ -1901,7 +1911,7 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
             let metadataWritable = false
             const audioContainer = inspection.audioContainer
             try {
-                const tagger = new MusicTagger()
+                const tagger = new (getMusicTagNative().MusicTagger)()
                 tagger.loadPath(finalPath)
                 hasCover = hasValidEmbeddedCover(tagger.pictures)
                 const lyricsInTag = tagger.lyrics
@@ -1977,6 +1987,9 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
             if (settled) return
             const message = err.message || 'Download failed'
             cacheProgress.set(songKey, { progress: 0, status: 'error', errorMsg: message })
+            setTimeout(() => {
+                if (cacheProgress.get(songKey)?.status === 'error') cacheProgress.delete(songKey)
+            }, 30000)
             settle(() => reject(err))
         }
 
@@ -1998,6 +2011,7 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
 
         req = protocol.get(url, (res) => {
             if (res.statusCode !== 200) {
+                res.resume()
                 fs.unlink(tempPath, () => { })
                 fail(new Error(`Status: ${res.statusCode}`))
                 return
@@ -2116,12 +2130,12 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                     let tagger: any
                     let metadataWritable = false
                     try {
-                        tagger = new MusicTagger()
+                        tagger = new (getMusicTagNative().MusicTagger)()
                         tagger.loadPath(finalPath)
                         tagger.title = metadata.name
                         tagger.artist = metadata.singer
                         tagger.album = metadata.album
-                        if (imageBuffer && imageBuffer.length > 0) tagger.pictures = [new MetaPicture(imageMime, new Uint8Array(imageBuffer), 'Cover')]
+                        if (imageBuffer && imageBuffer.length > 0) tagger.pictures = [new (getMusicTagNative().MetaPicture)(imageMime, new Uint8Array(imageBuffer), 'Cover')]
                         tagger.save()
                         metadataWritable = true
                     } catch (e) {
@@ -2306,10 +2320,10 @@ export const replaceDownloadedMusicItem = async (
         if (!finalHasCover && originalCover?.data?.length) {
             let tagger: any
             try {
-                tagger = new MusicTagger()
+                tagger = new (getMusicTagNative().MusicTagger)()
                 tagger.loadPath(targetAudioPath)
                 tagger.pictures = [
-                    new MetaPicture(originalCover.mime || 'image/jpeg', new Uint8Array(originalCover.data), 'Cover'),
+                    new (getMusicTagNative().MetaPicture)(originalCover.mime || 'image/jpeg', new Uint8Array(originalCover.data), 'Cover'),
                 ]
                 tagger.save()
             } catch (e) {
@@ -2421,6 +2435,7 @@ export const stopUserTasks = (username: string, songKey?: string) => {
     if (songKey) {
         const idx = tasks.findIndex(t => t.songKey === songKey)
         if (idx !== -1) { tasks[idx].controller.abort(); tasks.splice(idx, 1) }
+        if (tasks.length === 0) activeTasks.delete(username)
     } else {
         tasks.forEach(t => t.controller.abort())
         activeTasks.delete(username)

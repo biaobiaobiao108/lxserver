@@ -47,6 +47,7 @@ type DownloadResolver = (task: ServerDownloadTask) => Promise<ResolveResult>
 
 const DEFAULT_CONCURRENT = 3
 const MAX_CONCURRENT_PER_USER = 5
+export const MAX_HISTORY_PER_USER = 200
 const tasks = new Map<string, ServerDownloadTask>()
 const controllers = new Map<string, AbortController>()
 const concurrencyByUser = new Map<string, number>()
@@ -58,6 +59,7 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null
 const taskMapKey = (username: string, id: string) => `${username}:${id}`
 const getQueueFile = () => path.join(global.lx.dataPath, 'server-download-queue.json')
 const validStatuses = new Set<ServerDownloadStatus>(['waiting', 'downloading', 'tagging', 'paused', 'finished', 'exists', 'error'])
+const resumableStatuses = new Set<ServerDownloadStatus>(['waiting', 'downloading', 'tagging', 'paused'])
 
 const normalizeConcurrency = (value: unknown) => {
   const parsed = Number.parseInt(String(value), 10)
@@ -72,8 +74,44 @@ const sanitizeId = (value: unknown) => {
   return /^[A-Za-z0-9_-]{1,160}$/.test(id) ? id : `server_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 }
 
+export const pruneDownloadHistory = (
+  taskList: ServerDownloadTask[],
+  maxHistoryPerUser = MAX_HISTORY_PER_USER,
+) => {
+  const historicalByUser = new Map<string, ServerDownloadTask[]>()
+  for (const task of taskList) {
+    if (resumableStatuses.has(task.status)) continue
+    const history = historicalByUser.get(task.username) || []
+    history.push(task)
+    historicalByUser.set(task.username, history)
+  }
+
+  const removedKeys = new Set<string>()
+  for (const history of historicalByUser.values()) {
+    history
+      .sort((a, b) => (b.updatedAt - a.updatedAt) || (b.createdAt - a.createdAt))
+      .slice(maxHistoryPerUser)
+      .forEach(task => removedKeys.add(taskMapKey(task.username, task.id)))
+  }
+  return taskList.filter(task => !removedKeys.has(taskMapKey(task.username, task.id)))
+}
+
+const pruneHistory = () => {
+  const retained = pruneDownloadHistory(Array.from(tasks.values()))
+  const removed = tasks.size - retained.length
+  if (removed > 0) {
+    tasks.clear()
+    retained.forEach(task => tasks.set(taskMapKey(task.username, task.id), task))
+  }
+  return removed
+}
+
 const saveNow = () => {
   if (!initialized) return
+  const removed = pruneHistory()
+  if (removed > 0) {
+    console.log(`[ServerDownloadQueue] Pruned ${removed} old history task(s)`)
+  }
   const file = getQueueFile()
   const tempFile = `${file}.tmp`
   try {
@@ -118,6 +156,7 @@ const loadTasks = () => {
       const quality = String(raw.quality || raw.requestedQuality || '320k')
       const requestedQuality = String(raw.requestedQuality || quality)
       const now = Date.now()
+      const createdAt = Number(raw.createdAt || now)
       const task: ServerDownloadTask = {
         id,
         username: String(raw.username),
@@ -135,11 +174,12 @@ const loadTasks = () => {
         enableOnlyDownloadMode: !!raw.enableOnlyDownloadMode,
         cacheLyric: raw.cacheLyric !== false,
         embedLyric: raw.embedLyric !== false,
-        createdAt: Number(raw.createdAt || now),
-        updatedAt: now,
+        createdAt,
+        updatedAt: Number(raw.updatedAt || createdAt),
       }
       tasks.set(taskMapKey(task.username, task.id), task)
     }
+    pruneHistory()
     console.log(`[ServerDownloadQueue] Restored ${tasks.size} persisted tasks`)
   } catch (err) {
     console.warn('[ServerDownloadQueue] Failed to restore queue:', err)

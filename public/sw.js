@@ -1,11 +1,10 @@
-const CACHE_NAME = 'lx-sync-server-v3';
+const CACHE_NAME = 'lx-sync-server-v4';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
     './style.css',
     './app.js',
     './js/ui-utils.js',
-    './js/notification-engine.js',
     './icon.svg',
     './manifest.json',
     './vendor/js/marked.min.js',

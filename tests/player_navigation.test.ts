@@ -31,3 +31,34 @@ describe('Player Navigation and State Restoration Safety', () => {
         }
     });
 });
+
+describe('Update Notification Engine & PostHog Removal', () => {
+    const notificationEnginePath = path.join(import.meta.dir, '../public/js/notification-engine.js');
+    const adminHtmlPath = path.join(import.meta.dir, '../public/index.html');
+    const playerHtmlPath = path.join(import.meta.dir, '../public/music/index.html');
+    const swPath = path.join(import.meta.dir, '../public/sw.js');
+
+    it('notification-engine.js should be completely removed from public/js', () => {
+        expect(fs.existsSync(notificationEnginePath)).toBe(false);
+    });
+
+    it('public/index.html should not include PostHog analytics or notification-engine.js', () => {
+        const content = fs.readFileSync(adminHtmlPath, 'utf8');
+        expect(content.includes('posthog')).toBe(false);
+        expect(content.includes('notification-engine.js')).toBe(false);
+        expect(content.includes('app.checkForUpdates')).toBe(false);
+    });
+
+    it('public/music/index.html should not include PostHog analytics or notification-engine.js', () => {
+        const content = fs.readFileSync(playerHtmlPath, 'utf8');
+        expect(content.includes('posthog')).toBe(false);
+        expect(content.includes('notification-engine.js')).toBe(false);
+        expect(content.includes('checkForUpdates')).toBe(false);
+    });
+
+    it('public/sw.js should not cache notification-engine.js', () => {
+        const content = fs.readFileSync(swPath, 'utf8');
+        expect(content.includes('notification-engine.js')).toBe(false);
+    });
+});
+

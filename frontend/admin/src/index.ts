@@ -520,14 +520,6 @@ class App {
         }
     }
 
-    checkForUpdates() {
-        if (window.LxNotification && window.LxNotification.checkUpdates) {
-            window.LxNotification.checkUpdates(true);
-        } else {
-            showInfo('通知服务未就绪，请稍后重试');
-        }
-    }
-
     initPlayerLink() {
         // 初始化播放器链接
         const navPlayerLink = document.getElementById('nav-player-link');

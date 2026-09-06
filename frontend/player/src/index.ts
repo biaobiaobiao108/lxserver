@@ -14,16 +14,6 @@ import { initAccessibleOverlays } from './accessible_overlays';
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
-
-function checkForUpdates() {
-    if (window.LxNotification && window.LxNotification.checkUpdates) {
-        window.LxNotification.checkUpdates(true);
-    } else {
-        showinfo('通知服务未就绪，请稍后重试');
-    }
-}
-
 const API_BASE = '/api/music';
 const credentialStorage = window.sessionStorage;
 

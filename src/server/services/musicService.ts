@@ -10,6 +10,7 @@ import * as remasterQueue from '../remasterQueue'
 import { normalizeSongInfo, resolveServerSong } from './musicResolver'
 import { getUserSpace } from '@/user'
 import { File } from '@/constants'
+import { buildLyrics } from '@/utils/lrcTool'
 import { startupLog } from '@/utils/log4js'
 
 /**
@@ -27,7 +28,9 @@ export const initMusicServices = async (): Promise<void> => {
     // 后台同步活跃用户的缓存索引
     if (global.lx.config.users) {
       for (const user of global.lx.config.users) {
-        void fileCache.syncCacheIndex(user.name)
+        if (user.name) {
+          void fileCache.syncCacheIndex(user.name)
+        }
       }
     }
   }
@@ -39,7 +42,7 @@ export const initMusicServices = async (): Promise<void> => {
       if (!source || !musicSdk[source] || !musicSdk[source].getLyric) {
         return null
       }
-      let songmid: string = songInfo.songmid || songInfo.id || ''
+      let songmid = String(songInfo.songmid || songInfo.id || songInfo.songId || '')
       const sourcePrefix = `${source}_`
       if (songmid.startsWith(sourcePrefix)) songmid = songmid.slice(sourcePrefix.length)
       if (!songmid) return null
@@ -52,7 +55,8 @@ export const initMusicServices = async (): Promise<void> => {
         interval: songInfo.interval || '',
       })
       const result = await requestObj.promise
-      return result?.lyric || result?.lrc || null
+      if (!result) return null
+      return typeof result === 'string' ? result : buildLyrics(result)
     } catch (e: any) {
       startupLog.warn(`[LyricFetcher] Failed for "${songInfo.name}":`, e.message || e)
       return null

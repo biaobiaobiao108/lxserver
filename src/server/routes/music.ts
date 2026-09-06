@@ -442,12 +442,13 @@ export const createMusicRouter = (): Router => {
 
   router.get('/api/music/lyric', async (ctx) => {
     const source = ctx.query.get('source')
-    let songmid = ctx.query.get('songmid') || ctx.query.get('songId') || ctx.query.get('id')
+    const rawSongmid = ctx.query.get('songmid') || ctx.query.get('songId') || ctx.query.get('id')
 
-    if (!source || !songmid) {
+    if (!source || !rawSongmid) {
       return ctx.text('Missing source or songmid', 400)
     }
 
+    let songmid = String(rawSongmid)
     const sourcePrefix = `${source}_`
     if (songmid.startsWith(sourcePrefix)) {
       songmid = songmid.slice(sourcePrefix.length)

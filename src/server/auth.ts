@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import type http from 'http'
 import { SYNC_CODE } from '@/constants'
 import {
@@ -157,21 +158,78 @@ export const authConnect = async (req: http.IncomingMessage) => {
   throw new Error('failed')
 }
 
-export const verifyAdminAuth = (req: http.IncomingMessage, allowQueryAuth = false, urlObj?: URL): boolean => {
-  const configuredPassword = global.lx.config['frontend.password']
+export const SESSION_COOKIE_NAME = 'lx_player_session'
+const playerSessions = new Map<string, { createdAt: number }>()
+const PLAYER_SESSION_TTL = 24 * 60 * 60 * 1000
+
+/** 生成新的播放器会话 ID */
+export const createPlayerSession = (): string => {
+  const sessionId = crypto.randomBytes(32).toString('hex')
+  playerSessions.set(sessionId, { createdAt: Date.now() })
+  return sessionId
+}
+
+/** 移除播放器会话 */
+export const removePlayerSession = (sessionId: string): void => {
+  playerSessions.delete(sessionId)
+}
+
+/** 校验会话有效性 */
+export const checkPlayerAuthSession = (cookies: Record<string, string>): boolean => {
+  if (!global.lx.config?.['player.enableAuth']) return true
+  const sessionId = cookies[SESSION_COOKIE_NAME]
+  if (!sessionId) return false
+  const session = playerSessions.get(sessionId)
+  if (!session) return false
+  if (Date.now() - session.createdAt > PLAYER_SESSION_TTL) {
+    playerSessions.delete(sessionId)
+    return false
+  }
+  return true
+}
+
+export const verifyAdminAuth = (
+  req: http.IncomingMessage | Request | { headers: Record<string, any> },
+  allowQueryAuth = false,
+  urlObj?: URL
+): boolean => {
+  const configuredPassword = global.lx.config?.['frontend.password']
   if (!configuredPassword || typeof configuredPassword !== 'string' || configuredPassword.trim() === '') {
     return false
   }
-  const headerAuth = req.headers['x-frontend-auth']
+
+  let headerAuth: string | null = null
+  if ('headers' in req) {
+    if (typeof (req.headers as any).get === 'function') {
+      headerAuth = (req.headers as Headers).get('x-frontend-auth')
+    } else {
+      headerAuth = (req.headers as any)['x-frontend-auth']
+    }
+  }
+
   if (typeof headerAuth === 'string' && headerAuth === configuredPassword) {
     return true
   }
-  if (allowQueryAuth && urlObj) {
-    const queryAuth = urlObj.searchParams.get('auth')
-    if (typeof queryAuth === 'string' && queryAuth === configuredPassword) {
-      return true
+
+  if (allowQueryAuth) {
+    let searchParams: URLSearchParams | null = null
+    if (urlObj) {
+      searchParams = urlObj.searchParams
+    } else if ('url' in req && typeof (req as any).url === 'string') {
+      try {
+        const parsed = new URL((req as any).url, 'http://localhost')
+        searchParams = parsed.searchParams
+      } catch { }
+    }
+
+    if (searchParams) {
+      const queryAuth = searchParams.get('auth')
+      if (typeof queryAuth === 'string' && queryAuth === configuredPassword) {
+        return true
+      }
     }
   }
   return false
 }
+
 

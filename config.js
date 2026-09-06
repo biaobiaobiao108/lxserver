@@ -28,7 +28,7 @@ module.exports = {
       "dataPath": "D:\\MyBuild\\lxserver\\data\\users\\steelway108_92cd20"
     }
   ],
-  "frontend.password": "123456",
+  "frontend.password": "fjb0147852",
   "webdav.enable": false,
   "webdav.url": "",
   "webdav.username": "",

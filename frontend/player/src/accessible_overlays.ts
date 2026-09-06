@@ -83,6 +83,10 @@ let previousBodyOverflow = '';
 let isBodyLocked = false;
 let inertBackgroundElements: HTMLElement[] = [];
 
+function setAttributeIfChanged(element: HTMLElement, name: string, value: string): void {
+    if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+}
+
 function getOverlays(): OverlayElement[] {
     return Array.from(document.querySelectorAll<OverlayElement>(OVERLAY_SELECTOR));
 }
@@ -137,13 +141,13 @@ function enhanceButtonLabels(): void {
 
 function enhanceOverlay(element: OverlayElement): void {
     if (!element.hasAttribute('role')) element.setAttribute('role', 'dialog');
-    element.setAttribute('aria-modal', String(!isDrawer(element)));
+    setAttributeIfChanged(element, 'aria-modal', String(!isDrawer(element)));
     if (!element.hasAttribute('tabindex')) element.setAttribute('tabindex', '-1');
 
     const heading = getHeading(element);
     if (heading) {
         if (!heading.id) heading.id = `${element.id || 'overlay'}-title`;
-        element.setAttribute('aria-labelledby', heading.id);
+        setAttributeIfChanged(element, 'aria-labelledby', heading.id);
     } else if (!element.hasAttribute('aria-label')) {
         element.setAttribute('aria-label', element.id || '对话框');
     }
@@ -174,7 +178,7 @@ function setBackgroundInert(overlay: OverlayElement): void {
     inertBackgroundElements = Array.from(document.body.children)
         .filter((child): child is HTMLElement => child instanceof HTMLElement && child !== overlay && !child.classList.contains('skip-link'));
     inertBackgroundElements.forEach(element => {
-        element.inert = true;
+        if (!element.inert) element.inert = true;
         if (!element.hasAttribute('inert')) element.setAttribute('inert', '');
     });
 }
@@ -189,9 +193,9 @@ function clearBackgroundInert(): void {
 
 function openOverlay(element: OverlayElement): void {
     enhanceOverlay(element);
-    element.removeAttribute('aria-hidden');
-    element.inert = false;
-    element.removeAttribute('inert');
+    if (element.hasAttribute('aria-hidden')) element.removeAttribute('aria-hidden');
+    if (element.inert) element.inert = false;
+    if (element.hasAttribute('inert')) element.removeAttribute('inert');
     if (!isDrawer(element)) {
         lockBody();
         setBackgroundInert(element);
@@ -213,7 +217,7 @@ function openOverlay(element: OverlayElement): void {
 
 function closeOverlay(element: OverlayElement): void {
     if (element.getAttribute('aria-hidden') !== 'true') element.setAttribute('aria-hidden', 'true');
-    element.inert = true;
+    if (!element.inert) element.inert = true;
     if (!element.hasAttribute('inert')) element.setAttribute('inert', '');
 
     if (activeOverlay !== element) return;

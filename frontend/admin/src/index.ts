@@ -23,6 +23,10 @@ let activeAdminOverlay: AdminOverlay | null = null;
 let adminRestoreFocus: HTMLElement | null = null;
 let adminBodyOverflow = '';
 
+function setAdminAttributeIfChanged(element: HTMLElement, name: string, value: string): void {
+    if (element.getAttribute(name) !== value) element.setAttribute(name, value);
+}
+
 function adminOverlayIsOpen(element: AdminOverlay): boolean {
     return !element.classList.contains('hidden') && getComputedStyle(element).display !== 'none';
 }
@@ -39,14 +43,14 @@ function syncAdminOverlays(): void {
     const app = document.getElementById('app') as AdminOverlay | null;
 
     overlays.forEach(overlay => {
-        overlay.setAttribute('role', 'dialog');
-        overlay.setAttribute('aria-modal', 'true');
-        overlay.setAttribute('aria-hidden', String(!adminOverlayIsOpen(overlay)));
+        setAdminAttributeIfChanged(overlay, 'role', 'dialog');
+        setAdminAttributeIfChanged(overlay, 'aria-modal', 'true');
+        setAdminAttributeIfChanged(overlay, 'aria-hidden', String(!adminOverlayIsOpen(overlay)));
         if (!overlay.hasAttribute('tabindex')) overlay.setAttribute('tabindex', '-1');
         const title = overlay.querySelector<HTMLElement>('h1, h2, h3');
         if (title) {
             if (!title.id) title.id = `${overlay.id || 'admin-overlay'}-title`;
-            overlay.setAttribute('aria-labelledby', title.id);
+            setAdminAttributeIfChanged(overlay, 'aria-labelledby', title.id);
         }
     });
 
@@ -58,7 +62,7 @@ function syncAdminOverlays(): void {
         adminBodyOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         if (app) {
-            app.inert = true;
+            if (!app.inert) app.inert = true;
             if (!app.hasAttribute('inert')) app.setAttribute('inert', '');
         }
         requestAnimationFrame(() => {
@@ -69,7 +73,7 @@ function syncAdminOverlays(): void {
         activeAdminOverlay = null;
         document.body.style.overflow = adminBodyOverflow;
         if (app) {
-            app.inert = false;
+            if (app.inert) app.inert = false;
             app.removeAttribute('inert');
         }
         if (adminRestoreFocus?.isConnected) adminRestoreFocus.focus({ preventScroll: true });

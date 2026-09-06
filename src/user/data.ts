@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { filterFileName, toMD5 } from '@/utils'
-import { getDb } from '@/database'
+import { getDb, getDbStatement } from '@/database'
 
 export interface ServerInfo {
   serverId: string
@@ -41,13 +41,13 @@ export const getUserDirname = (userName: string): string => {
 }
 
 export const getUserConfig = (userName: string): Required<LX.User> => {
-  const db = getDb()
-  const row = db.query<{
+  const stmt = getDbStatement<{
     name: string
     password: string
     max_snapshot_num: number
     add_music_location_type: string
-  }, [string]>('SELECT * FROM users WHERE name = ?').get(userName)
+  }, [string]>('SELECT * FROM users WHERE name = ?')
+  const row = stmt.get(userName)
 
   if (row) {
     return {
@@ -69,21 +69,21 @@ export const getUserConfig = (userName: string): Required<LX.User> => {
 
 export const getUserName = (clientId: string | null): string | null => {
   if (!clientId) return null
-  const db = getDb()
-  const row = db.query<{ user_name: string }, [string]>(
+  const stmt = getDbStatement<{ user_name: string }, [string]>(
     'SELECT user_name FROM devices WHERE client_id = ?'
-  ).get(clientId)
+  )
+  const row = stmt.get(clientId)
   return row?.user_name ?? null
 }
 
 export const setUserName = (clientId: string, userName: string): void => {
-  const db = getDb()
-  db.run('UPDATE devices SET user_name = ? WHERE client_id = ?', [userName, clientId])
+  const stmt = getDbStatement('UPDATE devices SET user_name = ? WHERE client_id = ?')
+  stmt.run(userName, clientId)
 }
 
 export const deleteUserName = (clientId: string): void => {
-  const db = getDb()
-  db.run('DELETE FROM devices WHERE client_id = ?', [clientId])
+  const stmt = getDbStatement('DELETE FROM devices WHERE client_id = ?')
+  stmt.run(clientId)
 }
 
 export const migrateUserData = (oldName: string, newName: string): string => {
@@ -150,16 +150,16 @@ export class UserDataManage {
   userDir: string
 
   getAllClientKeyInfo = (): LX.Sync.KeyInfo[] => {
-    const db = getDb()
-    const rows = db.query<{
+    const stmt = getDbStatement<{
       client_id: string
       key: string
       device_name: string
       is_mobile: number
       last_connect_date: number
-    }, [string]>('SELECT * FROM devices WHERE user_name = ? ORDER BY last_connect_date DESC').all(this.userName)
+    }, [string]>('SELECT * FROM devices WHERE user_name = ? ORDER BY last_connect_date DESC')
+    const rows: any[] = stmt.all(this.userName)
 
-    return rows.map(r => ({
+    return rows.map((r: any) => ({
       clientId: r.client_id,
       key: r.key,
       deviceName: r.device_name,
@@ -169,30 +169,30 @@ export class UserDataManage {
   }
 
   saveClientKeyInfo = (keyInfo: LX.Sync.KeyInfo): void => {
-    const db = getDb()
-    db.run(`
+    const stmt = getDbStatement(`
       INSERT OR REPLACE INTO devices (client_id, user_name, key, device_name, is_mobile, last_connect_date)
       VALUES (?, ?, ?, ?, ?, ?)
-    `, [
+    `)
+    stmt.run(
       keyInfo.clientId,
       this.userName,
       keyInfo.key,
       keyInfo.deviceName || 'Unknown',
       keyInfo.isMobile ? 1 : 0,
       keyInfo.lastConnectDate || Date.now(),
-    ])
+    )
   }
 
   getClientKeyInfo = (clientId: string | null): LX.Sync.KeyInfo | null => {
     if (!clientId) return null
-    const db = getDb()
-    const r = db.query<{
+    const stmt = getDbStatement<{
       client_id: string
       key: string
       device_name: string
       is_mobile: number
       last_connect_date: number
-    }, [string, string]>('SELECT * FROM devices WHERE client_id = ? AND user_name = ?').get(clientId, this.userName)
+    }, [string, string]>('SELECT * FROM devices WHERE client_id = ? AND user_name = ?')
+    const r = stmt.get(clientId, this.userName)
 
     if (!r) return null
     return {
@@ -205,15 +205,15 @@ export class UserDataManage {
   }
 
   removeClientKeyInfo = async (clientId: string): Promise<void> => {
-    const db = getDb()
-    db.run('DELETE FROM devices WHERE client_id = ? AND user_name = ?', [clientId, this.userName])
+    const stmt = getDbStatement('DELETE FROM devices WHERE client_id = ? AND user_name = ?')
+    stmt.run(clientId, this.userName)
   }
 
   isIncluedsClient = (clientId: string): boolean => {
-    const db = getDb()
-    const row = db.query<{ client_id: string }, [string, string]>(
+    const stmt = getDbStatement<{ client_id: string }, [string, string]>(
       'SELECT client_id FROM devices WHERE client_id = ? AND user_name = ?'
-    ).get(clientId, this.userName)
+    )
+    const row = stmt.get(clientId, this.userName)
     return !!row
   }
 

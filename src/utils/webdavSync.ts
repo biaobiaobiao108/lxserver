@@ -128,7 +128,11 @@ class WebDAVSync extends EventEmitter {
                     scanDir(fullPath)
                 } else {
                     const relativePath = path.relative(this.dataPath, fullPath)
-                    if (!relativePath.includes('temp-') && !relativePath.endsWith('.log')) {
+                    const isIgnored = relativePath.includes('temp-') ||
+                        relativePath.endsWith('.log') ||
+                        relativePath.endsWith('.db-shm') ||
+                        relativePath.endsWith('.db-wal')
+                    if (!isIgnored) {
                         files.set(relativePath, this.getFileHash(fullPath))
                     }
                 }
@@ -388,7 +392,7 @@ class WebDAVSync extends EventEmitter {
                 archive.pipe(output)
                 archive.glob('**/*', {
                     cwd: this.dataPath,
-                    ignore: ['temp-*.zip', '*.log', 'lx-sync-backup-*.zip'],
+                    ignore: ['temp-*.zip', '*.log', 'lx-sync-backup-*.zip', '*.db-shm', '*.db-wal'],
                 })
 
                 // [新增] 将根目录下的 config.js 也打包进去

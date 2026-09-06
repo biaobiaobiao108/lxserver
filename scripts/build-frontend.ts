@@ -8,13 +8,16 @@ async function build() {
   const adminEntry = path.join(import.meta.dir, '../frontend/admin/src/index.ts')
   const playerEntry = path.join(import.meta.dir, '../frontend/player/src/index.ts')
 
+  const shouldMinify = process.env.NODE_ENV === 'production' || !isWatch
+
   // 1. Build Admin Panel
   const adminResult = await Bun.build({
     entrypoints: [adminEntry],
     outdir: path.join(import.meta.dir, '../public'),
     naming: 'app.js',
-    minify: process.env.NODE_ENV === 'production',
+    minify: shouldMinify,
     target: 'browser',
+    sourcemap: isWatch ? 'inline' : 'none',
   })
   if (!adminResult.success) {
     console.error('[Bun Bundler] Admin build failed:', adminResult.logs)
@@ -27,8 +30,9 @@ async function build() {
     entrypoints: [playerEntry],
     outdir: path.join(import.meta.dir, '../public/music'),
     naming: 'app.js',
-    minify: process.env.NODE_ENV === 'production',
+    minify: shouldMinify,
     target: 'browser',
+    sourcemap: isWatch ? 'inline' : 'none',
   })
   if (!playerResult.success) {
     console.error('[Bun Bundler] Player build failed:', playerResult.logs)
@@ -37,7 +41,9 @@ async function build() {
   }
 
   const duration = (performance.now() - startTime).toFixed(1)
-  console.log(`[Bun Bundler] Frontend build completed in ${duration}ms`)
+  const adminSize = (fs.statSync(path.join(import.meta.dir, '../public/app.js')).size / 1024).toFixed(1)
+  const playerSize = (fs.statSync(path.join(import.meta.dir, '../public/music/app.js')).size / 1024).toFixed(1)
+  console.log(`[Bun Bundler] Frontend build completed in ${duration}ms (admin: ${adminSize}KB, player: ${playerSize}KB, minified: ${shouldMinify})`)
 }
 
 async function main() {

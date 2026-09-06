@@ -394,29 +394,24 @@ function normalizePort(val: string) {
 // const port = normalizePort(envParams.PORT ?? '9527')
 // const bindIP = envParams.BIND_IP ?? '127.0.0.1'
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { createModuleEvent } = require('@/event')
+// 初始化全局事件总线
+const { createModuleEvent } = await import('@/event')
 createModuleEvent()
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-require('@/utils/migrate').default(global.lx.dataPath, global.lx.userPath)
-
 // 初始化 SQLite 原生数据库 (WAL 模式)
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { initDatabase } = require('@/database')
+const { initDatabase } = await import('@/database')
 initDatabase()
 
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { startServer } = require('@/server')
+// 初始化 Web 服务
+const { startServer } = await import('@/server')
 
 // 初始化 WebDAV 同步
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const WebDAVSync = require('@/utils/webdavSync').default
+const { default: WebDAVSync } = await import('@/utils/webdavSync')
 const webdavSync = new WebDAVSync({
   enable: global.lx.config['webdav.enable'],
-  url: global.lx.config['webdav.url'],
-  username: global.lx.config['webdav.username'],
-  password: global.lx.config['webdav.password'],
+  url: global.lx.config['webdav.url'] || '',
+  username: global.lx.config['webdav.username'] || '',
+  password: global.lx.config['webdav.password'] || '',
   syncPath: global.lx.config['webdav.syncPath'],
   backupPath: global.lx.config['webdav.backupPath'],
   interval: global.lx.config['sync.interval'],
@@ -434,7 +429,6 @@ if (webdavSync.isConfigured()) {
       const configPath = process.env.CONFIG_PATH || path.join(process.cwd(), 'config.js')
       if (fs.existsSync(configPath)) {
         console.log('Reloading config.js after WebDAV restore...')
-        // 清除 node require 缓存以强制重载
         try {
           delete require.cache[require.resolve(configPath)]
           margeConfig(configPath)
@@ -443,32 +437,8 @@ if (webdavSync.isConfigured()) {
         }
       }
 
-      // 2. 重新加载 users.json
-      const usersJsonPath = path.join(global.lx.dataPath, 'users.json')
-      if (fs.existsSync(usersJsonPath)) {
-        try {
-          const users = JSON.parse(fs.readFileSync(usersJsonPath, 'utf-8'))
-          if (Array.isArray(users)) {
-            console.log('Reload users from restored users.json')
-            global.lx.config.users = users.map(u => ({ ...u, dataPath: '' }))
-
-            // 重新初始化用户目录
-            // eslint-disable-next-line @typescript-eslint/no-var-requires
-            const { getUserDirname } = require('@/user')
-            for (const user of global.lx.config.users) {
-              const dataPath = path.join(global.lx.userPath, getUserDirname(user.name))
-              checkAndCreateDir(dataPath)
-              user.dataPath = dataPath
-            }
-          }
-        } catch (err) {
-          console.error('Failed to reload users.json after WebDAV restore', err)
-        }
-      }
-
-      // 3. 重新加载所有自定义源 (解决前端显示加载中/旧源问题)
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { initUserApis } = require('@/server/userApi')
+      // 2. 重新初始化用户 API 与自定义源
+      const { initUserApis } = await import('@/server/userApi')
       console.log('Re-initializing user APIs after WebDAV restore...')
       await initUserApis()
     }

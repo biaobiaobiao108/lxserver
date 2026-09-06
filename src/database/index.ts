@@ -120,7 +120,23 @@ export const initDatabase = (customDbPath?: string): Database => {
   db.run('CREATE INDEX IF NOT EXISTS idx_cache_query ON cache_index(location, user_name, folder, song_id);')
 
   dbInstance = db
+  stmtCache.clear()
   return db
+}
+
+const stmtCache = new Map<string, any>()
+
+/**
+ * 获取或缓存已预编译的 SQLite Statement，避免高频调用时的重复 SQL 词法解析与编译开销
+ */
+export const getDbStatement = <T = any, Params extends any[] = any[]>(sql: string): any => {
+  const db = getDb()
+  let stmt = stmtCache.get(sql)
+  if (!stmt) {
+    stmt = (db as any).prepare(sql)
+    stmtCache.set(sql, stmt)
+  }
+  return stmt
 }
 
 export const getDb = (): Database => {
@@ -132,6 +148,7 @@ export const getDb = (): Database => {
 
 export const closeDb = (): void => {
   if (dbInstance) {
+    stmtCache.clear()
     dbInstance.close()
     dbInstance = null
   }

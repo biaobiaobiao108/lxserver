@@ -1,45 +1,60 @@
 # AGENTS.md
 
-本文档为 AI Agent 及开发者在维护和开发本项目时的核心指南，包含项目架构概览、开发规范、工具链命令及注意事项。
+本文档为 AI Agent 及开发者在维护和开发本项目时的核心工程指南，包含项目当前架构概览、设计规范、工具链命令及关键注意事项。
 
 ---
 
 ## 1. 项目概览与架构
 
-本项目为 **LX Music 数据同步与 Web 播放器服务端**，已全面演进为 **全栈 Bun + TypeScript** 现代工程架构，并专注于 **Docker (Alpine)** 云端与私有化部署。
+本项目为 **LX Music 数据同步与 Web 播放器服务端**。后端全面基于 **全栈 Bun (1.1+) + TypeScript 7.0+** 原生架构，彻底移除了遗留的 Express 依赖，前端使用 **原生 Bun Bundler** 毫秒级打包，专注于 **Docker (Alpine)** 云端与私有化容器部署。
 
 ### 核心架构层级
 - **后端服务 (`src/`)**：
-  - 基于 **Bun** 高性能运行时驱动，结合 Express 与 WebSocket。
-  - 提供多客户端音乐列表实时双向同步（支持快照、版本回滚）。
-  - 内置兼容 **Subsonic 协议** 服务端接口，支持第三方客户端（如音流、Feishin 等）。
-  - 内置 WebDAV 云端增量同步与定期全量备份机制。
-  - 集成 `musicSdk` 动态音源解析体系与自定义用户 API 扩展。
+  - **网络与核心运行时 (`src/server/core/`)**：
+    - 完全基于原生 **`Bun.serve`** 与 Web 标准 Request/Response 抽象。
+    - 自研轻量级高性能洋葱模型路由器 (`Router`) 与上下文 (`HttpContext`)，无任何外部 Node.js Web 框架开销。
+  - **原生 WebSocket 实时同步 (`src/server/sync/`)**：
+    - 基于 Bun 原生高效 WebSocket 驱动，负责客户端列表数据实时双向同步、版本控制、快照备份与多端冲突仲裁。
+  - **结构化持久化存储 (`src/database/`)**：
+    - 全面采用 **`bun:sqlite`** 原生数据库引擎，开启 WAL 模式与外键约束。
+    - 结构化管理账户（`users`）、设备密钥（`devices`）、列表/黑名单快照（`snapshots`）、用户级设置（`user_settings`）及缓存索引（`cache_index`）。
+  - **业务领域路由模块 (`src/server/routes/`)**：
+    - 采用领域驱动划分：`auth`（鉴权与 Session）、`system`（系统信息与配置）、`user`（用户增删改查）、`customSource`（自定义音源管理）、`elfinder`（文件管理器后端）、`music`（聚合搜索、音源解析、歌词服务）、`cache`（歌曲下载、音质转码与 USLT 歌词内嵌）、`subsonic`（兼容 Subsonic 协议接口与全网在线检索）、`static`（前端与 SPA 兜底静态资源分发）。
+  - **服务组装入口 (`src/server/server.ts` & `src/server/routes/index.ts`)**：
+    - 精简至 70 余行的纯组装器，职责单一，纯净解耦。
 - **前端工程 (`frontend/`)**：
-  - 源码与产物严格分离，采用 **原生 Bun Bundler (`scripts/build-frontend.ts`)** 构建打包：
+  - 源码与发布产物严格分离，采用 **原生 Bun Bundler (`scripts/build-frontend.ts`)** 构建：
     - `frontend/admin/src/index.ts` ➡️ 输出至 `public/app.js`（管理后台）
-    - `frontend/player/src/index.ts` ➡️ 输出至 `public/music/app.js`（Web 播放器）
-  - 构建耗时仅需数十毫秒，实现极速打包与资源混淆压缩。
+    - `frontend/player/src/index.ts` ➡️ 输出至 `public/music/app.js`（Web 网页播放器）
+  - 构建耗时仅数十毫秒，开箱即用代码混淆与压缩。
 - **Docker 容器化 (`Dockerfile`)**：
-  - 基于 `oven/bun:1-alpine` 的多阶段构建，内置原生音频库 `chromaprint` 与 `gcompat`，剔除一切桌面层冗余，专攻小体积与高启动性能。
+  - 基于 `oven/bun:1-alpine` 的多阶段极简构建（`builder` ➡️ `prod-deps` ➡️ `runner`）。
+  - 内置原生音频库 `chromaprint` 与 `gcompat`，生产镜像彻底剔除源码、TS 编译器及开发依赖，专攻极致的小体积与秒级启动。
 
-### 目录指引
+### 核心目录指引
 ```text
 lxserver/
 ├── src/                    # 服务端核心 TypeScript 源码
-│   ├── server/             # HTTP 服务、WebSocket 同步、认证与路由
+│   ├── server/             # HTTP 服务、路由、中间件与 WebSocket
+│   │   ├── core/           # Bun.serve 原生路由引擎、HttpContext、洋葱模型中间件
+│   │   ├── routes/         # 拆分的各领域业务路由 (auth, music, cache, subsonic 等)
+│   │   ├── services/       # 音乐子系统服务、歌词钩子注入、解析服务
+│   │   ├── sync/           # Bun 原生 WebSocket 同步服务器与协议处理
+│   │   └── server.ts       # 原生 Bun.serve 极简服务启动与组装入口 (≤80行)
+│   ├── database/           # 基于 bun:sqlite 的持久化数据库层 (WAL 模式)
 │   ├── modules/            # 核心业务模块、缓存、音源 SDK、Store
-│   ├── common/             # 通用主题、工具函数、常量
-│   └── index.ts            # 服务端主入口文件
-├── frontend/               # 前端工程源码（禁止直接修改 public 压缩包）
+│   ├── common/             # 通用主题、工具函数、常量定义
+│   └── index.ts            # 服务端 CLI 与参数解析主入口
+├── frontend/               # 前端工程源码（禁止直接手动修改 public/ 编译产物）
 │   ├── admin/src/          # 管理后台前端源码
 │   └── player/src/         # Web 网页播放器前端源码
 ├── public/                 # 前端发布产物与静态资源托管目录
-├── scripts/                # 构建与维护脚本（如 build-frontend.ts）
-├── config.js               # 服务端默认与用户运行时配置
+├── scripts/                # 构建与维护脚本 (build-frontend.ts, update-build-hash.js 等)
+├── tests/                  # 基于 bun:test 的全栈自动化测试套件
+├── config.js               # 服务端运行时配置文件 (用户可挂载/覆写)
 ├── Dockerfile              # 生产级 Alpine + Bun 多阶段镜像配置
-├── tsconfig.json           # 全局 TypeScript 编译器配置（TS 7.0+）
-└── package.json            # 项目元信息、依赖与 npm/bun scripts
+├── tsconfig.json           # 全局 TypeScript 编译器配置 (TS 7.0+)
+└── package.json            # 项目元信息、纯净依赖与 bun scripts
 ```
 
 ---
@@ -47,42 +62,47 @@ lxserver/
 ## 2. 核心原则与开发规范
 
 ### 核心原则
-- **信息足够后立即行动**：明确需求后直接实施，不做无意义的重复调研。
+- **信息足够后立即行动**：需求明确后直接实施，不做无意义的重复调研。
 - **不确定时明确说明**：基于实际代码和事实说话，不编造、不臆测。
-- **直面判断**：发现逻辑矛盾或潜在安全风险时直接指出并纠正。
-- **最小改动原则**：遵循现有代码风格和设计模式，优先复用现有函数与逻辑；严禁引入未通过评估的第三方依赖或冗余文件。
+- **直面判断**：发现逻辑矛盾、隐式类型缺陷或潜在安全风险时直接指出并纠正。
+- **最小改动与复用原则**：遵循现有代码风格和设计模式，优先复用现有函数与类型；严禁引入未通过评估的第三方重型依赖。
 
 ### Git 规范（强制要求）
-- **每次实现一个新功能或者修复一个bug并验证通过后，必须执行一次 `git commit`**。
-- 提交信息必须规范清晰，遵循语义化格式（如 `feat:`, `fix:`, `refactor:`, `docs:` 等）。
+- **每次实现一个新功能或者修复一个 bug 并验证通过后，必须执行一次 `git commit`**。
+- 提交信息必须规范清晰，遵循语义化格式（如 `feat:`, `fix:`, `refactor:`, `test:`, `docs:` 等）。
 
 ### 工具链规范
-- **统一使用 Bun**：本项目为纯 Bun 工程，**严禁**使用 `npm`, `yarn`, `pnpm` 或 `node` 执行安装与启动。
-- **前端打包规范**：若修改了 `frontend/` 中的前端代码，**必须**运行 `bun run build:frontend` 同步编译生成 `public/` 静态产物。
-- **类型安全规范**：全栈推进严格 TypeScript。每次代码改动后，需执行 `bun run tsc --noEmit` 确保 0 错误（当前使用 TypeScript 7.0+）。
+- **全栈纯 Bun**：本项目为纯 Bun 工程，**严禁**使用 `npm`, `yarn`, `pnpm` 或 `node` 执行安装与启动。
+- **前端编译同步**：若修改了 `frontend/` 中的代码，**必须**运行 `bun run build:frontend` 同步编译生成 `public/` 静态产物。
+- **静态类型安全**：全栈推进严格 TypeScript。每次代码改动后，需执行 `bun run tsc --noEmit` 确保 0 错误。
+- **自动化测试验证**：改动核心逻辑或修复问题后，需运行 `bun test` 确保所有用例通过。
 
 ---
 
 ## 3. 注意事项与避坑指南
 
-### 1. 避免 `bun --watch` 触发死循环闪烁
-- `bun run dev` 底层使用 `bun --watch`，会自动监听入口及所有动态 `require()` 过的文件。
-- **禁忌**：严禁在服务端启动时无条件覆写被引用的配置文件（如 `config.js`），否则会诱发“启动 -> 改写依赖文件 -> 触发 watch 重启 -> 再次启动”的无限重启闪屏死循环。
-- **处理方式**：任何写回配置的操作（如 `saveConfigToFile`）必须先比对内存内容与磁盘内容（如文本/MD5 检查），内容未变时严禁写盘。
+### 1. 原生 `Bun.serve` 与 Web 标准 API
+- 项目已彻底告别 Express，请求上下文全部使用 Web 标准 `Request`、`Response` 及自研 `HttpContext`。
+- 新增路由或中间件时，返回类型统一为 Web 标准 `Response`（例如 `ctx.json()`, `ctx.text()`, `ctx.html()` 或直接 `new Response()`）。
+- 跨域预检（OPTIONS）统一由全局 `corsMiddleware` 拦截处理，无需在子路由中重复编写。
 
-### 2. 安全红线
-- **目录穿越防护**：涉及本地文件返回与静态文件处理（如 `fileCache.ts`）必须对路径做严格边界检查（如基于 `path.resolve` 比对安全基准目录），防止 `../` 越界攻击。
-- **管理端鉴权**：管理后台接口鉴权（如 `verifyAdminAuth`）必须强制校验密码存在且非空，禁止空密码等值绕过。
-- **敏感信息脱敏**：严禁在日志中明文打印用户密码或敏感 Token。
+### 2. 数据库与存储安全 (`bun:sqlite`)
+- 所有结构化数据（用户账户、令牌设备、歌单快照、配置信息）必须通过 `src/database/` 中的 SQLite 接口读写，严禁绕过外键约束或直接操作无保护的 JSON 文件。
+- 音频媒体文件、封面与歌词等大文件继续保留在文件系统/缓存目录中。
 
-### 3. Bun 模块兼容性
-- Bun 原生支持 `tsconfig.json` 的 `paths` 别名映射，**严禁引入 `module-alias`**（会导致 Bun 内部模块报错）。
-- 外部依赖若包含可选的动态依赖（如 `unzipper` 中的 `@aws-sdk/client-s3`），服务端打包时统一使用 `--packages=external`。
-- 部分 CommonJS 模块（如 `log4js`）应采用 `const log4js: Log4js = require('log4js')` 方式导入以兼顾类型与运行时。
+### 3. 避免 `bun --watch` 触发死循环闪烁
+- `bun run dev` 底层使用 `bun --watch`，会自动监听入口及动态加载的文件。
+- **禁忌**：严禁在服务端启动时无条件覆写被引用的运行时文件（如 `config.js`），否则会诱发“启动 -> 改写依赖文件 -> 触发 watch 重启 -> 再次启动”的死循环。
+- **处理方式**：写回配置的操作（如 `saveConfigToFile`）必须先比对内存内容与磁盘内容（哈希/字符串比对），内容未变时严禁写盘。
 
-### 4. CI/CD 与镜像发布规范
-- **CI 流水线 (`ci.yml`)**：仅在 `push` 到主分支时触发，自动执行依赖缓存、`bun test` 自动化测试、`bun run tsc --noEmit`、前端与服务端全量构建。
-- **Docker 镜像发布 (`docker-publish.yml`)**：仅在推送版本标签（如 `git push origin v2.0.0`）时触发多架构构建（`linux/amd64`, `linux/arm64`）并自动发布至 `ghcr.io`，免第三方密钥。
+### 4. 安全红线
+- **目录穿越防护**：静态文件伺服与媒体缓存处理必须对路径做严格边界检查（如基于 `isPathInside` 比对基准目录），彻底杜绝 `../` 越界攻击。
+- **鉴权安全**：管理后台接口鉴权必须强制校验密码存在且非空，禁止空密码或未配置密码的等值绕过。
+- **数据脱敏**：严禁在控制台日志与网络响应中明文输出用户密码、Token 密钥等敏感信息。
+
+### 5. 歌词与多音源数据类型防坑
+- 外部音源（如网易云 `wy`）可能返回数值类型的歌曲 ID，处理 `songInfo.id`、`songmid` 前必须显式转换为字符串（`String(...)`），防止直接调用 `.startsWith()` 抛出类型异常。
+- 组装与嵌入歌词时，优先使用 `buildLyrics(result)` 保留翻译歌词、罗马音及逐字（`awlrc`）完整数据。
 
 ---
 
@@ -91,11 +111,11 @@ lxserver/
 | 操作 | 命令 | 说明 |
 | :--- | :--- | :--- |
 | **安装依赖** | `bun install` | 安装项目依赖并更新 `bun.lock` |
-| **自动化测试** | `bun test` | 运行 Bun 原生自动化单元测试套件 |
-| **静态类型检查** | `bun run tsc --noEmit` | 验证全项目 TypeScript 类型正确性 |
-| **前端开发热重载** | `bun run dev:frontend` | 监听前端源码改动并极速增量重编 |
-| **前端编译打包** | `bun run build:frontend` | 使用 Bun Bundler 编译前端至 `public/` |
-| **开发环境启动** | `bun run dev` | 启动开发服务，支持热重载与文件监听 |
-| **生产环境启动** | `bun start` | 直接以生产模式运行服务端主入口 |
-| **服务端独立打包** | `bun run build` | 打包服务端代码至 `./server/index.js` |
-| **代码提交** | `git commit -m "<type>: <message>"` | 每次代码改动验证后必须执行提交 |
+| **静态类型检查** | `bun run tsc --noEmit` | 验证全项目 TypeScript 类型正确性（0 错误要求） |
+| **自动化单元测试** | `bun test` | 运行基于 `bun:test` 的自动化测试套件 |
+| **前端开发监听重载** | `bun run dev:frontend` | 监听前端源码改动并极速增量重编 |
+| **前端编译打包** | `bun run build:frontend` | 使用 Bun 原生 Bundler 编译前端至 `public/` |
+| **服务端开发热重载** | `bun run dev` | 基于 `bun --watch` 启动开发服务，支持文件热重载 |
+| **服务端源码启动** | `bun start` | 直接以源码模式启动服务端入口 |
+| **服务端独立构建** | `bun run build` | 将服务端核心打包为单文件 `./server/index.js` |
+| **代码提交** | `git commit -m "<type>: <message>"` | 每次代码改动并通过测试后必须执行提交 |

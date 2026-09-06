@@ -1,11 +1,52 @@
 // Batch Selection and Deletion Functions
 // Batch Selection and Deletion Functions
+function ensureBatchSelectionState() {
+    if (!(window.selectedItems instanceof Set)) window.selectedItems = new Set();
+    if (!(window.selectedSongObjects instanceof Map)) window.selectedSongObjects = new Map();
+}
+
+function syncSelectionPresentation(root = document) {
+    ensureBatchSelectionState();
+    const rows = root.querySelectorAll('[role="button"][data-song-id]:not(.batch-checkbox)');
+
+    rows.forEach(row => {
+        if (!(row instanceof HTMLElement)) return;
+        const id = String(row.dataset.songId || '');
+        const isSelected = window.selectedItems.has(id);
+        const isBatchMode = window.batchMode === true;
+        const checkbox = row.querySelector('input.batch-checkbox');
+
+        row.classList.toggle('row-selected', isSelected);
+        row.classList.toggle('is-selected', isSelected);
+        row.dataset.selected = String(isSelected);
+        row.dataset.selectionState = isSelected ? 'selected' : 'unselected';
+
+        if (isBatchMode && row.getAttribute('role') === 'button') {
+            row.setAttribute('aria-pressed', String(isSelected));
+        } else {
+            row.removeAttribute('aria-pressed');
+        }
+
+        if (checkbox instanceof HTMLInputElement) {
+            checkbox.checked = isSelected;
+            checkbox.setAttribute('aria-checked', String(isSelected));
+            if (isBatchMode && checkbox.getAttribute('aria-label')) {
+                const songLabel = checkbox.getAttribute('aria-label').replace(/^(选择|取消选择)\s*/, '');
+                const selectionLabel = `${isSelected ? '取消选择' : '选择'} ${songLabel}`;
+                checkbox.setAttribute('aria-label', selectionLabel);
+                row.setAttribute('aria-label', selectionLabel);
+            }
+        }
+    });
+}
+
 function handleBatchSelect(songId, isChecked) {
+    ensureBatchSelectionState();
     const id = String(songId); // Force string ID
     if (isChecked) {
         window.selectedItems.add(id);
         // Cache song object if available in viewingPlaylist
-        if (typeof viewingPlaylist !== 'undefined' && viewingPlaylist) {
+        if (Array.isArray(window.viewingPlaylist)) {
             // Loose comparison just in case, though viewingPlaylist IDs should match render
             const song = window.viewingPlaylist.find(s => String(s.id) === id);
             if (song) window.selectedSongObjects.set(id, song);
@@ -16,23 +57,7 @@ function handleBatchSelect(songId, isChecked) {
     }
     updateBatchToolbar();
 
-    // Partial UI Update: Find rows and checkboxes with this song ID and update them
-    // This handles both the grid row highlight and the checkbox state
-    const elements = document.querySelectorAll(`[data-song-id="${id}"]`);
-    elements.forEach(el => {
-        if (el.classList.contains('grid')) {
-            // It's a row
-            if (isChecked) {
-                el.classList.add('row-selected', 'ring-1', 'ring-emerald-500/30');
-            } else {
-                el.classList.remove('row-selected', 'ring-1', 'ring-emerald-500/30');
-            }
-        }
-        if (el.classList.contains('batch-checkbox')) {
-            // It's a checkbox
-            el.checked = isChecked;
-        }
-    });
+    syncSelectionPresentation();
 }
 
 function refreshBatchUI() {
@@ -41,19 +66,20 @@ function refreshBatchUI() {
     const artistHeader = document.getElementById('artist-detail-header');
     if (slDetail && !slDetail.classList.contains('hidden')) {
         if (window.SongListManager) window.SongListManager.renderDetail();
-    } else if (artistHeader) {
+    } else if (artistHeader && !artistHeader.classList.contains('hidden')) {
         // Artist Detail Mode
-        if (window.currentArtistSongsCache) {
-            renderArtistSongsUI(window.currentArtistSongsCache);
-        } else if (typeof loadArtistSongs === 'function' && window.currentArtistId) {
-            loadArtistSongs(window.currentArtistId, window.currentArtistSource || 'wy', window.currentArtistOrder || 'hot');
+        if (window.currentArtistSongsCache && typeof window.renderArtistSongsUI === 'function') {
+            window.renderArtistSongsUI(window.currentArtistSongsCache);
+        } else if (typeof window.loadArtistSongs === 'function' && window.currentArtistId) {
+            window.loadArtistSongs(window.currentArtistId, window.currentArtistSource || 'wy', window.currentArtistOrder || 'hot');
         }
     } else {
         // Fallback to main renderResults (for search view)
-        if (typeof renderResults === 'function' && window.viewingPlaylist) {
-            renderResults(window.viewingPlaylist);
+        if (typeof window.renderResults === 'function' && window.viewingPlaylist) {
+            window.renderResults(window.viewingPlaylist);
         }
     }
+    syncSelectionPresentation();
 }
 
 function syncListHeaderBatchState() {
@@ -65,6 +91,7 @@ function syncListHeaderBatchState() {
 }
 
 function toggleBatchMode() {
+    ensureBatchSelectionState();
     window.batchMode = !window.batchMode;
     window.selectedItems.clear();
     window.selectedSongObjects.clear();
@@ -87,6 +114,7 @@ function toggleBatchMode() {
 }
 
 function selectAllVisible() {
+    ensureBatchSelectionState();
     let listToSelect = [];
     if (window.ListSearch && window.ListSearch.state.active && window.ListSearch.state.onlyShowMatches) {
         listToSelect = window.ListSearch.getDisplayList(window.viewingPlaylist).map(obj => obj.item);
@@ -94,8 +122,9 @@ function selectAllVisible() {
         listToSelect = window.viewingPlaylist;
     }
 
-    listToSelect.forEach(item => {
-        const id = String(item.id);
+    (Array.isArray(listToSelect) ? listToSelect : []).forEach(item => {
+        const id = String(item?.id ?? '').trim();
+        if (!id || id === 'undefined') return;
         window.selectedItems.add(id);
         window.selectedSongObjects.set(id, item);
     });
@@ -105,6 +134,7 @@ function selectAllVisible() {
 }
 
 function clearSelection() {
+    ensureBatchSelectionState();
     window.selectedItems.clear();
     window.selectedSongObjects.clear();
 
@@ -122,6 +152,7 @@ function clearSelection() {
         window.LeaderboardManager.renderSongs();
     }
     updateBatchToolbar();
+    syncSelectionPresentation();
 }
 
 function exitBatchMode() {
@@ -148,6 +179,7 @@ function deselectAll() {
 }
 
 function updateBatchToolbar() {
+    ensureBatchSelectionState();
     const size = window.selectedItems.size;
 
     // 搜索页计数
@@ -161,6 +193,11 @@ function updateBatchToolbar() {
     // 排行榜计数
     const lbCountEl = document.getElementById('lb-batch-selected-count');
     if (lbCountEl) lbCountEl.textContent = size;
+
+    [countEl, slCountEl, lbCountEl].forEach(count => {
+        const status = count?.closest('[data-batch-selection-status]');
+        if (status) status.setAttribute('aria-label', `已选择 ${size} 首歌曲`);
+    });
 
     const deleteBtn = document.getElementById('batch-delete-btn');
     if (deleteBtn) {
@@ -492,6 +529,7 @@ window.exitBatchMode = exitBatchMode;
 window.deselectAll = deselectAll;
 window.batchDeleteFromList = batchDeleteFromList;
 window.getEditableListContext = getEditableListContext;
+window.syncSelectionPresentation = syncSelectionPresentation;
 window.handleBatchCollect = handleBatchCollect;
 window.goToPage = goToPage;
 window.nextPage = nextPage;

@@ -991,8 +991,67 @@ aside {
 }
 
 .row-selected {
-    background-color: color-mix(in srgb, var(--c-500) 15%, transparent) !important;
+    position: relative;
+    background-color: color-mix(in oklab, var(--c-500) 16%, var(--bg-panel, transparent)) !important;
+    border-color: color-mix(in oklab, var(--c-500) 52%, var(--border-main, transparent)) !important;
+    box-shadow: inset 0.2rem 0 0 var(--c-500), 0 0 0 1px color-mix(in oklab, var(--c-500) 18%, transparent);
     border-radius: 0.75rem;
+}
+
+.row-selected:hover,
+.row-selected.is-selected:hover {
+    background-color: color-mix(in oklab, var(--c-500) 22%, var(--bg-panel, transparent)) !important;
+    border-color: color-mix(in oklab, var(--c-500) 68%, var(--border-main, transparent)) !important;
+}
+
+.row-selected .t-text-main,
+.row-selected .index-num {
+    color: var(--c-600, var(--c-500)) !important;
+}
+
+.batch-checkbox {
+    min-inline-size: 1.5rem;
+    min-block-size: 1.5rem;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    margin: 0;
+    accent-color: var(--c-500);
+    cursor: pointer;
+}
+
+.batch-checkbox:focus-visible {
+    outline: 2px solid var(--c-500);
+    outline-offset: 2px;
+}
+
+[data-selection-state="selected"]:focus-visible {
+    outline-color: var(--c-600, var(--c-500));
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .row-selected,
+    .batch-checkbox {
+        transition: none !important;
+    }
+}
+
+@media (forced-colors: active) {
+    .row-selected,
+    .row-selected:hover {
+        background: Highlight !important;
+        border-color: Highlight !important;
+        box-shadow: inset 0.25rem 0 0 HighlightText !important;
+        color: HighlightText !important;
+    }
+
+    .row-selected .t-text-main,
+    .row-selected .index-num {
+        color: HighlightText !important;
+    }
+
+    .batch-checkbox {
+        accent-color: Highlight;
+    }
 }
 
 /* Apply layout skipping only to long, repeated song lists. The intrinsic size
@@ -1014,7 +1073,8 @@ aside {
 }
 
 :root[data-appearance="dark"] .row-selected {
-    background-color: color-mix(in srgb, var(--c-500) 18%, transparent) !important;
+    background-color: color-mix(in oklab, var(--c-500) 22%, var(--bg-panel, transparent)) !important;
+    border-color: color-mix(in oklab, var(--c-500) 58%, var(--border-main, transparent)) !important;
 }
 
 /* 响应式侧边栏优化：针对垂直高度不足的情况 */

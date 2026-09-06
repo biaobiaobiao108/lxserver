@@ -2643,6 +2643,7 @@ async function loadArtistSongs(id, source, order, forceFetch = false, requestCon
         goBackToSearch();
     }
 }
+window.loadArtistSongs = loadArtistSongs;
 
 function renderArtistSongsLoading() {
     const content = document.getElementById('artist-detail-content');
@@ -2732,8 +2733,14 @@ function renderArtistSongsUI(list, page) {
         if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
         if (displayIndex > 12) rowClass += 'deferred-list-item ';
 
+        const selectionLabel = isSelected ? '取消选择' : '选择';
+        const selectionAttributes = window.batchMode
+            ? `aria-pressed="${isSelected}"`
+            : '';
+
         return `
-                <div role="button" tabindex="0" aria-label="${window.batchMode ? '选择' : '播放'} ${itemName}"
+                <div role="button" tabindex="0" aria-label="${window.batchMode ? `${selectionLabel} ${itemName}` : `播放 ${itemName}`}" ${selectionAttributes}
+                     data-selection-state="${isSelected ? 'selected' : 'unselected'}"
                      class="${rowClass}" data-song-id="${itemId}"
                      onclick="window.batchMode ? handleBatchSelect(${itemIdArg}, !window.selectedItems.has(${itemIdArg})) : playFromView(${index})"
                      onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.batchMode ? handleBatchSelect(${itemIdArg}, !window.selectedItems.has(${itemIdArg})) : playFromView(${index}); }">
@@ -2741,9 +2748,11 @@ function renderArtistSongsUI(list, page) {
                     <div class="col-span-2 sm:col-span-1 text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
                         ${window.batchMode ? `
                             <input type="checkbox" 
-                                   class="batch-checkbox w-4 h-4 text-emerald-600 rounded" 
+                                   class="batch-checkbox"
                                    data-song-id="${itemId}"
                                    ${isSelected ? 'checked' : ''}
+                                   aria-checked="${isSelected}"
+                                   aria-label="${selectionLabel} ${itemName}"
                             onclick="event.stopPropagation(); handleBatchSelect(${itemIdArg}, this.checked);">
                         ` : `<span class="index-num group-hover:hidden">${index + 1}</span><i class="fas fa-play text-emerald-500 hidden group-hover:block text-[10px]"></i>`}
                     </div>
@@ -3280,7 +3289,13 @@ function renderResults(list) {
         else if (isMatched) rowClass += 'search-match ';
         if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
 
+        const selectionLabel = isSelected ? '取消选择' : '选择';
         row.className = rowClass;
+        row.setAttribute('role', 'button');
+        row.tabIndex = 0;
+        row.dataset.selectionState = isSelected ? 'selected' : 'unselected';
+        if (window.batchMode) row.setAttribute('aria-pressed', String(isSelected));
+        row.setAttribute('aria-label', window.batchMode ? `${selectionLabel} ${itemName}` : `播放 ${itemName}`);
 
         // Add click listener for the row
         row.onclick = (e) => {
@@ -3291,6 +3306,13 @@ function renderResults(list) {
             } else {
                 // If not in batch mode, clicking row plays the song
                 playFromView(actualIndexInOriginal);
+            }
+        };
+        row.onkeydown = (e) => {
+            if (e.target !== row) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                row.click();
             }
         };
 
@@ -3305,9 +3327,11 @@ function renderResults(list) {
             <div class="col-span-2 sm:col-span-1 text-center font-mono t-text-muted text-xs md:text-sm flex items-center justify-center">
                 ${window.batchMode ? `
                     <input type="checkbox" 
-                           class="batch-checkbox w-4 h-4 text-emerald-600 rounded" 
+                           class="batch-checkbox"
                            data-song-id="${itemId}"
                            ${isSelected ? 'checked' : ''}
+                           aria-checked="${isSelected}"
+                           aria-label="${selectionLabel} ${itemName}"
                     onclick="event.stopPropagation(); handleBatchSelect(${itemIdArg}, this.checked);">
                 ` : `<span class="index-num">${actualIndexInOriginal + 1}</span>`}
             </div>
@@ -3407,6 +3431,7 @@ function renderResults(list) {
         }
     }
 }
+window.renderResults = renderResults;
 
 // Generic Marquee Helper
 function createMarqueeHtml(text, className = '') {

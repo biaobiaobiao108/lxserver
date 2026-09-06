@@ -467,17 +467,25 @@ window.SongListManager = (function () {
             else if (isMatched) rowClass += 'search-match ';
             if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
 
+            const selectionLabel = isSelected ? '取消选择' : '选择';
+            const selectionAttributes = window.batchMode
+                ? `aria-pressed="${isSelected}"`
+                : '';
+
             return `
-            <div id="sl-row-${index}" role="button" tabindex="0" aria-label="${window.batchMode ? '选择' : '播放'} ${song.name || '未命名歌曲'}"
+            <div id="sl-row-${index}" role="button" tabindex="0" aria-label="${window.batchMode ? `${selectionLabel} ${song.name || '未命名歌曲'}` : `播放 ${song.name || '未命名歌曲'}`}" ${selectionAttributes}
+                 data-selection-state="${isSelected ? 'selected' : 'unselected'}"
                  class="${rowClass}" data-song-id="${String(song.id)}"
                  onclick="window.SongListManager.handleRowClick(${index})"
-                 onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.SongListManager.handleRowClick(${index}); }">
+                 onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.SongListManager.handleRowClick(${index}); }">
                 <div class="col-span-1 sm:col-span-1 text-center text-gray-400 font-mono text-xs flex items-center justify-center">
                     ${window.batchMode ? `
                         <input type="checkbox" 
-                               class="batch-checkbox w-4 h-4 text-emerald-600 rounded" 
+                               class="batch-checkbox"
                                data-song-id="${String(song.id)}"
                                ${isSelected ? 'checked' : ''}
+                               aria-checked="${isSelected}"
+                               aria-label="${selectionLabel} ${song.name || '未命名歌曲'}"
                                onclick="event.stopPropagation(); handleBatchSelect('${String(song.id)}', this.checked);">
                     ` : index + 1}
                 </div>

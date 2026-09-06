@@ -307,13 +307,14 @@
                         <div id="batch-toolbar"
                             class="hidden bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 p-3 flex items-center justify-between">
                             <div class="flex items-center gap-3">
-                                <span class="text-sm text-emerald-700 dark:text-emerald-300">已选择: <span
+                                <span data-batch-selection-status role="status" aria-live="polite" aria-atomic="true" class="text-sm text-emerald-700 dark:text-emerald-300">已选择: <span
                                         id="batch-selected-count" class="font-bold">0</span> 首</span>
-                                <button onclick="selectAllVisible()"
+                                <button type="button" data-batch-action="select-all" onclick="selectAllVisible()"
+                                    aria-label="全选当前可见歌曲" aria-controls="search-results"
                                     class="text-xs px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded shadow-sm transition-all font-medium">全选</button>
-                                <button onclick="deselectAll()"
+                                <button type="button" onclick="deselectAll()" aria-label="清空已选歌曲" aria-controls="search-results"
                                     class="text-xs px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded shadow-sm transition-all font-medium">清空</button>
-                                <button onclick="toggleBatchMode()"
+                                <button type="button" onclick="toggleBatchMode()" aria-label="退出多选模式"
                                     class="text-xs px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded shadow-sm transition-all font-medium">退出</button>
                             </div>
                             <div class="flex items-center gap-2">
@@ -327,7 +328,7 @@
                                     title="批量下载">
                                     <i class="fas fa-download md:mr-1"></i><span class="hidden md:inline">批量下载</span>
                                 </button>
-                                <button id="batch-delete-btn" onclick="batchDeleteFromList()"
+                                <button type="button" id="batch-delete-btn" onclick="batchDeleteFromList()"
                                     class="text-xs px-2 md:px-4 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded transition-colors font-medium"
                                     title="批量删除">
                                     <i class="fas fa-trash md:mr-1"></i><span class="hidden md:inline">批量删除</span>
@@ -627,13 +628,14 @@
                             <div id="sl-batch-toolbar"
                                 class="hidden bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 p-3 flex items-center justify-between">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-sm text-emerald-700 dark:text-emerald-300">已选择: <span
+                                    <span data-batch-selection-status role="status" aria-live="polite" aria-atomic="true" class="text-sm text-emerald-700 dark:text-emerald-300">已选择: <span
                                             id="sl-batch-selected-count" class="font-bold">0</span> 首</span>
-                                    <button onclick="selectAllVisible()"
+                                    <button type="button" data-batch-action="select-all" onclick="selectAllVisible()"
+                                        aria-label="全选当前可见歌曲" aria-controls="sl-detail-list"
                                         class="text-xs px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded shadow-sm transition-all font-medium">全选</button>
-                                    <button onclick="deselectAll()"
+                                    <button type="button" onclick="deselectAll()" aria-label="清空已选歌曲" aria-controls="sl-detail-list"
                                         class="text-xs px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded shadow-sm transition-all font-medium">清空</button>
-                                    <button onclick="toggleBatchMode()"
+                                    <button type="button" onclick="toggleBatchMode()" aria-label="退出多选模式"
                                         class="text-xs px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded shadow-sm transition-all font-medium">退出</button>
                                 </div>
                                 <div class="flex items-center gap-2">
@@ -820,13 +822,14 @@
                             <div id="lb-batch-toolbar"
                                 class="hidden bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 p-3 flex items-center justify-between flex-shrink-0">
                                 <div class="flex items-center gap-3">
-                                    <span class="text-sm text-emerald-700 dark:text-emerald-300">已选择:
+                                    <span data-batch-selection-status role="status" aria-live="polite" aria-atomic="true" class="text-sm text-emerald-700 dark:text-emerald-300">已选择:
                                         <span id="lb-batch-selected-count" class="font-bold">0</span> 首</span>
-                                    <button onclick="lbSelectAll()"
+                                    <button type="button" data-batch-action="select-all" onclick="lbSelectAll()"
+                                        aria-label="全选当前可见歌曲" aria-controls="lb-songs-list"
                                         class="text-xs px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded shadow-sm transition-all font-medium">全选</button>
-                                    <button onclick="deselectAll()"
+                                    <button type="button" onclick="deselectAll()" aria-label="清空已选歌曲" aria-controls="lb-songs-list"
                                         class="text-xs px-3 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded shadow-sm transition-all font-medium">清空</button>
-                                    <button onclick="toggleLbBatchMode()"
+                                    <button type="button" onclick="toggleLbBatchMode()" aria-label="退出多选模式"
                                         class="text-xs px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded shadow-sm transition-all font-medium">退出</button>
                                 </div>
                                 <div class="flex items-center gap-2">

@@ -197,21 +197,30 @@ window.LeaderboardManager = (function () {
             else if (isMatched) rowClass += 'search-match ';
             if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
 
+            const selectionLabel = isSelected ? '取消选择' : '选择';
+            const selectionAttributes = window.batchMode
+                ? `aria-pressed="${isSelected}"`
+                : '';
+
             const rank = index + 1;
             const rankClass = rank <= 3 ? 'text-emerald-600 dark:text-emerald-500 font-black text-base' : 'text-gray-400 font-mono text-xs';
 
             const imgUrl = window.getImgUrl ? window.getImgUrl(song) : (song.img || song.albumImg || '/music/assets/logo.svg');
 
             return `
-            <div id="lb-row-${index}" class="${rowClass}" data-song-id="${String(song.id)}"
-                 onclick="window.LeaderboardManager.handleRowClick(${index})">
+            <div id="lb-row-${index}" role="button" tabindex="0" aria-label="${window.batchMode ? `${selectionLabel} ${song.name || '未命名歌曲'}` : `播放 ${song.name || '未命名歌曲'}`}" ${selectionAttributes}
+                 data-selection-state="${isSelected ? 'selected' : 'unselected'}" class="${rowClass}" data-song-id="${String(song.id)}"
+                 onclick="window.LeaderboardManager.handleRowClick(${index})"
+                 onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); this.click(); }">
                 <!-- 序号 -->
                 <div class="col-span-1 sm:col-span-1 text-center flex items-center justify-center">
                     ${window.batchMode ? `
                         <input type="checkbox"
-                               class="batch-checkbox w-4 h-4 text-emerald-600 rounded"
+                               class="batch-checkbox"
                                data-song-id="${String(song.id)}"
                                ${isSelected ? 'checked' : ''}
+                               aria-checked="${isSelected}"
+                               aria-label="${selectionLabel} ${song.name || '未命名歌曲'}"
                                onclick="event.stopPropagation(); handleBatchSelect('${String(song.id)}', this.checked);">
                     ` : `<span class="${rankClass}">${rank}</span>`}
                 </div>

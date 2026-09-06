@@ -7,6 +7,8 @@ import * as zlib from 'zlib'
 import { promisify } from 'util'
 
 import * as tunnel from 'tunnel'
+import { assertSafeRemoteHttpUrl } from './networkSecurity'
+import { assertSafePathSegment, resolveInside } from '@/utils/pathSecurity'
 const inflate = promisify(zlib.inflate)
 const deflate = promisify(zlib.deflate)
 
@@ -135,6 +137,8 @@ function createLxRequest(isUnsafe: boolean = false, registerCleanup?: CleanupReg
 
         let requestOptions: any = {
             headers,
+            follow_max: 0,
+            max_size: 5 * 1024 * 1024,
             response_timeout: typeof timeout === 'number' && timeout > 0 ? Math.min(timeout, 60000) : 60000
         }
 
@@ -147,56 +151,81 @@ function createLxRequest(isUnsafe: boolean = false, registerCleanup?: CleanupReg
             requestOptions.json = false
         }
 
-        let completed = false
-        let unregister = () => { }
-        const request = needle.request(method, url, data, requestOptions, (err: any, resp: any, body: any) => {
-            completed = true
-            unregister()
-            try {
-                if (err) {
-                    callback.call(null, decontextify(err), null, null)
-                } else {
-                    let parsedBody = body
-                    if (typeof body === 'string') {
-                        try {
-                            parsedBody = JSON.parse(body)
-                        } catch { }
-                    }
-
-                    let safeResp: any = {
-                        statusCode: resp.statusCode,
-                        statusMessage: resp.statusMessage,
-                        headers: resp.headers,
-                        body: decontextify(parsedBody)
-                    }
-
-                    // 核心修复：原生 VM 模式下，将响应对象通过 JSON 转换以修复原型链，但保留原始 Body 引用（如果不是对象）
-                    if (isUnsafe) {
-                        const jsonBody = (typeof parsedBody === 'object' && !Buffer.isBuffer(parsedBody))
-                            ? JSON.parse(JSON.stringify(parsedBody))
-                            : parsedBody;
-
-                        safeResp = JSON.parse(JSON.stringify({
-                            statusCode: resp.statusCode,
-                            statusMessage: resp.statusMessage,
-                            headers: resp.headers
-                        }));
-                        safeResp.body = jsonBody;
-                    }
-
-                    callback.call(null, null, safeResp, safeResp.body)
-                }
-            } catch (error: any) {
-                callback.call(null, decontextify(error), null, null)
+        try {
+            const bodyBytes = Buffer.isBuffer(data)
+                ? data.length
+                : typeof data === 'string'
+                    ? Buffer.byteLength(data, 'utf8')
+                    : data == null ? 0 : Buffer.byteLength(JSON.stringify(data), 'utf8')
+            if (bodyBytes > 5 * 1024 * 1024) {
+                callback(new Error('Request body is too large'), null, null)
+                return () => { }
             }
-        })
+        } catch (error) {
+            callback(decontextify(error), null, null)
+            return () => { }
+        }
 
+        let completed = false
+        let aborted = false
+        let request: any = null
+        let unregister = () => { }
         const abort = () => {
-            const reqObj = (request as any).request
+            aborted = true
+            const reqObj = request && (request as any).request
             if (reqObj && !reqObj.aborted) reqObj.abort()
         }
         unregister = registerCleanup ? registerCleanup(abort) : () => { }
-        if (completed) unregister()
+        const start = async () => {
+            try {
+                const safeUrl = await assertSafeRemoteHttpUrl(url)
+                if (aborted) return
+                request = needle.request(method, safeUrl.toString(), data, requestOptions, (err: any, resp: any, body: any) => {
+                    completed = true
+                    unregister()
+                    try {
+                        if (err) {
+                            callback.call(null, decontextify(err), null, null)
+                        } else {
+                            const bodyBytes = Buffer.isBuffer(body) ? body.length : Buffer.byteLength(typeof body === 'string' ? body : JSON.stringify(body ?? ''), 'utf8')
+                            if (bodyBytes > 5 * 1024 * 1024) throw new Error('Remote response is too large')
+                            let parsedBody = body
+                            if (typeof body === 'string') {
+                                try { parsedBody = JSON.parse(body) } catch { }
+                            }
+
+                            let safeResp: any = {
+                                statusCode: resp.statusCode,
+                                statusMessage: resp.statusMessage,
+                                headers: decontextify(resp.headers),
+                                body: decontextify(parsedBody)
+                            }
+
+                            if (isUnsafe) {
+                                const jsonBody = (typeof parsedBody === 'object' && !Buffer.isBuffer(parsedBody))
+                                    ? JSON.parse(JSON.stringify(parsedBody))
+                                    : parsedBody
+                                safeResp = JSON.parse(JSON.stringify({
+                                    statusCode: resp.statusCode,
+                                    statusMessage: resp.statusMessage,
+                                    headers: resp.headers
+                                }))
+                                safeResp.body = jsonBody
+                            }
+
+                            callback.call(null, null, safeResp, safeResp.body)
+                        }
+                    } catch (error: any) {
+                        callback.call(null, decontextify(error), null, null)
+                    }
+                })
+            } catch (error: any) {
+                completed = true
+                unregister()
+                callback.call(null, decontextify(error), null, null)
+            }
+        }
+        void start()
 
         return () => {
             unregister()
@@ -352,16 +381,13 @@ export async function loadUserApi(apiInfo: UserApiInfo): Promise<any> {
 
     // 完整沙箱环境
     const sandbox: any = {
-        // console: {
-        //     log: () => { }, // 静默脚本内部的普通日志
-        //     info: () => { },
-        //     error: console.error,
-        //     warn: console.warn,
-        //     debug: console.debug,
-        //     time: console.time,
-        //     timeEnd: console.timeEnd
-        // },
-        console,
+        console: {
+            log: (...args: any[]) => console.log(`[CustomSource:${fullApiInfo.name}]`, ...args.map(decontextify)),
+            info: (...args: any[]) => console.info(`[CustomSource:${fullApiInfo.name}]`, ...args.map(decontextify)),
+            warn: (...args: any[]) => console.warn(`[CustomSource:${fullApiInfo.name}]`, ...args.map(decontextify)),
+            error: (...args: any[]) => console.error(`[CustomSource:${fullApiInfo.name}]`, ...args.map(decontextify)),
+            debug: () => { },
+        },
         setTimeout: trackedSetTimeout,
         clearTimeout: trackedClearTimeout,
         setInterval: trackedSetInterval,
@@ -382,7 +408,8 @@ export async function loadUserApi(apiInfo: UserApiInfo): Promise<any> {
         globalThis: null,
         atob: (s: string) => Buffer.from(s, 'base64').toString('binary'),
         btoa: (s: string) => Buffer.from(s, 'binary').toString('base64'),
-        crypto: crypto
+        // Do not expose the host crypto module or other native capabilities.
+        crypto: undefined,
     }
     sandbox.global = sandbox
     sandbox.window = sandbox
@@ -390,33 +417,24 @@ export async function loadUserApi(apiInfo: UserApiInfo): Promise<any> {
 
     try {
         if (apiInfo.allowUnsafeVM && global.lx.config['system.allowUnsafeVM']) {
-            console.log(`[UserApi] ${fullApiInfo.name} 正在以原生 VM 模式启动...`)
-            const vm = require('vm')
-            const context = vm.createContext(sandbox)
-            // 不再注入 injectionCode 字符串，环境已在 sandbox 中就绪
-            vm.runInContext(apiInfo.script, context, {
-                filename: `custom_source_${fullApiInfo.id}.js`,
-                timeout: 10000
+            throw new Error('UNSAFE_VM_DISABLED')
+        }
+        try {
+            const { VM } = await loadVm2()
+            const vmInstance = new VM({
+                timeout: 10000,
+                sandbox,
+                eval: false,
+                wasm: false,
             })
-        } else {
-            // 保持 vm2 逻辑用于安全模式
-            try {
-                const { VM } = await loadVm2()
-                const vmInstance = new VM({
-                    timeout: 10000,
-                    sandbox,
-                    eval: true,
-                    wasm: false,
-                })
-                await vmInstance.run(apiInfo.script)
-            } catch (e: any) {
-                const isContextError = e.message.includes('contextified object') || e.message.includes('Operation not allowed')
-                if (isContextError) {
-                    console.warn(`[UserApi] ${fullApiInfo.name} 触发 vm2 安全限制，正在提示用户开启 VM 模式`)
-                    throw new Error('REQUIRE_UNSAFE_VM')
-                }
-                throw e
+            await vmInstance.run(apiInfo.script)
+        } catch (e: any) {
+            const isContextError = e.message.includes('contextified object') || e.message.includes('Operation not allowed')
+            if (isContextError) {
+                console.warn(`[UserApi] ${fullApiInfo.name} 触发 vm2 安全限制`)
+                throw new Error('REQUIRE_UNSAFE_VM')
             }
+            throw e
         }
 
         // 等待脚本调用 lx.send('inited')（最多等待 3 秒）
@@ -483,6 +501,9 @@ export async function callUserApiGetMusicUrl(
     onProgress?: (attempt: any) => Promise<void> | void,
     enableAutoSwitchApiSource?: boolean
 ): Promise<{ url: string, type: string, sourceName?: string, attempts?: any[] }> {
+    if (clientUsername && clientUsername !== 'default' && clientUsername !== 'open' && clientUsername !== '_open') {
+        clientUsername = assertSafePathSegment(clientUsername, 'username')
+    }
     // 标准化 songInfo 格式：将 meta 中的字段提升到顶层
     const normalizedSongInfo = { ...songInfo }
     if (songInfo.meta) {
@@ -574,6 +595,8 @@ export async function callUserApiGetMusicUrl(
 
     let supportedCount = 0;
     let lastError: Error | null = null;
+    const dataPath = global.lx?.dataPath || process.env.DATA_PATH || path.join(process.cwd(), 'data')
+    const sourceRoot = path.join(dataPath, 'users', 'source')
 
     // 查找支持该 source 的 API
     // 收集所有支持该 source 的 API，并根据权限过滤
@@ -583,8 +606,7 @@ export async function callUserApiGetMusicUrl(
     // 读取当前用户的公开源状态覆盖（启用/禁用）以及私有源 ID 集合
     let userStates: Record<string, any> = {}
     if (clientUsername && clientUsername !== 'default') {
-        const dataPath = process.env.DATA_PATH || path.join(process.cwd(), 'data')
-        const userPath = path.join(dataPath, 'users', 'source', clientUsername)
+        const userPath = resolveInside(sourceRoot, clientUsername)
         const statesPath = path.join(userPath, 'states.json')
         const metaPath = path.join(userPath, 'sources.json')
 
@@ -626,16 +648,16 @@ export async function callUserApiGetMusicUrl(
     // 不依赖 loadedApis 的 Map 插入顺序（部分 reload 后顺序会乱），
     // 每次解析都直接读 order.json，无需重启服务器即可生效
     if (candidates.length > 1) {
-        const dataPath = process.env.DATA_PATH || path.join(process.cwd(), 'data')
+        const dataPath = global.lx?.dataPath || process.env.DATA_PATH || path.join(process.cwd(), 'data')
         let orderData: string[] = []
 
         // 优先读用户自己的排序（admin/order.json），再回退到公开源排序（_open/order.json）
         const orderCandidates = clientUsername && clientUsername !== 'default'
             ? [
-                path.join(dataPath, 'users', 'source', clientUsername, 'order.json'),
-                path.join(dataPath, 'users', 'source', '_open', 'order.json')
+                resolveInside(sourceRoot, clientUsername, 'order.json'),
+                resolveInside(sourceRoot, '_open', 'order.json')
               ]
-            : [path.join(dataPath, 'users', 'source', '_open', 'order.json')]
+            : [resolveInside(sourceRoot, '_open', 'order.json')]
 
         for (const orderPath of orderCandidates) {
             if (fs.existsSync(orderPath)) {
@@ -778,7 +800,14 @@ async function loadSourcesFromDir(dirPath: string, owner: string, stats: { loade
                 continue
             }
 
-            const scriptPath = path.join(dirPath, source.id)
+            let scriptId: string
+            try {
+                scriptId = assertSafePathSegment(source.id, 'source id')
+            } catch {
+                console.warn(`[UserApi] [${owner}] 跳过非法源 ID`)
+                continue
+            }
+            const scriptPath = resolveInside(dirPath, scriptId)
             if (!fs.existsSync(scriptPath)) {
                 console.warn(`[UserApi] [${owner}] 脚本文件未找到: ${source.id}`)
                 continue
@@ -919,7 +948,8 @@ function startWatcher(sourceRoot: string) {
 // 从文件系统加载所有已启用的自定义源
 // 路径变更：DATA_PATH/users/source/{username} 和 DATA_PATH/users/source/_open
 async function initUserApisInternal(targetUser?: string) {
-    const dataPath = process.env.DATA_PATH || path.join(process.cwd(), 'data')
+    if (targetUser && targetUser !== 'open') assertSafePathSegment(targetUser, 'username')
+    const dataPath = global.lx?.dataPath || process.env.DATA_PATH || path.join(process.cwd(), 'data')
     const sourceRoot = path.join(dataPath, 'users', 'source')
     const stats = { loadedCount: 0 }
 
@@ -963,7 +993,7 @@ async function initUserApisInternal(targetUser?: string) {
             dirName = '_open'
         }
 
-        const userSourceDir = path.join(sourceRoot, dirName)
+        const userSourceDir = resolveInside(sourceRoot, dirName)
         if (fs.existsSync(userSourceDir)) {
             await loadSourcesFromDir(userSourceDir, targetUser, stats)
         }
@@ -983,7 +1013,7 @@ async function initUserApisInternal(targetUser?: string) {
                         owner = 'open'
                     }
 
-                    const dirPath = path.join(sourceRoot, entry.name)
+                    const dirPath = resolveInside(sourceRoot, entry.name)
                     await loadSourcesFromDir(dirPath, owner, stats)
                 }
             }

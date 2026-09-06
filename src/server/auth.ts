@@ -24,7 +24,9 @@ export const getAvailableIP = (reqOrIp: http.IncomingMessage | Request | string)
       const proxyIp = headers.get(headerKey)
       if (proxyIp) ip = proxyIp.split(',')[0].trim()
     }
-    ip ||= headers.get('x-real-ip') || '127.0.0.1'
+    // Only trust forwarding headers when the server is explicitly behind a
+    // configured trusted proxy. Otherwise clients can spoof them.
+    ip ||= '127.0.0.1'
   } else {
     // IncomingMessage
     ip = getIP(reqOrIp as http.IncomingMessage)
@@ -142,7 +144,7 @@ const verifyConnection = (encryptMsg: string, userId: string) => {
   return text == SYNC_CODE.msgConnect
 }
 export const authConnect = async (reqOrUrl: http.IncomingMessage | Request | string, remoteAddress?: string) => {
-  let ip = getAvailableIP(typeof reqOrUrl === 'object' ? reqOrUrl : remoteAddress || '127.0.0.1')
+  let ip = getAvailableIP(remoteAddress || reqOrUrl)
   if (ip) {
     let urlString = typeof reqOrUrl === 'string' ? reqOrUrl : reqOrUrl.url || ''
     const [pathPart, queryPart] = urlString.split('?')
@@ -176,10 +178,118 @@ export const authConnect = async (reqOrUrl: http.IncomingMessage | Request | str
 export const SESSION_COOKIE_NAME = 'lx_player_session'
 const playerSessions = new Map<string, { createdAt: number }>()
 const PLAYER_SESSION_TTL = 24 * 60 * 60 * 1000
+const MAX_PLAYER_SESSIONS = 10_000
+
+export const ADMIN_SESSION_COOKIE_NAME = 'lx_admin_session'
+export const USER_SESSION_COOKIE_NAME = 'lx_user_session'
+const adminSessions = new Map<string, number>()
+const ADMIN_SESSION_TTL = 8 * 60 * 60 * 1000
+const MAX_ADMIN_SESSIONS = 10000
+
+const pruneExpiredAdminSessions = (now = Date.now()): void => {
+  for (const [sessionId, expiresAt] of adminSessions) {
+    if (expiresAt <= now) adminSessions.delete(sessionId)
+  }
+  while (adminSessions.size > MAX_ADMIN_SESSIONS) {
+    const oldest = adminSessions.keys().next().value
+    if (!oldest) break
+    adminSessions.delete(oldest)
+  }
+}
+
+export const createAdminSession = (): string => {
+  pruneExpiredAdminSessions()
+  const sessionId = crypto.randomBytes(32).toString('hex')
+  adminSessions.set(sessionId, Date.now() + ADMIN_SESSION_TTL)
+  return sessionId
+}
+
+export const removeAdminSession = (sessionId: string): void => {
+  adminSessions.delete(sessionId)
+}
+
+export const getCookieValue = (req: http.IncomingMessage | Request | { headers: Record<string, any> }, name: string): string | null => {
+  let cookieHeader: string | null = null
+  if ('headers' in req) {
+    if (typeof (req.headers as any).get === 'function') cookieHeader = (req.headers as Headers).get('cookie')
+    else cookieHeader = (req.headers as any).cookie || null
+  }
+  if (!cookieHeader) return null
+  const item = cookieHeader.split(';').map(value => value.trim()).find(value => value.startsWith(`${name}=`))
+  if (!item) return null
+  try {
+    return decodeURIComponent(item.slice(name.length + 1))
+  } catch {
+    return null
+  }
+}
+
+export const checkAdminSession = (req: http.IncomingMessage | Request | { headers: Record<string, any> }): boolean => {
+  pruneExpiredAdminSessions()
+  const sessionId = getCookieValue(req, ADMIN_SESSION_COOKIE_NAME)
+  if (!sessionId) return false
+  const expiresAt = adminSessions.get(sessionId)
+  if (!expiresAt || expiresAt <= Date.now()) {
+    adminSessions.delete(sessionId)
+    return false
+  }
+  return true
+}
+
+const loginFailures = new Map<string, number[]>()
+const LOGIN_WINDOW_MS = 15 * 60 * 1000
+const MAX_LOGIN_FAILURES = 10
+const MAX_LOGIN_FAILURE_KEYS = 10_000
+
+const pruneLoginFailures = (now = Date.now()): void => {
+  for (const [ip, failures] of loginFailures) {
+    const active = failures.filter(timestamp => now - timestamp < LOGIN_WINDOW_MS)
+    if (active.length === 0) loginFailures.delete(ip)
+    else loginFailures.set(ip, active)
+  }
+  while (loginFailures.size > MAX_LOGIN_FAILURE_KEYS) {
+    const oldest = loginFailures.keys().next().value
+    if (!oldest) break
+    loginFailures.delete(oldest)
+  }
+}
+
+export const isLoginRateLimited = (ip: string): boolean => {
+  const now = Date.now()
+  pruneLoginFailures(now)
+  const failures = (loginFailures.get(ip) || []).filter(timestamp => now - timestamp < LOGIN_WINDOW_MS)
+  loginFailures.set(ip, failures)
+  return failures.length >= MAX_LOGIN_FAILURES
+}
+
+export const recordLoginFailure = (ip: string): void => {
+  const now = Date.now()
+  pruneLoginFailures(now)
+  const failures = (loginFailures.get(ip) || []).filter(timestamp => now - timestamp < LOGIN_WINDOW_MS)
+  failures.push(now)
+  loginFailures.set(ip, failures)
+  pruneLoginFailures(now)
+}
+
+export const clearLoginFailures = (ip: string): void => {
+  loginFailures.delete(ip)
+}
+
+export const safeStringEqual = (left: unknown, right: unknown): boolean => {
+  if (typeof left !== 'string' || typeof right !== 'string' || left.length === 0 || right.length === 0) return false
+  const leftBuffer = Buffer.from(left)
+  const rightBuffer = Buffer.from(right)
+  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer)
+}
 
 const pruneExpiredPlayerSessions = (now = Date.now()) => {
   for (const [sessionId, session] of playerSessions) {
     if (now - session.createdAt > PLAYER_SESSION_TTL) playerSessions.delete(sessionId)
+  }
+  while (playerSessions.size > MAX_PLAYER_SESSIONS) {
+    const oldest = playerSessions.keys().next().value
+    if (!oldest) break
+    playerSessions.delete(oldest)
   }
 }
 
@@ -230,9 +340,11 @@ export const verifyAdminAuth = (
     }
   }
 
-  if (typeof headerAuth === 'string' && headerAuth === configuredPassword) {
+  if (typeof headerAuth === 'string' && safeStringEqual(headerAuth, configuredPassword)) {
     return true
   }
+
+  if (checkAdminSession(req)) return true
 
   if (allowQueryAuth) {
     let searchParams: URLSearchParams | null = null
@@ -247,7 +359,7 @@ export const verifyAdminAuth = (
 
     if (searchParams) {
       const queryAuth = searchParams.get('auth')
-      if (typeof queryAuth === 'string' && queryAuth === configuredPassword) {
+      if (typeof queryAuth === 'string' && safeStringEqual(queryAuth, configuredPassword)) {
         return true
       }
     }

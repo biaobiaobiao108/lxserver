@@ -42,6 +42,9 @@ export const initDatabase = (customDbPath?: string): Database => {
       updated_at INTEGER NOT NULL
     );
   `)
+  // Passwords remain in the runtime config for legacy protocol compatibility;
+  // never persist them in the structured database.
+  db.run("UPDATE users SET password = '' WHERE password <> ''")
 
   // 3. 设备密钥表
   db.run(`

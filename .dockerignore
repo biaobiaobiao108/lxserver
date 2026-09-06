@@ -15,4 +15,4 @@ public/music/bin
 *.md
 .github
 Dockerfile*
-
+config.js

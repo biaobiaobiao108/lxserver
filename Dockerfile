@@ -49,13 +49,13 @@ COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/server ./server
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/config.js ./config.js
 
 # 将系统 chromaprint (fpcalc) 直接软链接至播放器二进制目录，免去容器内外部下载
 RUN mkdir -p /server/public/music/bin && ln -sf /usr/bin/fpcalc /server/public/music/bin/fpcalc
 
 VOLUME /server/data
 ENV DATA_PATH='/server/data'
+ENV CONFIG_PATH='/server/data/config.js'
 ENV LOG_PATH='/server/data/logs'
 ENV NODE_ENV='production'
 ENV PORT=9527
@@ -68,4 +68,3 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD bun -e "fetch('http://127.0.0.1:9527/').then(r => { if (!r.ok) process.exit(1); }).catch(() => process.exit(1))"
 
 CMD [ "bun", "server/index.js" ]
-

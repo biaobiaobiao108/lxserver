@@ -917,12 +917,6 @@ class DownloadManager {
                 console.log('[DownloadManager] Using server cache for download:', task.song.name);
                 finalUrl = task.cacheUrl;
 
-                // 补全 Token
-                const authToken = (window.getUserAuthHeaders ? window.getUserAuthHeaders()['x-user-token'] : null) || localStorage.getItem('lx_user_token') || '';
-                if (authToken && !finalUrl.includes('token=')) {
-                    finalUrl += (finalUrl.includes('?') ? '&' : '?') + `token=${encodeURIComponent(authToken)}`;
-                }
-
                 ext = this.getDownloadExtension(finalUrl, quality);
             } else {
                 const downloadResolver = await this.waitForDownloadResolver();

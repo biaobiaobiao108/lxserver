@@ -12,8 +12,7 @@ export const corsMiddleware: Middleware = async (ctx, next) => {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-        'Access-Control-Allow-Headers': '*',
-        'Access-Control-Allow-Private-Network': 'true',
+        'Access-Control-Allow-Headers': 'Content-Type, X-Frontend-Auth, X-User-Name, X-User-Token',
       },
     })
   }
@@ -26,8 +25,7 @@ export const corsMiddleware: Middleware = async (ctx, next) => {
   const headers = new Headers(response.headers)
   headers.set('Access-Control-Allow-Origin', '*')
   headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
-  headers.set('Access-Control-Allow-Headers', '*')
-  headers.set('Access-Control-Allow-Private-Network', 'true')
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, X-Frontend-Auth, X-User-Name, X-User-Token')
 
   return new Response(response.body, {
     status: response.status,
@@ -49,11 +47,47 @@ export const adaptNodeHandler = (
   ...extraArgs: any[]
 ): Promise<Response> => {
   return new Promise((resolve) => {
+    let settled = false
     let responseStatus = 200
     const responseHeaders: Record<string, string> = {}
     let responseBody = ''
     const binaryChunks: Buffer[] = []
     let isBinary = false
+    const maxBodyBytes = 10 * 1024 * 1024
+    let bodyPromise: Promise<Buffer> | null = null
+    const errorListeners: Array<(error: Error) => void> = []
+    const readRequestBody = (): Promise<Buffer> => {
+      if (bodyPromise) return bodyPromise
+      const contentLength = Number(ctx.headers.get('content-length') || 0)
+      if (Number.isFinite(contentLength) && contentLength > maxBodyBytes) {
+        bodyPromise = Promise.reject(new Error('Request body is too large'))
+        return bodyPromise
+      }
+
+      bodyPromise = (async () => {
+        if (!ctx.request.body) return Buffer.alloc(0)
+        const reader = ctx.request.body.getReader()
+        const chunks: Buffer[] = []
+        let total = 0
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            total += value.byteLength
+            if (total > maxBodyBytes) {
+              await reader.cancel()
+              throw new Error('Request body is too large')
+            }
+            chunks.push(Buffer.from(value))
+          }
+          return Buffer.concat(chunks, total)
+        } finally {
+          reader.releaseLock()
+        }
+      })()
+      bodyPromise.catch(error => errorListeners.forEach(listener => listener(error)))
+      return bodyPromise
+    }
 
     const mockReq: any = {
       method: ctx.method,
@@ -61,9 +95,11 @@ export const adaptNodeHandler = (
       headers: Object.fromEntries(ctx.headers.entries()),
       on(event: string, callback: (arg?: any) => void) {
         if (event === 'data') {
-          void ctx.request.arrayBuffer().then((buf: ArrayBuffer) => callback(Buffer.from(buf)))
+          void readRequestBody().then(callback).catch(() => { })
         } else if (event === 'end') {
-          setTimeout(() => callback(), 5)
+          void readRequestBody().then(() => setTimeout(() => callback(), 5)).catch(() => { })
+        } else if (event === 'error') {
+          errorListeners.push(callback as (error: Error) => void)
         }
         return mockReq
       },
@@ -86,6 +122,8 @@ export const adaptNodeHandler = (
         }
       },
       end(data?: any) {
+        if (settled) return
+        settled = true
         if (data) {
           if (Buffer.isBuffer(data)) {
             isBinary = true
@@ -109,10 +147,17 @@ export const adaptNodeHandler = (
     }
 
     try {
-      void handler(mockReq, mockRes, ...extraArgs)
+      Promise.resolve(handler(mockReq, mockRes, ...extraArgs)).catch((e: any) => {
+        if (!settled) {
+          settled = true
+          resolve(ctx.json({ success: false, error: e?.message || 'Internal error' }, 500))
+        }
+      })
     } catch (e: any) {
-      resolve(ctx.json({ success: false, error: e.message }, 500))
+      if (!settled) {
+        settled = true
+        resolve(ctx.json({ success: false, error: e.message }, 500))
+      }
     }
   })
 }
-

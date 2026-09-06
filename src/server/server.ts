@@ -62,6 +62,7 @@ export const startServer = async (port: number, ip: string): Promise<void> => {
     serverStatus.status = false
     serverStatus.message = err.message
     serverStatus.address = []
+    throw err
   }
 }
 

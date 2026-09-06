@@ -77,7 +77,9 @@ export const createSubsonicRouter = (): Router => {
       }
 
       try {
-        void subsonicHandler.handleRequest(mockReq, mockRes, ctx.url)
+        Promise.resolve(subsonicHandler.handleRequest(mockReq, mockRes, ctx.url)).catch((err: any) => {
+          resolve(ctx.json({ error: err?.message || 'Internal error' }, 500))
+        })
       } catch (err: any) {
         resolve(ctx.json({ error: { code: 500, message: err.message } }, 500))
       }

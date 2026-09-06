@@ -16,6 +16,7 @@
 
 
 const API_BASE = '';
+const credentialStorage = window.sessionStorage;
 
 type AdminOverlay = HTMLElement & { inert?: boolean };
 
@@ -140,6 +141,53 @@ function stringToColor(str) {
     return `hsl(${h}, 70%, 45%)`;
 }
 
+function safeResourceUrl(value, fallback = '') {
+    if (!value) return fallback;
+    try {
+        const url = new URL(String(value), window.location.origin);
+        return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+function safeInlineString(value) {
+    return JSON.stringify(String(value ?? ''))
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '\\u003c')
+        .replace(/>/g, '\\u003e')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function renderSafeMarkdown(container: HTMLElement, markdown: string): void {
+    if (!window.marked) {
+        container.textContent = markdown;
+        return;
+    }
+
+    const template = document.createElement('template');
+    template.innerHTML = window.marked.parse(String(markdown ?? ''));
+    template.content.querySelectorAll('script, iframe, object, embed, frame, frameset, form, link, meta, base, style').forEach(element => element.remove());
+    template.content.querySelectorAll('*').forEach(element => {
+        Array.from(element.attributes).forEach(attribute => {
+            const name = attribute.name.toLowerCase();
+            if (name.startsWith('on') || name === 'style') {
+                element.removeAttribute(attribute.name);
+                return;
+            }
+            if (name !== 'href' && name !== 'src' && name !== 'xlink:href' && name !== 'action' && name !== 'formaction') return;
+            try {
+                const url = new URL(attribute.value, window.location.origin);
+                if (url.protocol !== 'http:' && url.protocol !== 'https:') element.removeAttribute(attribute.name);
+            } catch {
+                element.removeAttribute(attribute.name);
+            }
+        });
+    });
+    container.replaceChildren(template.content);
+}
+
 class App {
     constructor() {
         this.password = null;
@@ -158,7 +206,7 @@ class App {
     init() {
         initAdminAccessibility();
         // 检查是否已登录
-        const savedPassword = localStorage.getItem('lx_auth');
+        const savedPassword = credentialStorage.getItem('lx_auth');
         if (savedPassword) {
             this.password = savedPassword;
             this.showApp();
@@ -348,7 +396,7 @@ class App {
 
             if (res.success) {
                 this.password = password;
-                localStorage.setItem('lx_auth', password);
+                credentialStorage.setItem('lx_auth', password);
                 this.showApp();
                 this.loadDashboard();
             } else {
@@ -360,7 +408,8 @@ class App {
     }
 
     logout() {
-        localStorage.removeItem('lx_auth');
+        void fetch('/api/logout', { method: 'POST' }).catch(() => undefined);
+        credentialStorage.removeItem('lx_auth');
         location.reload();
     }
 
@@ -467,7 +516,7 @@ class App {
                 // Replace the build hash placeholder; application version is intentionally not shown in the UI.
                 const buildHash = (window.CONFIG && window.CONFIG.buildHash) || 'unknown';
                 const content = text.replace(/{{buildHash}}/g, buildHash);
-                container.innerHTML = window.marked.parse(content);
+                renderSafeMarkdown(container, content);
             } else {
                 container.innerText = text;
             }
@@ -728,7 +777,7 @@ class App {
             const avatarStyle = isPublic ? 'background: linear-gradient(135deg, #10b981, #059669); font-size:12px;' : '';
             return `
             <div class="dropdown-item ${user.name === currentSelected ? 'active' : ''}" 
-                 onclick="app.selectUser('${type}', '${this.escapeHtml(user.name)}')">
+                 onclick="app.selectUser(${safeInlineString(type)}, ${safeInlineString(user.name)})">
                 <div class="dropdown-avatar" style="${avatarStyle}">${avatarChar}</div>
                 <span>${displayName}</span>
                 ${user.name === currentSelected ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="width:14px;height:14px;margin-left:auto;"><polyline points="20 6 9 17 4 12"></polyline></svg>' : ''}
@@ -754,7 +803,7 @@ class App {
                     const avatarStyle = isPublic ? 'background: linear-gradient(135deg, #10b981, #059669); font-size: 1.5rem;' : '';
                     const avatarHtml = isPublic ? '🌐' : this.escapeHtml(user.name.charAt(0).toUpperCase());
                     return `
-                    <div class="user-select-card" role="button" tabindex="0" aria-label="选择用户 ${displayName}" onclick="app.selectUser('${type}', '${this.escapeHtml(user.name)}')" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.selectUser('${type}', '${this.escapeHtml(user.name)}'); }">
+                    <div class="user-select-card" role="button" tabindex="0" aria-label="选择用户 ${displayName}" onclick="app.selectUser(${safeInlineString(type)}, ${safeInlineString(user.name)})" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.selectUser(${safeInlineString(type)}, ${safeInlineString(user.name)}); }">
                         <div class="avatar" style="${avatarStyle}">${avatarHtml}</div>
                         <div class="name">${displayName}</div>
                         <div class="role">${roleText}</div>
@@ -928,7 +977,7 @@ class App {
                 </div>
                 <div class="col-password">
                     <span class="password-text" id="pwd-text-${index}">******</span>
-                    <button class="btn-icon" onclick="app.togglePasswordVisibility(${index})" title="显示/隐藏">
+                    <button class="btn-icon" onclick="app.togglePasswordVisibility(${index})" title="密码不回显">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                             <circle cx="12" cy="12" r="3"/>
@@ -1020,15 +1069,8 @@ class App {
 
     // 切换密码显示/隐藏
     togglePasswordVisibility(index) {
-        const user = this.users[index];
-        if (!user) return;
-
         const el = document.getElementById(`pwd-text-${index}`);
-        if (el.textContent === '******') {
-            el.textContent = user.password;
-        } else {
-            el.textContent = '******';
-        }
+        if (el) el.textContent = '密码不回显';
     }
 
     // 显示修改密码模态框
@@ -1843,14 +1885,16 @@ class App {
             if (form.elements['singer.sourcePriority']) {
                 form.elements['singer.sourcePriority'].value = config['singer.sourcePriority'] || 'tx,wy';
             }
-            form.elements['frontend.password'].value = config['frontend.password'] || '';
+            form.elements['frontend.password'].value = '';
+            form.elements['frontend.password'].placeholder = config['frontend.passwordConfigured'] ? '已配置，留空保持不变' : '请设置管理密码';
 
             // Web播放器配置
             if (form.elements['player.enableAuth']) {
                 form.elements['player.enableAuth'].checked = config['player.enableAuth'] === true;
             }
             if (form.elements['player.password']) {
-                form.elements['player.password'].value = config['player.password'] || '';
+                form.elements['player.password'].value = '';
+                form.elements['player.password'].placeholder = config['player.passwordConfigured'] ? '已配置，留空保持不变' : '请设置播放器密码';
             }
 
             // WebDAV 配置
@@ -1864,7 +1908,8 @@ class App {
                 form.elements['webdav.username'].value = config['webdav.username'] || '';
             }
             if (form.elements['webdav.password']) {
-                form.elements['webdav.password'].value = config['webdav.password'] || '';
+                form.elements['webdav.password'].value = '';
+                form.elements['webdav.password'].placeholder = config['webdav.passwordConfigured'] ? '已配置，留空保持不变' : '请输入 WebDAV 密码';
             }
             if (form.elements['webdav.syncPath']) {
                 form.elements['webdav.syncPath'].value = config['webdav.syncPath'] || '/lx-sync';
@@ -2014,7 +2059,7 @@ class App {
             // 如果密码改了，更新本地存储
             if (config['frontend.password'] && config['frontend.password'] !== this.password) {
                 this.password = config['frontend.password'];
-                localStorage.setItem('lx_auth', config['frontend.password']);
+                credentialStorage.setItem('lx_auth', config['frontend.password']);
             }
 
             // 更新侧边栏播放器链接
@@ -2162,7 +2207,7 @@ class App {
                 statusEl.innerHTML = '<p style="color: var(--accent-error);">❌ 备份失败</p>';
             }
         } catch (err) {
-            statusEl.innerHTML = '<p style="color: var(--accent-error);">❌ 备份失败: ' + err.message + '</p>';
+            statusEl.innerHTML = '<p style="color: var(--accent-error);">❌ 备份失败: ' + this.escapeHtml(err.message || '') + '</p>';
         } finally {
             setTimeout(() => this.showProgress(false), 3000);
         }
@@ -2183,7 +2228,7 @@ class App {
                 statusEl.innerHTML = '<p style="color: var(--accent-error);">❌ 恢复失败</p>';
             }
         } catch (err) {
-            statusEl.innerHTML = '<p style="color: var(--accent-error);">❌ 恢复失败: ' + err.message + '</p>';
+            statusEl.innerHTML = '<p style="color: var(--accent-error);">❌ 恢复失败: ' + this.escapeHtml(err.message || '') + '</p>';
         }
     }
 
@@ -2203,7 +2248,7 @@ class App {
                 statusEl.innerHTML = '<p style="color: var(--accent-error);">❌ 同步失败</p>';
             }
         } catch (err) {
-            statusEl.innerHTML = '<p style="color: var(--accent-error);">❌ 同步失败: ' + err.message + '</p>';
+            statusEl.innerHTML = '<p style="color: var(--accent-error);">❌ 同步失败: ' + this.escapeHtml(err.message || '') + '</p>';
         } finally {
             setTimeout(() => this.showProgress(false), 3000);
         }
@@ -2271,12 +2316,13 @@ class App {
 
     // 辅助方法：生成歌曲名称列 HTML（包含封面）
     renderSongNameCell(song) {
-        const picUrl = song.meta?.picUrl || '';
+        const picUrl = safeResourceUrl(song.meta?.picUrl);
+        const songName = this.escapeHtml(song.name || '未知歌曲');
         // 使用默认图占位，data-src 用于懒加载 (IntersectionObserver 稍后实现，这里直接用原生 lazy loading)
         // 注意：Web 原生 loading="lazy" 对 background-image 无效，对 img 标签有效。
         // 这里使用 img 标签
         const coverHtml = picUrl
-            ? `<img src="${picUrl}" class="song-cover" width="48" height="48" loading="lazy" decoding="async" alt="${song.name || '歌曲'}专辑封面" onerror="this.style.opacity=0">`
+            ? `<img src="${this.escapeHtml(picUrl)}" class="song-cover" width="48" height="48" loading="lazy" decoding="async" alt="${songName}专辑封面" onerror="this.style.opacity=0">`
             : `<div class="song-cover" style="background: rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: center;">🎵</div>`;
 
         const singerHtml = song.singer
@@ -2287,7 +2333,7 @@ class App {
             <div class="song-col-name">
                 ${coverHtml}
                 <div class="song-info-wrapper min-w-0">
-                    <span class="song-title-text dynamic-marquee truncate" title="${this.escapeHtml(song.name)}">${this.escapeHtml(song.name || '未知歌曲')}</span>
+                    <span class="song-title-text dynamic-marquee truncate" title="${songName}">${songName}</span>
                     ${singerHtml}
                     ${this.renderSongTags(song)}
                 </div>
@@ -2296,66 +2342,8 @@ class App {
     }
 
     initSSE() {
-        if (this.sseSource) return;
-
-        const auth = this.password || localStorage.getItem('lx_auth');
-        if (!auth) return;
-
-        this.sseSource = new EventSource(`/api/webdav/progress?auth=${encodeURIComponent(auth)}`);
-
-        this.sseSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                // console.log('SSE Progress:', data);
-
-                if (data.type === 'backup') {
-                    if (data.status === 'uploading') {
-                        const percent = (data.current / data.total) * 100;
-                        this.updateProgress(percent, `正在上传备份: ${this.formatFileSize(data.current)} / ${this.formatFileSize(data.total)}`);
-                    } else if (data.status === 'packing') {
-                        this.updateProgress(5, data.message || '正在打包文件...');
-                    } else if (data.status === 'preparing') {
-                        this.updateProgress(0, data.message);
-                    } else if (data.status === 'success') {
-                        this.updateProgress(100, '备份上传完成');
-                    }
-                } else if (data.type === 'sync') {
-                    if (data.status === 'processing') {
-                        const percent = (data.current / data.total) * 100;
-                        this.updateProgress(percent, `正在同步文件 (${data.current}/${data.total}): ${data.file}`)
-                    } else if (data.status === 'finish') {
-                        this.updateProgress(100, '文件同步完成');
-                    }
-                } else if (data.type === 'restore') {
-                    if (data.status === 'processing') {
-                        const percent = (data.current / data.total) * 100;
-                        this.updateProgress(percent, `正在恢复文件 (${data.current}/${data.total}): ${data.file}`);
-                    } else if (data.status === 'downloading') {
-                        this.updateProgress(30, data.message || '正在下载备份...');
-                    } else if (data.status === 'extracting') {
-                        this.updateProgress(70, data.message || '正在解压备份...');
-                    } else if (data.status === 'start') {
-                        this.updateProgress(0, data.message || '正在从云端恢复数据...');
-                    } else if (data.status === 'finish') {
-                        this.updateProgress(100, data.message || '数据恢复完成');
-                    } else if (data.status === 'error') {
-                        this.updateProgress(0, data.message || '恢复失败');
-                    }
-                } else if (data.type === 'file') {
-                    // 单文件上传进度（如果需要显示）
-                    if (data.status === 'uploading') {
-                        // 可以在这里更新更细粒度的进度，但可能会闪烁太快
-                    }
-                }
-            } catch (e) {
-                console.error('SSE Parse Error:', e);
-            }
-        };
-
-        this.sseSource.onerror = (err) => {
-            // console.error('SSE Error:', err);
-            // 连接失败不报错，静默重试
-        };
+        // WebDAV progress has no public SSE endpoint. Keep this hook as a
+        // compatibility no-op instead of putting the administrator password in a URL.
     }
 
     async loadSyncLogs() {
@@ -2368,19 +2356,25 @@ class App {
                 return;
             }
 
-            container.innerHTML = data.logs.map(log => `
+            container.innerHTML = data.logs.map(log => {
+                const logType = ['upload', 'download', 'backup', 'restore'].includes(log.type) ? log.type : 'unknown';
+                const logFile = this.escapeHtml(log.file || '');
+                const logMessage = this.escapeHtml(log.message || '');
+                const logStatus = log.status === 'success' ? 'success' : 'error';
+                return `
             <div class="sync-log-item">
                 <div class="log-info">
-                    <span class="log-type log-type-${log.type}">${this.getLogTypeText(log.type)}</span>
-                    <span class="log-file">${log.file}</span>
-                    ${log.message ? `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">${log.message}</div>` : ''}
+                    <span class="log-type log-type-${logType}">${this.escapeHtml(this.getLogTypeText(log.type))}</span>
+                    <span class="log-file">${logFile}</span>
+                    ${logMessage ? `<div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem;">${logMessage}</div>` : ''}
                 </div>
                 <div style="display: flex; align-items: center; gap: 1rem;">
-                    <span class="log-status log-status-${log.status}">${log.status === 'success' ? '成功' : '失败'}</span>
+                    <span class="log-status log-status-${logStatus}">${log.status === 'success' ? '成功' : '失败'}</span>
                     <span class="log-time">${this.formatTime(log.timestamp)}</span>
                 </div>
             </div>
-        `).join('');
+        `;
+            }).join('');
         } catch (err) {
             console.error('Failed to load sync logs:', err);
         }
@@ -2443,21 +2437,28 @@ class App {
             return a.name.localeCompare(b.name);
         });
 
-        container.innerHTML = items.map(item => `
+        container.innerHTML = items.map(item => {
+            const itemName = this.escapeHtml(item.name || '');
+            const itemPath = String(item.path || '');
+            const itemPathHtml = this.escapeHtml(itemPath);
+            const itemPathArg = safeInlineString(itemPath);
+            const ariaLabel = `${item.isDirectory ? '打开文件夹' : '查看文件'} ${itemName}`;
+            return `
         <div class="file-item">
-            <div class="file-name" role="button" tabindex="0" aria-label="${item.isDirectory ? '打开文件夹' : '查看文件'} ${item.name}" onclick="app.${item.isDirectory ? `loadFiles('${item.path}')` : `viewFile('${item.path}')`}" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.${item.isDirectory ? `loadFiles('${item.path}')` : `viewFile('${item.path}')`}; }">
+            <div class="file-name" role="button" tabindex="0" aria-label="${ariaLabel}" onclick="app.${item.isDirectory ? `loadFiles(${itemPathArg})` : `viewFile(${itemPathArg})`}" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.${item.isDirectory ? `loadFiles(${itemPathArg})` : `viewFile(${itemPathArg})`}; }">
                 <span class="file-icon">${item.isDirectory ? '📁' : this.getFileIcon(item.name)}</span>
-                <span>${item.name}</span>
+                <span>${itemName}</span>
             </div>
             <div class="file-size">${item.isDirectory ? '-' : this.formatFileSize(item.size)}</div>
             <div class="file-date">${this.formatDate(item.mtime)}</div>
             <div class="file-item-actions">
-                ${!item.isDirectory ? `<button onclick="app.editFile('${item.path}')">编辑</button>` : ''}
-                <button onclick="app.downloadFile('${item.path}')">下载</button>
-                <button onclick="app.deleteFile('${item.path}', ${item.isDirectory})" style="color: var(--accent-error);">删除</button>
+                ${!item.isDirectory ? `<button onclick="app.editFile(${itemPathArg})">编辑</button>` : ''}
+                <button onclick="app.downloadFile(${itemPathArg})">下载</button>
+                <button onclick="app.deleteFile(${itemPathArg}, ${item.isDirectory})" style="color: var(--accent-error);">删除</button>
             </div>
         </div>
-    `).join('');
+    `;
+        }).join('');
     }
 
     getFileIcon(filename) {
@@ -2483,7 +2484,7 @@ class App {
         let currentPath = '';
         parts.forEach((part, index) => {
             currentPath += (index > 0 ? '/' : '') + part;
-            html += `<a href="#" onclick="app.loadFiles('${currentPath}'); return false;">${part}</a>`;
+            html += `<a href="#" onclick="app.loadFiles(${safeInlineString(currentPath)}); return false;">${this.escapeHtml(part)}</a>`;
         });
 
         breadcrumb.innerHTML = html;
@@ -2640,13 +2641,17 @@ class App {
                 return;
             }
 
-            container.innerHTML = list.map(item => `
+            container.innerHTML = list.map(item => {
+                const snapshotId = String(item.id || '');
+                const snapshotIdHtml = this.escapeHtml(snapshotId);
+                const snapshotIdArg = safeInlineString(snapshotId);
+                return `
             <div class="snapshot-row">
                 <div class="col-time">${new Date(item.time).toLocaleString()}</div>
-                <div class="col-id" title="${item.id}">snapshot_${item.id}</div>
+                <div class="col-id" title="${snapshotIdHtml}">snapshot_${snapshotIdHtml}</div>
                 <div class="col-size">${this.formatFileSize(item.size)}</div>
                 <div class="col-actions snapshot-actions">
-                    <button class="btn-download" onclick="app.downloadSnapshot('${item.id}')">
+                    <button class="btn-download" onclick="app.downloadSnapshot(${snapshotIdArg})">
                         <!-- 下载图标 -->
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -2655,7 +2660,7 @@ class App {
                         </svg>
                         下载备份
                     </button>
-                    <button class="btn-restore" onclick="app.restoreSnapshot('${item.id}')">
+                    <button class="btn-restore" onclick="app.restoreSnapshot(${snapshotIdArg})">
                         <!-- 恢复图标 -->
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="1 4 1 10 7 10"></polyline>
@@ -2664,7 +2669,7 @@ class App {
                         回滚
                     </button>
                     <!-- [新增] 删除按钮 -->
-                    <button class="btn-delete" onclick="app.deleteSnapshot('${item.id}')">
+                    <button class="btn-delete" onclick="app.deleteSnapshot(${snapshotIdArg})">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="3 6 5 6 21 6"></polyline>
                             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -2673,7 +2678,8 @@ class App {
                     </button>
                 </div>
             </div>
-        `).join('');
+        `;
+            }).join('');
 
             // 移除加载状态并添加淡入动画
             container.classList.remove('content-loading');
@@ -2808,14 +2814,19 @@ class App {
         if (!(await showSelect('本地备份', '确定要创建并下载本地全量 ZIP 备份吗？\n\n这可能需要一些时间，取决于数据量。'))) return;
 
         try {
-            // 直接通过 URL 下载，后端会处理 ZIP 创建并流式传输
-            const url = `/api/backup/download?auth=${encodeURIComponent(this.password)}`;
+            const response = await fetch('/api/backup/download', {
+                headers: { 'X-Frontend-Auth': this.password },
+            });
+            if (!response.ok) throw new Error(await response.text() || '备份下载失败');
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             // 获取当前日期作为文件名建议
             const dateStr = new Date().toISOString().split('T')[0];
             a.download = `lx-sync-backup-local-${dateStr}.zip`;
             a.click();
+            URL.revokeObjectURL(url);
         } catch (err) {
             showError('下载本地备份失败: ' + err.message);
         }

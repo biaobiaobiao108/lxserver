@@ -9,11 +9,13 @@ import * as fileCache from '../fileCache'
 import needle from 'needle'
 import fs from 'node:fs'
 import path from 'node:path'
+import { assertSafeRemoteHttpUrl } from '../networkSecurity'
 
 /** 音乐解析进度 SSE 专属通道: requestId -> Controller */
 export const musicProgressControllers = new Map<string, ReadableStreamDefaultController<Uint8Array>>()
 const musicProgressTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const MUSIC_PROGRESS_TTL = 10 * 60 * 1000
+const MAX_MUSIC_PROGRESS_CHANNELS = 2_048
 
 const cleanupMusicProgress = (reqId: string, controller?: ReadableStreamDefaultController<Uint8Array>) => {
   if (controller && musicProgressControllers.get(reqId) !== controller) return
@@ -54,20 +56,26 @@ const parseContentLength = (headers: Record<string, any>): number | null => {
 const getAudioRemoteSize = async (audioUrl: string): Promise<number | null> => {
   if (!/^https?:\/\//i.test(audioUrl)) return null
 
-  const urlObj = new URL(audioUrl)
+  let safeUrl: URL
+  try {
+    safeUrl = await assertSafeRemoteHttpUrl(audioUrl)
+  } catch {
+    return null
+  }
+  const urlObj = safeUrl
   const headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Referer': urlObj.origin,
   }
   const options = {
-    follow_max: 5,
+    follow_max: 0,
     response_timeout: 8000,
     read_timeout: 8000,
     headers,
   }
 
   try {
-    const resp = await needle('head', audioUrl, null, options)
+    const resp = await needle('head', safeUrl.toString(), null, options)
     const size = parseContentLength(resp.headers || {})
     if (size) return size
   } catch (e: any) {
@@ -75,7 +83,7 @@ const getAudioRemoteSize = async (audioUrl: string): Promise<number | null> => {
   }
 
   try {
-    const resp = await needle('get', audioUrl, null, {
+    const resp = await needle('get', safeUrl.toString(), null, {
       ...options,
       headers: {
         ...headers,
@@ -93,15 +101,19 @@ const getAudioRemoteSize = async (audioUrl: string): Promise<number | null> => {
 /** 注册在线音乐检索、解析与播放元数据路由 */
 export const createMusicRouter = (): Router => {
   const router = new Router()
+  const boundedInt = (value: string | null, fallback: number, min: number, max: number) => {
+    const parsed = Number.parseInt(value || '', 10)
+    return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback
+  }
 
   // 1. 音乐搜索 API
   router.get('/api/music/search', async (ctx) => {
     const name = ctx.query.get('name') || ''
     const source = ctx.query.get('source') || 'kw'
     const type = ctx.query.get('type') || 'song'
-    const limit = parseInt(ctx.query.get('limit') || '20')
-    const page = parseInt(ctx.query.get('page') || '1')
-    const fetchPages = parseInt(ctx.query.get('pages') || '1')
+    const limit = boundedInt(ctx.query.get('limit'), 20, 1, 100)
+    const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
+    const fetchPages = boundedInt(ctx.query.get('pages'), 1, 1, 5)
 
     if (!name) return ctx.text('Missing name', 400)
 
@@ -123,7 +135,7 @@ export const createMusicRouter = (): Router => {
           allSongs = allSongs.concat(pageList)
           if (pageList.length < PAGE_SIZE) break
         }
-        result = allSongs
+        result = allSongs.slice(0, limit)
       } else if (type === 'singer') {
         if (!musicSdk[source].extendSearch || !musicSdk[source].extendSearch.searchSinger) {
           throw new Error(`Source ${source} does not support singer search`)
@@ -186,7 +198,7 @@ export const createMusicRouter = (): Router => {
   router.get('/api/music/artistAlbums', async (ctx) => {
     const id = ctx.query.get('id')
     const source = ctx.query.get('source') || 'wy'
-    const page = parseInt(ctx.query.get('page') || '1')
+    const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     if (!id) return ctx.text('Missing id', 400)
     try {
       const data = await musicSdk[source].extendDetail.getArtistAlbums(id, page)
@@ -250,6 +262,13 @@ export const createMusicRouter = (): Router => {
         if (previous) {
           try { previous.close() } catch { }
           cleanupMusicProgress(reqId, previous)
+        }
+        while (musicProgressControllers.size >= MAX_MUSIC_PROGRESS_CHANNELS) {
+          const oldestReqId = musicProgressControllers.keys().next().value
+          if (!oldestReqId) break
+          const oldest = musicProgressControllers.get(oldestReqId)
+          try { oldest?.close() } catch { }
+          cleanupMusicProgress(oldestReqId, oldest)
         }
         musicProgressControllers.set(reqId, controller)
         musicProgressTimers.set(reqId, setTimeout(() => {
@@ -359,38 +378,37 @@ export const createMusicRouter = (): Router => {
       if (result && result.url) {
         if (result.url.startsWith('http')) {
           const checkRedirect = async (u: string, depth = 0): Promise<string> => {
-            if (depth > 3) return u
+            const safeUrl = await assertSafeRemoteHttpUrl(u)
+            if (depth > 3) return safeUrl.toString()
             try {
-              const resp = await needle('head', u, null, {
+              const resp = await needle('head', safeUrl.toString(), null, {
                 follow_max: 0,
                 response_timeout: 4000,
                 read_timeout: 4000,
                 headers: {
                   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                  'Referer': new URL(u).origin,
+                  'Referer': safeUrl.origin,
                 },
               })
               if (resp.statusCode && [301, 302, 303, 307, 308].includes(resp.statusCode) && resp.headers.location) {
                 let nextUrl = resp.headers.location
                 if (!nextUrl.startsWith('http')) {
-                  try { nextUrl = new URL(nextUrl, u).href } catch { }
+                  try { nextUrl = new URL(nextUrl, safeUrl).href } catch { }
                 }
                 return checkRedirect(nextUrl, depth + 1)
               }
               if (resp.statusCode !== undefined && resp.statusCode >= 400) {
                 console.warn(`[MusicUrl] Redirect check failed with status ${resp.statusCode}, using original URL`)
-                return u
+                return safeUrl.toString()
               }
             } catch (e: any) {
               console.warn(`[MusicUrl] head check failed: ${e.message}`)
             }
-            return u
+            return safeUrl.toString()
           }
 
           const finalUrl = await checkRedirect(result.url)
-          if (finalUrl !== result.url) {
-            result.url = finalUrl
-          }
+          result.url = finalUrl
         }
 
         result.requestedSource = songInfo.source
@@ -574,7 +592,7 @@ export const createMusicRouter = (): Router => {
     const source = ctx.query.get('source') || 'wy'
     const tagId = ctx.query.get('tagId') || ''
     const sortId = ctx.query.get('sortId') || 'hot'
-    const page = parseInt(ctx.query.get('page') || '1')
+    const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     try {
       if (!musicSdk[source] || !musicSdk[source].songList) {
         throw new Error(`Source ${source} does not support songList`)
@@ -590,7 +608,7 @@ export const createMusicRouter = (): Router => {
   router.get('/api/music/songList/detail', async (ctx) => {
     const source = ctx.query.get('source') || 'wy'
     const id = ctx.query.get('id')
-    const page = parseInt(ctx.query.get('page') || '1')
+    const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     if (!id) return ctx.text('Missing id', 400)
     try {
       if (!musicSdk[source] || !musicSdk[source].songList) {
@@ -610,7 +628,7 @@ export const createMusicRouter = (): Router => {
   router.get('/api/music/songList/search', async (ctx) => {
     const source = ctx.query.get('source') || 'wy'
     const text = ctx.query.get('text')
-    const page = parseInt(ctx.query.get('page') || '1')
+    const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     if (!text) return ctx.text('Missing text', 400)
     try {
       if (!musicSdk[source] || !musicSdk[source].songList) {
@@ -627,7 +645,7 @@ export const createMusicRouter = (): Router => {
   router.get('/api/music/songList/userPlaylist', async (ctx) => {
     const source = ctx.query.get('source') || 'tx'
     const uid = ctx.query.get('uid')
-    const page = parseInt(ctx.query.get('page') || '1')
+    const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     if (!uid) return ctx.text('Missing uid', 400)
     try {
       if (!musicSdk[source] || !musicSdk[source].userPlaylist) {
@@ -658,7 +676,7 @@ export const createMusicRouter = (): Router => {
   router.get('/api/music/leaderboard/list', async (ctx) => {
     const source = ctx.query.get('source') || 'kg'
     const bangid = ctx.query.get('bangid')
-    const page = parseInt(ctx.query.get('page') || '1')
+    const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     if (!bangid) return ctx.text('Missing bangid', 400)
     try {
       if (!musicSdk[source] || !musicSdk[source].leaderboard) {
@@ -683,6 +701,8 @@ export const createMusicRouter = (): Router => {
         page?: number
         limit?: number
       }>()
+      page = boundedInt(String(page ?? ''), 1, 1, 1000)
+      limit = boundedInt(String(limit ?? ''), 20, 1, 100)
       songInfo = normalizeSongInfo(songInfo)
       if (!songInfo || !songInfo.source) throw new Error('Invalid songInfo')
       const source = songInfo.source

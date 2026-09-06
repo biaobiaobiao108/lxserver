@@ -2,18 +2,60 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { extractMetadata, loadUserApi, initUserApis, getApiStatus } from './userApi'
 import type { IncomingMessage, ServerResponse } from 'http'
+import { verifyAdminAuth } from './auth'
+import { verifyUserAuth } from './routes/auth'
+import { assertSafePathSegment } from '@/utils/pathSecurity'
+import { assertSafeRemoteHttpUrl } from './networkSecurity'
 
 // 读取请求体
 async function readBody(req: IncomingMessage): Promise<string> {
+    const maxBytes = 5 * 1024 * 1024
     return new Promise((resolve, reject) => {
         const chunks: any[] = []
-        req.on('data', chunk => { chunks.push(chunk) })
+        let totalBytes = 0
+        let rejected = false
+        req.on('data', chunk => {
+            totalBytes += Buffer.byteLength(chunk)
+            if (totalBytes > maxBytes && !rejected) {
+                rejected = true
+                reject(new Error('Request body is too large'))
+                req.destroy?.()
+                return
+            }
+            chunks.push(chunk)
+        })
         req.on('end', () => {
+            if (rejected) return
             const buffer = Buffer.concat(chunks)
             resolve(buffer.toString('utf-8'))
         })
-        req.on('error', reject)
+        req.on('error', error => { if (!rejected) reject(error) })
     })
+}
+
+const getRequestedOwner = (req: IncomingMessage, requested?: string): string => {
+    const admin = verifyAdminAuth(req)
+    const tokenUser = verifyUserAuth(req)
+    const value = typeof requested === 'string' ? requested.trim() : ''
+
+    if (value === 'open' || value === '_open') {
+        if (!admin) throw new Error('管理员权限不足')
+        return 'open'
+    }
+    if (!value || value === 'default') {
+        if (tokenUser) return tokenUser
+        if (admin) return 'open'
+        throw new Error('请先登录')
+    }
+    if (admin || tokenUser === value) {
+        assertSafePathSegment(value, 'username')
+        return value
+    }
+    throw new Error('无权操作其他用户的自定义源')
+}
+
+const requireAdmin = (req: IncomingMessage): void => {
+    if (!verifyAdminAuth(req)) throw new Error('管理员权限不足')
 }
 
 // 验证脚本
@@ -22,16 +64,7 @@ export async function handleValidate(req: IncomingMessage, res: ServerResponse) 
         const body = await readBody(req)
         const { script, username, allowUnsafeVM } = JSON.parse(body)
 
-        // 鉴权逻辑：只有已登录用户（非 default）可以免密码验证
-        const targetOwner = (username && username !== 'default') ? username : 'open'
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '权限不足：管理自定义源需要先验证管理员身份。' }))
-                return
-            }
-        }
+        const targetOwner = (username && username !== 'default') ? getRequestedOwner(req, username) : (verifyUserAuth(req) || (requireAdmin(req), 'open'))
 
         if (!script || typeof script !== 'string') {
             throw new Error('Invalid script content')
@@ -44,7 +77,7 @@ export async function handleValidate(req: IncomingMessage, res: ServerResponse) 
             id: 'temp_validation',
             script,
             enabled: false,
-            allowUnsafeVM: !!allowUnsafeVM,
+            allowUnsafeVM: !!allowUnsafeVM && verifyAdminAuth(req),
             ...metadata,
             owner: 'temp' // 临时验证 owner
         } as any)
@@ -113,10 +146,10 @@ async function getScriptInfo(scriptContent: string, allowUnsafeVM: boolean = fal
 
 // 辅助函数：获取源存储目录
 function getSourceDir(username?: string) {
-    const dataPath = process.env.DATA_PATH || path.join(process.cwd(), 'data')
+    const dataPath = global.lx?.dataPath || process.env.DATA_PATH || path.join(process.cwd(), 'data')
     const root = path.join(dataPath, 'users', 'source')
     // 如果 username 是 'open' 或 'default' 或空，则映射到 '_open'
-    const targetDirName = (username && username !== 'default' && username !== 'open') ? username : '_open'
+    const targetDirName = (username && username !== 'default' && username !== 'open') ? assertSafePathSegment(username, 'username') : '_open'
     return path.join(root, targetDirName)
 }
 
@@ -152,19 +185,13 @@ export async function handleUpload(req: IncomingMessage, res: ServerResponse) {
         const { filename, content, username, allowUnsafeVM } = JSON.parse(body)
 
         // 确定 owner 用于后续标识
-        const targetOwner = (username && username !== 'default') ? username : 'open'
+        const targetOwner = getRequestedOwner(req, username)
 
-        // 检查权限限制 (针对公开源)
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '公共源管理已受限，仅管理员可操作。' }))
-                return
-            }
+        if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 5 * 1024 * 1024) {
+            throw new Error('Script content is missing or too large')
         }
 
-        const sourcesDir = getSourceDir(username)
+        const sourcesDir = getSourceDir(targetOwner)
         const metaPath = path.join(sourcesDir, 'sources.json')
 
         // 创建目录
@@ -173,12 +200,11 @@ export async function handleUpload(req: IncomingMessage, res: ServerResponse) {
         }
 
         // 获取脚本信息
-        const { metadata, supportedSources, requireUnsafe } = await getScriptInfo(content, allowUnsafeVM)
+        const { metadata, supportedSources, requireUnsafe } = await getScriptInfo(content, Boolean(allowUnsafeVM) && verifyAdminAuth(req))
 
         // 核心安全校验：若脚本需要或者指定了 unsafe VM 模式，则必须验证管理员身份
         if (requireUnsafe || allowUnsafeVM) {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
+            if (!verifyAdminAuth(req)) {
                 res.writeHead(403, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ success: false, error: '允许以 VM 模式运行脚本需要验证管理员身份。' }))
                 return
@@ -204,6 +230,7 @@ export async function handleUpload(req: IncomingMessage, res: ServerResponse) {
 
         // 生成唯一ID（可读的文件名）
         const id = generateId(metadata.name, filename)
+        assertSafePathSegment(id, 'source filename')
         const scriptPath = path.join(sourcesDir, id)
 
         // 读取现有列表
@@ -264,19 +291,16 @@ export async function handleImport(req: IncomingMessage, res: ServerResponse) {
         // 辅助函数：支持重定向的下载
         const download = async (targetUrl: string, depth = 0): Promise<string> => {
             if (depth > 5) throw new Error('Too many redirects')
-            const protocol = targetUrl.startsWith('https') ? require('https') : require('http')
+            const safeUrl = await assertSafeRemoteHttpUrl(targetUrl)
+            const protocol = safeUrl.protocol === 'https:' ? require('https') : require('http')
 
             return new Promise((resolve, reject) => {
-                protocol.get(targetUrl, (response: any) => {
+                protocol.get(safeUrl, (response: any) => {
                     const { statusCode } = response
 
                     // 处理重定向
                     if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
-                        let redirectUrl = response.headers.location
-                        if (!redirectUrl.startsWith('http')) {
-                            const parsedUrl = new URL(targetUrl)
-                            redirectUrl = `${parsedUrl.protocol}//${parsedUrl.host}${redirectUrl}`
-                        }
+                        const redirectUrl = new URL(response.headers.location, safeUrl).toString()
                         return resolve(download(redirectUrl, depth + 1))
                     }
 
@@ -284,8 +308,20 @@ export async function handleImport(req: IncomingMessage, res: ServerResponse) {
                         return reject(new Error(`Failed to download: status code ${statusCode}`))
                     }
 
+                    const maxBytes = 5 * 1024 * 1024
+                    const declaredLength = Number(response.headers['content-length'] || 0)
+                    if (declaredLength > maxBytes) return reject(new Error('Remote script is too large'))
                     const chunks: any[] = []
-                    response.on('data', (chunk: any) => chunks.push(chunk))
+                    let totalBytes = 0
+                    response.on('data', (chunk: any) => {
+                        totalBytes += Buffer.byteLength(chunk)
+                        if (totalBytes > maxBytes) {
+                            response.destroy()
+                            reject(new Error('Remote script is too large'))
+                            return
+                        }
+                        chunks.push(chunk)
+                    })
                     response.on('end', () => {
                         const buffer = Buffer.concat(chunks)
                         resolve(buffer.toString('utf-8'))
@@ -298,12 +334,14 @@ export async function handleImport(req: IncomingMessage, res: ServerResponse) {
         const content = await download(url)
 
         // 获取脚本信息
-        const { metadata, supportedSources, requireUnsafe } = await getScriptInfo(content, allowUnsafeVM)
+        if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 5 * 1024 * 1024) {
+            throw new Error('Script content is missing or too large')
+        }
+        const { metadata, supportedSources, requireUnsafe } = await getScriptInfo(content, allowUnsafeVM && verifyAdminAuth(req))
 
         // 核心安全校验：若脚本需要或者指定了 unsafe VM 模式，则必须验证管理员身份
         if (requireUnsafe || allowUnsafeVM) {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
+            if (!verifyAdminAuth(req)) {
                 res.writeHead(403, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ success: false, error: '允许以 VM 模式运行脚本需要验证管理员身份。' }))
                 return
@@ -327,19 +365,9 @@ export async function handleImport(req: IncomingMessage, res: ServerResponse) {
             }
         }
 
-        const targetOwner = (username && username !== 'default') ? username : 'open'
+        const targetOwner = getRequestedOwner(req, username)
 
-        // 检查权限限制
-        if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
-                res.writeHead(403, { 'Content-Type': 'application/json' })
-                res.end(JSON.stringify({ success: false, error: '公共源导入已受限，仅管理员可操作。' }))
-                return
-            }
-        }
-
-        const sourcesDir = getSourceDir(username)
+        const sourcesDir = getSourceDir(targetOwner)
         const metaPath = path.join(sourcesDir, 'sources.json')
 
         // 创建目录
@@ -350,6 +378,7 @@ export async function handleImport(req: IncomingMessage, res: ServerResponse) {
         // 生成唯一ID（可读的文件名）
         const displayName = metadata.name || filename || 'unknown_source'
         const id = generateId(metadata.name, filename || 'unknown_source')
+        assertSafePathSegment(id, 'source filename')
         const scriptPath = path.join(sourcesDir, id)
 
         // 读取现有列表
@@ -472,7 +501,7 @@ export async function handleList(req: IncomingMessage, res: ServerResponse, user
     })
 
     // ===== 自定义合并后的排序逻辑 =====
-    let targetOwner = (username && username !== 'default') ? username : 'open'
+    let targetOwner = username && username !== 'default' ? assertSafePathSegment(username, 'username') : 'open'
     let orderPath = path.join(getSourceDir(targetOwner), 'order.json')
     let order: string[] = []
 
@@ -525,13 +554,13 @@ export async function handleToggle(req: IncomingMessage, res: ServerResponse) {
         const body = await readBody(req)
         const { id, sourceId, enabled, username, allowUnsafeVM } = JSON.parse(body)
         const targetId = id || sourceId
+        assertSafePathSegment(targetId, 'source id')
 
-        let targetOwner = (username && username !== 'default') ? username : 'open'
+        let targetOwner = getRequestedOwner(req, username)
 
         // 检查权限限制
         if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
+            if (!verifyAdminAuth(req)) {
                 res.writeHead(403, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ success: false, error: '公共源状态切换已受限，仅管理员可操作。' }))
                 return
@@ -578,8 +607,7 @@ export async function handleToggle(req: IncomingMessage, res: ServerResponse) {
         // 2. 如果正在修改的是全局公共源 (targetOwner === 'open')
         //    则必须校验管理员密码。
         if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
+            if (!verifyAdminAuth(req)) {
                 res.writeHead(403, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ success: false, error: '权限不足：管理全局公开自定义源需要验证管理员身份。' }))
                 return
@@ -607,8 +635,7 @@ export async function handleToggle(req: IncomingMessage, res: ServerResponse) {
 
         // 核心安全校验：如果试图开启 VM 模式（或当前就是 VM 模式），必须要验证管理员密码
         if (target.allowUnsafeVM || allowUnsafeVM) {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
+            if (!verifyAdminAuth(req)) {
                 res.writeHead(403, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ success: false, error: '开启/运行 VM 模式脚本需要验证管理员身份。' }))
                 return
@@ -683,16 +710,15 @@ export async function handleReorder(req: IncomingMessage, res: ServerResponse) {
         const body = await readBody(req)
         const { username, sourceIds } = JSON.parse(body)
 
-        if (!Array.isArray(sourceIds)) {
+        if (!Array.isArray(sourceIds) || sourceIds.length > 500 || sourceIds.some(id => typeof id !== 'string' || id.length > 128)) {
             throw new Error('sourceIds must be an array')
         }
 
-        let targetOwner = (username && username !== 'default') ? username : 'open'
+        let targetOwner = getRequestedOwner(req, username)
 
         // 检查权限限制 (公开源排序)
         if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
+            if (!verifyAdminAuth(req)) {
                 res.writeHead(403, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ success: false, error: '公共源排序已受限，仅管理员可操作。' }))
                 return
@@ -776,14 +802,14 @@ export async function handleDelete(req: IncomingMessage, res: ServerResponse) {
         const body = await readBody(req)
         const { id, sourceId, username } = JSON.parse(body)
         const targetId = id || sourceId
+        assertSafePathSegment(targetId, 'source id')
 
         // 查找逻辑同 Toggle
-        let targetOwner = (username && username !== 'default') ? username : 'open'
+        let targetOwner = getRequestedOwner(req, username)
 
         // 检查权限限制
         if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
+            if (!verifyAdminAuth(req)) {
                 res.writeHead(403, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ success: false, error: '公共源删除已受限，仅管理员可操作。' }))
                 return
@@ -826,8 +852,7 @@ export async function handleDelete(req: IncomingMessage, res: ServerResponse) {
 
         // 核心安全逻辑：删除全局公开源必须校验管理员权限
         if (targetOwner === 'open') {
-            const auth = req.headers['x-frontend-auth']
-            if (auth !== global.lx.config['frontend.password']) {
+            if (!verifyAdminAuth(req)) {
                 res.writeHead(403, { 'Content-Type': 'application/json' })
                 res.end(JSON.stringify({ success: false, error: '权限不足：删除全局公共源需要验证管理员身份。' }))
                 return

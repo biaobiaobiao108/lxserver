@@ -12,6 +12,7 @@ import { initLogger } from '@/utils/log4js'
 import defaultConfig from './defaultConfig'
 import { ENV_PARAMS, File } from './constants'
 import { checkAndCreateDirSync } from './utils'
+import { assertSafePathSegment } from './utils/pathSecurity'
 
 // Declare Env Params Type
 type ENV_PARAMS_Type = typeof ENV_PARAMS
@@ -50,7 +51,7 @@ const envParamKeys = Object.values(ENV_PARAMS).filter(v => v != 'LX_USER_')
         }
         return false
       }),
-  ].map(([e, v]) => `${e}: ${v as string}`)
+  ].map(([e]) => `${e}: [configured]`)
   if (envLog.length) console.log(`Load env: \n  ${envLog.join('\n  ')}`)
 }
 
@@ -67,7 +68,7 @@ const getConfigHash = (filePath: string) => {
 
 const dataPath = envParams.DATA_PATH ?? path.join(__dirname, '../data')
 const saveConfigToFile = async () => {
-  const configPath = process.env.CONFIG_PATH || path.join(process.cwd(), 'config.js')
+  const configPath = process.env.CONFIG_PATH || path.join(dataPath, 'config.js')
   const content = `module.exports = ${JSON.stringify(global.lx.config, null, 2)}\n`
   try {
     const file = Bun.file(configPath)
@@ -102,7 +103,7 @@ const mergeConfigFileEnv = (config: Partial<Record<ENV_PARAMS_Value_Type, string
     let value = String(v)
     if (envParamKeys.includes(envKey)) {
       if (envParams[envKey] == null) {
-        envLog.push(`${envKey}: ${value}`)
+        envLog.push(`${envKey}: [configured]`)
         envParams[envKey] = value
       }
     } else if (envKey.startsWith('LX_USER_') && value) {
@@ -112,7 +113,7 @@ const mergeConfigFileEnv = (config: Partial<Record<ENV_PARAMS_Value_Type, string
           name,
           password: value,
         })
-        envLog.push(`${envKey}: ${value}`)
+        envLog.push(`${envKey}: [configured]`)
       }
     }
   }
@@ -155,7 +156,9 @@ const margeConfig = (p: string) => {
 //加载环境变量
 const p1 = path.join(__dirname, '../config.js')
 fs.existsSync(p1) && margeConfig(p1)
-envParams.CONFIG_PATH && fs.existsSync(envParams.CONFIG_PATH) && margeConfig(envParams.CONFIG_PATH)
+const dataConfigPath = envParams.CONFIG_PATH || path.join(dataPath, 'config.js')
+dataConfigPath !== p1 && fs.existsSync(dataConfigPath) && margeConfig(dataConfigPath)
+envParams.CONFIG_PATH && envParams.CONFIG_PATH !== dataConfigPath && fs.existsSync(envParams.CONFIG_PATH) && margeConfig(envParams.CONFIG_PATH)
 if (envParams.PROXY_HEADER) {
   global.lx.config['proxy.enabled'] = true
   global.lx.config['proxy.header'] = envParams.PROXY_HEADER
@@ -319,8 +322,15 @@ const checkUserConfig = (users: LX.Config['users']) => {
   const allowDuplicatePasswords = global.lx.config['user.enablePath'] && !global.lx.config['user.enableRoot']
 
   for (const user of users) {
+    try {
+      assertSafePathSegment(user.name, 'user name')
+    } catch {
+      exit('User name contains invalid path characters')
+    }
+    if (user.name === '_open') exit('User name is reserved: _open')
     if (userNames.includes(user.name)) exit('User name duplicate: ' + user.name)
-    if (!allowDuplicatePasswords && passwords.includes(user.password)) exit('User password duplicate: ' + user.password)
+    if (typeof user.password !== 'string' || user.password.trim() === '') exit(`User ${user.name} must have a non-empty password`)
+    if (!allowDuplicatePasswords && passwords.includes(user.password)) exit(`Duplicate password is not allowed for user ${user.name}`)
     userNames.push(user.name)
     passwords.push(user.password)
   }
@@ -358,6 +368,17 @@ if (fs.existsSync(usersJsonPath)) {
 }
 
 checkUserConfig(global.lx.config.users)
+
+const frontendPassword = global.lx.config['frontend.password']
+if (typeof frontendPassword !== 'string' || frontendPassword.trim() === '' || frontendPassword === '123456') {
+  exit('frontend.password must be explicitly configured and must not use the example password')
+}
+if (global.lx.config['player.enableAuth']) {
+  const playerPassword = global.lx.config['player.password']
+  if (typeof playerPassword !== 'string' || playerPassword.trim() === '' || playerPassword === '123456') {
+    exit('player.password must be explicitly configured when player authentication is enabled')
+  }
+}
 
 console.log(`Users:
 ${global.lx.config.users.map(user => `  ${user.name}: [PROTECTED]`).join('\n') || '  No User'}
@@ -401,6 +422,8 @@ createModuleEvent()
 // 初始化 SQLite 原生数据库 (WAL 模式)
 const { initDatabase } = await import('@/database')
 initDatabase()
+const { syncUsersToDatabase } = await import('@/user/data')
+syncUsersToDatabase(global.lx.config.users)
 
 // 初始化 Web 服务
 const { startServer } = await import('@/server')
@@ -426,7 +449,7 @@ if (webdavSync.isConfigured()) {
       console.log('Data restored from WebDAV successfully')
 
       // 1. 重新从磁盘加载最新的 config.js 到内存 (解决实时生效问题)
-      const configPath = process.env.CONFIG_PATH || path.join(process.cwd(), 'config.js')
+      const configPath = process.env.CONFIG_PATH || path.join(global.lx.dataPath, 'config.js')
       if (fs.existsSync(configPath)) {
         console.log('Reloading config.js after WebDAV restore...')
         try {
@@ -465,10 +488,10 @@ if (!fs.existsSync(openLibDir)) {
 // 启动前最后保存一次合并后的配置，确保环境变量被固化到 config.js 中
 await saveConfigToFile()
 
-startServer(global.lx.config.port, global.lx.config.bindIP)
+await startServer(global.lx.config.port, global.lx.config.bindIP)
 
 // 监控 config.js 变动以实现热重载 (由于 nodemon 已忽略该文件)
-const rootConfigPath = process.env.CONFIG_PATH || path.join(process.cwd(), 'config.js')
+const rootConfigPath = process.env.CONFIG_PATH || path.join(global.lx.dataPath, 'config.js')
 if (fs.existsSync(rootConfigPath)) {
   lastConfigHash = getConfigHash(rootConfigPath)
   let debounceTimer: NodeJS.Timeout | null = null
@@ -504,4 +527,3 @@ if (fs.existsSync(rootConfigPath)) {
     }
   })
 }
-

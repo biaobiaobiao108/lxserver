@@ -47,6 +47,7 @@ type DownloadResolver = (task: ServerDownloadTask) => Promise<ResolveResult>
 
 const DEFAULT_CONCURRENT = 3
 const MAX_CONCURRENT_PER_USER = 5
+export const MAX_PENDING_TASKS_PER_USER = 500
 export const MAX_HISTORY_PER_USER = 200
 const tasks = new Map<string, ServerDownloadTask>()
 const controllers = new Map<string, AbortController>()
@@ -305,6 +306,9 @@ export const initialize = (downloadResolver: DownloadResolver) => {
 }
 
 export const enqueue = (username: string, inputs: QueueInput[]) => {
+  if (inputs.length > 100) throw new Error('Too many tasks in one request')
+  const pendingCount = Array.from(tasks.values()).filter(task => task.username === username && resumableStatuses.has(task.status)).length
+  if (pendingCount + inputs.length > MAX_PENDING_TASKS_PER_USER) throw new Error('Too many pending download tasks')
   const added: ServerDownloadTask[] = []
   for (const input of inputs) {
     if (!input?.songInfo) continue

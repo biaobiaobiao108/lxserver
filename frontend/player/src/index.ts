@@ -25,6 +25,17 @@ function checkForUpdates() {
 }
 
 const API_BASE = '/api/music';
+const credentialStorage = window.sessionStorage;
+
+function getCredential(key: string): string | null {
+    const current = credentialStorage.getItem(key);
+    if (current !== null) return current;
+    const legacy = window.localStorage.getItem(key);
+    if (legacy === null) return null;
+    credentialStorage.setItem(key, legacy);
+    window.localStorage.removeItem(key);
+    return legacy;
+}
 let currentPage = 1;
 window.currentPage = 1;
 let currentSearch = { name: '', source: 'kw' };
@@ -220,6 +231,24 @@ function normalizeStoredSettings(nextSettings) {
 
 let settings = { ...DEFAULT_SETTINGS };
 
+function restoreRemoteSyncCode(legacyValue) {
+    const stored = getCredential('lx_sync_code');
+    if (stored !== null) {
+        settings.remoteSyncCode = stored;
+    } else if (typeof legacyValue === 'string' && legacyValue) {
+        settings.remoteSyncCode = legacyValue;
+        credentialStorage.setItem('lx_sync_code', legacyValue);
+    } else {
+        settings.remoteSyncCode = '';
+    }
+}
+
+function persistSettings() {
+    const persisted = { ...settings };
+    delete persisted.remoteSyncCode;
+    localStorage.setItem('lx_settings', JSON.stringify(persisted));
+}
+
 // 歌词原始数据，用于设置切换时重新渲染
 let currentRawLrc = '';
 let currentRawTlrc = '';
@@ -232,9 +261,13 @@ let currentRecoveryState = null; // 播放失败自动恢复状态管理
 // 从 localStorage 加载设置
 try {
     const saved = localStorage.getItem('lx_settings');
+    let legacyRemoteSyncCode = '';
     if (saved) {
-        settings = normalizeStoredSettings({ ...settings, ...JSON.parse(saved) });
+        const parsed = JSON.parse(saved);
+        legacyRemoteSyncCode = parsed?.remoteSyncCode || '';
+        settings = normalizeStoredSettings({ ...settings, ...parsed });
     }
+    restoreRemoteSyncCode(legacyRemoteSyncCode);
 } catch (e) {
     console.error('[Settings] 加载设置失败:', e);
 }
@@ -250,6 +283,52 @@ function escapeHtmlText(value) {
         '"': '&quot;',
         "'": '&#039;'
     })[ch]);
+}
+
+function safeImageUrl(value, fallback = '/music/assets/logo.svg') {
+    if (!value) return fallback;
+    try {
+        const parsed = new URL(String(value), window.location.origin);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') return parsed.href;
+    } catch (e) { }
+    return fallback;
+}
+
+function safeInlineString(value) {
+    return escapeHtmlText(JSON.stringify(String(value ?? '')));
+}
+
+function safeInlineJson(value) {
+    const json = JSON.stringify(value ?? null) || 'null';
+    return escapeHtmlText(json.replace(/</g, '\\u003c').replace(/>/g, '\\u003e').replace(/&/g, '\\u0026'));
+}
+
+function renderSafeMarkdown(container, markdown) {
+    if (!window.marked) {
+        container.textContent = markdown;
+        return;
+    }
+
+    const template = document.createElement('template');
+    template.innerHTML = window.marked.parse(String(markdown ?? ''));
+    template.content.querySelectorAll('script, iframe, object, embed, frame, frameset, form, link, meta, base, style').forEach(element => element.remove());
+    template.content.querySelectorAll('*').forEach(element => {
+        Array.from(element.attributes).forEach(attribute => {
+            const name = attribute.name.toLowerCase();
+            if (name.startsWith('on') || name === 'style') {
+                element.removeAttribute(attribute.name);
+                return;
+            }
+            if (name !== 'href' && name !== 'src' && name !== 'xlink:href' && name !== 'action' && name !== 'formaction') return;
+            try {
+                const url = new URL(attribute.value, window.location.origin);
+                if (url.protocol !== 'http:' && url.protocol !== 'https:') element.removeAttribute(attribute.name);
+            } catch {
+                element.removeAttribute(attribute.name);
+            }
+        });
+    });
+    container.replaceChildren(template.content);
 }
 
 function parseNetworkListAutoCheckInterval(value) {
@@ -380,7 +459,7 @@ let authEnabled = false;
 // authToken 保留用于播放器登录 (player.password) 颁发的 session
 let authToken = sessionStorage.getItem('lx_player_auth');
 // 用户 Token：将明文密码传输改为 Token 验证
-let userToken = localStorage.getItem('lx_user_token');
+let userToken = getCredential('lx_user_token');
 
 /**
  * 生成用户 API 请求所需的认证 Headers。
@@ -394,14 +473,14 @@ function getUserAuthHeaders() {
     // 过滤掉 _open 假用户
     if (username === '_open') username = '';
 
-    const adminPass = localStorage.getItem('lx_admin_password');
+    const adminPass = getCredential('lx_admin_password');
 
     const headers = {};
     if (userToken) {
         headers['x-user-name'] = username;
         headers['x-user-token'] = userToken;
     } else {
-        const pass = localStorage.getItem('lx_sync_pass');
+        const pass = getCredential('lx_sync_pass');
         if (username && pass) {
             headers['x-user-name'] = username;
             headers['x-user-password'] = pass;
@@ -418,8 +497,8 @@ window.getUserAuthHeaders = getUserAuthHeaders;
 
 function isUserLoggedIn() {
     const user = localStorage.getItem('lx_sync_user');
-    const token = localStorage.getItem('lx_user_token');
-    const pass = localStorage.getItem('lx_sync_pass');
+    const token = getCredential('lx_user_token');
+    const pass = getCredential('lx_sync_pass');
     return !!user && user !== '_open' && !!(token || pass);
 }
 window.isUserLoggedIn = isUserLoggedIn;
@@ -440,7 +519,7 @@ window.isPublicLibraryContext = isPublicLibraryContext;
 async function fetchPublicListData() {
     const enablePublicFavorites = !!window.lx_config?.['user.enablePublicFavorites'];
     const enablePublicNonAdminAccess = !!window.lx_config?.['user.enablePublicNonAdminAccess'];
-    const isAdmin = !!localStorage.getItem('lx_admin_password');
+    const isAdmin = !!getCredential('lx_admin_password');
     const isUserLoggedIn = typeof window.isUserLoggedIn === 'function' ? window.isUserLoggedIn() : false;
 
     if (!enablePublicFavorites) return false;
@@ -454,7 +533,7 @@ async function fetchPublicListData() {
     try {
         console.log('[PublicList] 正在获取 _open 公共歌单数据...');
         const headers = {};
-        const adminPass = localStorage.getItem('lx_admin_password');
+        const adminPass = getCredential('lx_admin_password');
         if (adminPass) headers['x-frontend-auth'] = adminPass;
         headers['x-user-name'] = '_open';
         const res = await fetch('/api/user/list?user=_open', {
@@ -576,12 +655,12 @@ let userTokenRefreshPromise = null;
 async function ensureUserAuthToken(options = {}) {
     const force = options.force === true;
     const username = localStorage.getItem('lx_sync_user') || '';
-    const password = localStorage.getItem('lx_sync_pass') || '';
+    const password = getCredential('lx_sync_pass') || '';
 
     if (!username || !password) {
         if (force) {
             userToken = null;
-            localStorage.removeItem('lx_user_token');
+            credentialStorage.removeItem('lx_user_token');
             if (typeof updateUserUI === 'function') updateUserUI();
         }
         return false;
@@ -592,7 +671,7 @@ async function ensureUserAuthToken(options = {}) {
     userTokenRefreshPromise = (async () => {
         if (force) {
             userToken = null;
-            localStorage.removeItem('lx_user_token');
+            credentialStorage.removeItem('lx_user_token');
         }
         try {
             const response = await fetch('/api/user/login', {
@@ -606,7 +685,7 @@ async function ensureUserAuthToken(options = {}) {
             if (!result.success || !result.token) return false;
 
             userToken = result.token;
-            localStorage.setItem('lx_user_token', userToken);
+            credentialStorage.setItem('lx_user_token', userToken);
             if (typeof updateUserUI === 'function') updateUserUI();
             return true;
         } catch (error) {
@@ -632,7 +711,7 @@ function updateUserUI() {
     if (!loginBtn || !userDisplay || !usernameEl) return;
 
     const username = localStorage.getItem('lx_sync_user');
-    const token = localStorage.getItem('lx_user_token');
+    const token = getCredential('lx_user_token');
 
     if (token && username) {
         // 已登录
@@ -1254,7 +1333,7 @@ async function loadAboutContent() {
             // Replace the build hash placeholder; application version is intentionally not shown in the UI.
             const buildHash = (window.CONFIG && window.CONFIG.buildHash) || 'unknown';
             const content = text.replace(/{{buildHash}}/g, buildHash);
-            aboutContainer.innerHTML = window.marked.parse(content);
+            renderSafeMarkdown(aboutContainer, content);
         } else aboutContainer.innerText = text;
         aboutContainer.classList.remove('animate-pulse');
     } catch (e) {
@@ -1830,7 +1909,7 @@ async function doSearch(page = 1, append = false, prefetch = false) {
                 showError(`搜索追加出错: ${e.message}`);
             }
         } else {
-            resultsContainer.innerHTML = `<div class="text-center text-red-500 p-8">搜索出错: ${e.message}</div>`;
+            resultsContainer.innerHTML = `<div class="text-center text-red-500 p-8">搜索出错: ${escapeHtmlText(e.message)}</div>`;
         }
     }
 }
@@ -1915,19 +1994,22 @@ function renderHotSearch(data) {
                 <span class="ml-3">${sourceTag}</span>
             </div>
             <div class="hot-search-list grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 md:gap-3">
-                ${keywords.map((keyword, index) => `
-                    <button onclick="handleHotSearchClick('${keyword.replace(/'/g, "\\'")}')" 
+                ${keywords.map((keyword, index) => {
+                    const keywordText = String(keyword ?? '');
+                    const escapedKeyword = escapeHtmlText(keywordText);
+                    return `
+                    <button onclick="handleHotSearchClick(${safeInlineString(keywordText)})"
                             class="hot-search-item group flex items-center px-2.5 py-3 md:p-3 t-bg-panel hover:bg-emerald-50 border t-border-main hover:border-emerald-400 rounded-lg transition-all shadow-sm hover:shadow-md overflow-hidden h-14">
                         <span class="rank flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold mr-3 ${index < 3 ? 'bg-gradient-to-r from-orange-400 to-red-500 text-white' : 'bg-gray-100 text-gray-500'
         }">
                             ${index + 1}
                         </span>
                         <span class="keyword flex-1 text-left text-sm font-medium t-text-main group-hover:text-emerald-600 truncate">
-                            ${keyword}
+                            ${escapedKeyword}
                         </span>
                         <i class="fas fa-search text-xs text-gray-300 group-hover:text-emerald-500 transition-colors ml-2"></i>
                     </button>
-                `).join('')}
+                `}).join('')}
             </div>
             <div class="mt-6 text-center">
                 <button onclick="showInitialSearchState()" 
@@ -1950,9 +2032,9 @@ function renderHotSearch(data) {
                 el.innerHTML = `
                     <div class="w-full overflow-hidden relative" style="mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%); -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);">
                         <div class="inline-block whitespace-nowrap animate-marquee hover-scroll-paused" style="will-change: transform;">
-                             <span>${text}</span>
+                             <span>${escapeHtmlText(text)}</span>
                              <span class="mx-8"></span>
-                             <span>${text}</span>
+                             <span>${escapeHtmlText(text)}</span>
                              <span class="mx-8"></span>
                         </div>
                     </div>
@@ -2069,7 +2151,7 @@ function getSourceTag(source) {
     };
     const names = { kw: '酷我', kg: '酷狗', tx: 'QQ', wy: '网易', mg: '咪咕' };
     const color = colors[source] || 't-bg-main t-text-muted t-border-main';
-    const name = names[source] || source.toUpperCase();
+    const name = escapeHtmlText(names[source] || String(source || '').toUpperCase());
     return `<span class="flex-shrink-0 px-1 py-0 rounded text-[10px] font-bold border ${color} mr-1">${name}</span>`;
 }
 window.getSourceTag = getSourceTag;
@@ -2100,35 +2182,39 @@ function renderSingerResults(list) {
     container.innerHTML = '<div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 md:gap-4 p-3 md:p-6"></div>';
     const grid = container.querySelector('div');
     list.forEach((singer, idx) => {
+        const singerId = String(singer.id ?? '');
+        const singerSource = String(singer.source || 'wy');
+        const singerName = String(singer.name || '未命名歌手');
+        const singerImage = safeImageUrl(singer.picUrl);
         const div = document.createElement('div');
         div.className = 'group flex flex-col items-center p-2 md:p-4 rounded-2xl transition-all hover:t-bg-panel hover:shadow-md cursor-pointer border border-transparent hover:border-emerald-500/30';
-        div.dataset.singerId = singer.id;
-        div.dataset.singerSource = singer.source || 'wy';
-        div.onclick = () => enterArtist(singer.id, singer.source || 'wy');
-        makeKeyboardActivatable(div, `打开歌手 ${singer.name || '未命名歌手'}`, () => enterArtist(singer.id, singer.source || 'wy'));
+        div.dataset.singerId = singerId;
+        div.dataset.singerSource = singerSource;
+        div.onclick = () => enterArtist(singerId, singerSource);
+        makeKeyboardActivatable(div, `打开歌手 ${singerName}`, () => enterArtist(singerId, singerSource));
         const aliasHtml = singer.alias && singer.alias.length
-            ? `<span class="text-[9px] md:text-[10px] t-text-muted text-center truncate w-full mt-0.5 md:mt-1">${singer.alias[0]}</span>`
+            ? `<span class="text-[9px] md:text-[10px] t-text-muted text-center truncate w-full mt-0.5 md:mt-1">${escapeHtmlText(singer.alias[0])}</span>`
             : '';
         div.innerHTML = `
             <div class="relative mb-2 md:mb-3">
                 <div class="w-16 h-16 sm:w-24 sm:h-24 md:w-32 md:h-32 rounded-full overflow-hidden shadow-sm">
-                    <img src="${singer.picUrl || '/music/assets/logo.svg'}" alt="${escapeHtmlText(singer.name || '歌手')}头像" width="128" height="128" loading="lazy" decoding="async"
+                    <img src="${escapeHtmlText(singerImage)}" alt="${escapeHtmlText(singerName)}头像" width="128" height="128" loading="lazy" decoding="async"
                          onerror="this.src='/music/assets/logo.svg'"
                          class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
                 </div>
-                <button id="singer-fav-${singer.id}" class="absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${isArtistFavorited(singer.id, singer.source || 'wy') ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
-                        title="${isArtistFavorited(singer.id, singer.source || 'wy') ? '取消收藏' : '收藏歌手'}"
-                        onclick="event.stopPropagation(); (async () => { const favd = await toggleArtistFavorite('${singer.id}', '${singer.source || 'wy'}', '${singer.name.replace(/'/g, "\\'")}', '${(singer.picUrl || '').replace(/'/g, "\\'")}'); const btn = document.getElementById('singer-fav-${singer.id}'); if(btn){ btn.className = 'absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ' + (favd ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'); btn.title = favd ? '取消收藏' : '收藏歌手'; } })()">
+                <button id="singer-fav-${escapeHtmlText(singerId)}" class="absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${isArtistFavorited(singerId, singerSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
+                        title="${isArtistFavorited(singerId, singerSource) ? '取消收藏' : '收藏歌手'}"
+                        onclick="event.stopPropagation(); (async () => { const favd = await toggleArtistFavorite(${safeInlineString(singerId)}, ${safeInlineString(singerSource)}, ${safeInlineString(singerName)}, ${safeInlineString(singer.picUrl || '')}); const btn = document.getElementById(${safeInlineString(`singer-fav-${singerId}`)}); if(btn){ btn.className = 'absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ' + (favd ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'); btn.title = favd ? '取消收藏' : '收藏歌手'; } })()">
                     <i class="fas fa-heart text-[10px]"></i>
                 </button>
             </div>
-            <span class="text-[11px] md:text-sm font-bold t-text-main text-center truncate w-full" title="${singer.name}">${singer.name}</span>
+            <span class="text-[11px] md:text-sm font-bold t-text-main text-center truncate w-full" title="${escapeHtmlText(singerName)}">${escapeHtmlText(singerName)}</span>
             <div class="flex flex-col items-center mt-1">
                 ${aliasHtml}
                 <div class="mt-1">${getSourceTag ? getSourceTag(singer.source || 'wy') : (singer.source || 'wy').toUpperCase()}</div>
             </div>
             <span class="hidden md:inline-block text-[10px] px-2 py-0.5 mt-2 rounded bg-emerald-500 text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                ${singer.albumSize || 0} 专辑
+                ${escapeHtmlText(singer.albumSize || 0)} 专辑
             </span>
         `;
         grid.appendChild(div);
@@ -2148,26 +2234,30 @@ function renderAlbumResults(list) {
     container.innerHTML = '<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 p-6"></div>';
     const grid = container.querySelector('div');
     list.forEach((item) => {
+        const albumId = String(item.id ?? '');
+        const albumSource = String(item.source || 'wy');
+        const albumName = String(item.name || '未命名专辑');
+        const albumImage = safeImageUrl(item.picUrl);
         const div = document.createElement('div');
         div.className = 'group flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20';
-        div.onclick = () => enterAlbum(item.id, item.source || 'wy');
-        makeKeyboardActivatable(div, `打开专辑 ${item.name || '未命名专辑'}`, () => enterAlbum(item.id, item.source || 'wy'));
+        div.onclick = () => enterAlbum(albumId, albumSource);
+        makeKeyboardActivatable(div, `打开专辑 ${albumName}`, () => enterAlbum(albumId, albumSource));
         const publishDate = item.publishTime ? new Date(item.publishTime).toLocaleDateString() : '';
         div.innerHTML = `
             <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative">
-                <img src="${item.picUrl || '/music/assets/logo.svg'}" alt="${escapeHtmlText(item.name || '专辑')}封面" width="320" height="320" loading="lazy" decoding="async"
+                <img src="${escapeHtmlText(albumImage)}" alt="${escapeHtmlText(albumName)}封面" width="320" height="320" loading="lazy" decoding="async"
                      onerror="this.src='/music/assets/logo.svg'"
                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                <button id="album-fav-${item.id}" class="absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${isAlbumFavorited(item.id, item.source || 'wy') ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
-                        title="${isAlbumFavorited(item.id, item.source || 'wy') ? '取消收藏' : '收藏专辑'}"
-                        onclick="event.stopPropagation(); (async () => { const favd = await toggleAlbumFavorite('${item.id}', '${item.source || 'wy'}', '${item.name.replace(/'/g, "\\'")}', '${(item.picUrl || '').replace(/'/g, "\\'")}', '${(item.artistName || '').replace(/'/g, "\\'")}'); const btn = document.getElementById('album-fav-${item.id}'); if(btn){ btn.className = 'absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ' + (favd ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'); btn.title = favd ? '取消收藏' : '收藏专辑'; } })()">
+                <button id="album-fav-${escapeHtmlText(albumId)}" class="absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${isAlbumFavorited(albumId, albumSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
+                        title="${isAlbumFavorited(albumId, albumSource) ? '取消收藏' : '收藏专辑'}"
+                        onclick="event.stopPropagation(); (async () => { const favd = await toggleAlbumFavorite(${safeInlineString(albumId)}, ${safeInlineString(albumSource)}, ${safeInlineString(albumName)}, ${safeInlineString(item.picUrl || '')}, ${safeInlineString(item.artistName || '')}); const btn = document.getElementById(${safeInlineString(`album-fav-${albumId}`)}); if(btn){ btn.className = 'absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ' + (favd ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'); btn.title = favd ? '取消收藏' : '收藏专辑'; } })()">
                     <i class="fas fa-heart text-xs"></i>
                 </button>
             </div>
-            <span class="text-sm font-bold t-text-main line-clamp-2 h-10 leading-5 mb-1" title="${item.name}">${item.name}</span>
+            <span class="text-sm font-bold t-text-main line-clamp-2 h-10 leading-5 mb-1" title="${escapeHtmlText(albumName)}">${escapeHtmlText(albumName)}</span>
             <div class="flex items-center justify-between mt-1">
-                <span class="text-[10px] t-text-muted truncate flex-1">${item.artistName || '未知歌手'}</span>
-                <span class="text-[10px] t-text-muted ml-2">${publishDate}</span>
+                <span class="text-[10px] t-text-muted truncate flex-1">${escapeHtmlText(item.artistName || '未知歌手')}</span>
+                <span class="text-[10px] t-text-muted ml-2">${escapeHtmlText(publishDate)}</span>
             </div>
         `;
         grid.appendChild(div);
@@ -2269,6 +2359,19 @@ let isArtistFolded = false;
 function renderArtistHeader(info, activeTab, order) {
     const container = document.getElementById('search-results');
     const isMobile = window.innerWidth < 768;
+    const artistIdValue = String(info.id ?? '');
+    const artistSourceValue = String(info.source ?? 'wy');
+    const artistNameValue = String(info.name ?? '未命名歌手');
+    const artistAvatar = safeImageUrl(info.avatar);
+    const artistId = escapeHtmlText(artistIdValue);
+    const artistSource = escapeHtmlText(artistSourceValue);
+    const artistName = escapeHtmlText(artistNameValue);
+    const artistDescription = escapeHtmlText(info.desc || '暂无简介');
+    const artistIdArg = safeInlineString(artistIdValue);
+    const artistSourceArg = safeInlineString(artistSourceValue);
+    const artistOrderArg = safeInlineString(String(order));
+    const artistNameArg = safeInlineString(artistNameValue);
+    const artistAvatarArg = safeInlineString(artistAvatar);
 
     // 计算各状态下的样式类和内联样式，确保与 toggleArtistFold 完全一致
     const headerPadding = isArtistFolded ? 'p-3 md:p-4' : 'p-6 md:p-8';
@@ -2286,7 +2389,7 @@ function renderArtistHeader(info, activeTab, order) {
             <!-- Favorite Button (Artist) -->
             <button id="artist-header-fav-btn"
                 onclick="(async () => { 
-                    const favd = await toggleArtistFavorite('${info.id}', '${info.source}', '${info.name.replace(/'/g, "\\'")}', '${(info.avatar || '').replace(/'/g, "\\'")}'); 
+                    const favd = await toggleArtistFavorite(${artistIdArg}, ${artistSourceArg}, ${artistNameArg}, ${artistAvatarArg});
                     const btn = document.getElementById('artist-header-fav-btn'); 
                     if(btn){ 
                         const base = 'absolute top-2 right-12 md:top-4 md:right-16 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full transition-all z-30 shadow-sm active:scale-90';
@@ -2296,7 +2399,7 @@ function renderArtistHeader(info, activeTab, order) {
                         btn.title = favd ? '取消收藏' : '收藏歌手';
                     } 
                 })()"
-                class="absolute top-2 right-12 md:top-4 md:right-16 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full ${isArtistFavorited(info.id, info.source) ? 'bg-rose-500 text-white' : 'bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 t-text-main'} transition-all z-30 shadow-sm active:scale-90"
+                class="absolute top-2 right-12 md:top-4 md:right-16 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full ${isArtistFavorited(artistIdValue, artistSourceValue) ? 'bg-rose-500 text-white' : 'bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 t-text-main'} transition-all z-30 shadow-sm active:scale-90"
                 title="${isArtistFavorited(info.id, info.source) ? '取消收藏' : '收藏歌手'}">
                 <i class="fas fa-heart"></i>
             </button>
@@ -2308,25 +2411,25 @@ function renderArtistHeader(info, activeTab, order) {
 
             <div id="artist-main-layout" class="flex flex-col md:flex-row gap-6 md:gap-8 ${isArtistFolded && isMobile ? 'items-start text-left' : 'items-center md:items-start text-center md:text-left'} transition-all duration-500">
                 <div id="artist-avatar-container" class="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden shadow-2xl ring-4 ring-emerald-500/20 flex-shrink-0 transition-all duration-500 origin-center" style="${isArtistFolded ? 'transform: scale(0); opacity: 0; width: 0; height: 0; margin: 0;' : ''}">
-                    <img src="${info.avatar || '/music/assets/logo.svg'}" alt="${escapeHtmlText(info.name || '歌手')}头像" width="160" height="160" loading="lazy" decoding="async"
+                    <img src="${escapeHtmlText(artistAvatar)}" alt="${artistName}头像" width="160" height="160" loading="lazy" decoding="async"
                          onerror="this.src='/music/assets/logo.svg'"
                          class="w-full h-full object-cover">
                 </div>
                 <div class="flex-1 min-w-0">
-                    <h2 id="artist-name-display" class="text-3xl md:text-4xl font-black t-text-main mb-2 transition-all duration-500 origin-left pointer-events-none" style="transform: ${nameTransform}; margin-bottom: ${isArtistFolded ? '0' : ''};">${info.name}</h2>
+                    <h2 id="artist-name-display" class="text-3xl md:text-4xl font-black t-text-main mb-2 transition-all duration-500 origin-left pointer-events-none" style="transform: ${nameTransform}; margin-bottom: ${isArtistFolded ? '0' : ''};">${artistName}</h2>
                     <div id="artist-collapsible-section" class="transition-all duration-500 ${isArtistFolded ? 'opacity-0 max-h-0' : 'opacity-100 max-h-[500px]'}">
                         <div id="artist-stats-bar" class="flex flex-wrap justify-center md:justify-start gap-3 mb-3 text-sm font-medium transition-all duration-500">
                             <span class="px-3 py-1 rounded-full t-bg-main t-text-muted border t-border-main">
-                                <i class="fas fa-music mr-1.5 text-emerald-500"></i>${info.musicSize} 歌曲
+                                <i class="fas fa-music mr-1.5 text-emerald-500"></i>${Number(info.musicSize) || 0} 歌曲
                             </span>
                             <span class="px-3 py-1 rounded-full t-bg-main t-text-muted border t-border-main">
-                                <i class="fas fa-compact-disc mr-1.5 text-blue-500"></i>${info.albumSize} 专辑
+                                <i class="fas fa-compact-disc mr-1.5 text-blue-500"></i>${Number(info.albumSize) || 0} 专辑
                             </span>
                         </div>
                         <div class="relative group">
                             <p id="artist-bio-text" class="text-sm t-text-muted leading-relaxed line-clamp-3 overflow-y-auto max-h-32 transition-all cursor-pointer bg-black/5 dark:bg-white/5 p-3 rounded-lg custom-scrollbar" 
                             onclick="this.classList.toggle('line-clamp-3')" title="点击展开/收回详情">
-                                ${info.desc || '暂无简介'}
+                                ${artistDescription}
                             </p>
                         </div>
                     </div>
@@ -2335,12 +2438,12 @@ function renderArtistHeader(info, activeTab, order) {
             
             <div id="artist-tabs-bar" class="flex items-end justify-between ${tabsClass} border-t t-border-main transition-all duration-500 relative z-40" style="min-height: 48px;">
                 <div class="flex gap-8">
-                    <button onclick="enterArtist('${info.id}', '${info.source}', '${order}', 'songs')" 
+                    <button onclick="enterArtist(${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, 'songs')"
                             class="pb-2 text-sm font-bold transition-all relative ${activeTab === 'songs' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
                         所有歌曲
                         ${activeTab === 'songs' ? '<div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 rounded-full"></div>' : ''}
                     </button>
-                    <button onclick="enterArtist('${info.id}', '${info.source}', '${order}', 'albums')" 
+                    <button onclick="enterArtist(${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, 'albums')"
                             class="pb-2 text-sm font-bold transition-all relative ${activeTab === 'albums' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
                         所有专辑
                         ${activeTab === 'albums' ? '<div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 rounded-full"></div>' : ''}
@@ -2349,11 +2452,11 @@ function renderArtistHeader(info, activeTab, order) {
                 
                 ${activeTab === 'songs' ? `
                 <div class="flex p-1 mb-1 t-bg-main rounded-lg border t-border-main shadow-sm relative z-50">
-                    <button onclick="enterArtist('${info.id}', '${info.source}', 'hot', 'songs')" 
+                    <button onclick="enterArtist(${artistIdArg}, ${artistSourceArg}, 'hot', 'songs')"
                             class="px-4 py-1.5 text-xs font-bold rounded-md transition-all ${order === 'hot' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
                         热门
                     </button>
-                    <button onclick="enterArtist('${info.id}', '${info.source}', 'time', 'songs')" 
+                    <button onclick="enterArtist(${artistIdArg}, ${artistSourceArg}, 'time', 'songs')"
                             class="px-4 py-1.5 text-xs font-bold rounded-md transition-all ${order === 'time' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
                         最新
                     </button>
@@ -2561,7 +2664,15 @@ function renderArtistSongsUI(list, page) {
         <div class="space-y-1 mt-2">
             ${indexedDisplayList.map((obj, displayIndex) => {
         const { item, originalIndex: index } = obj;
-        const isSelected = window.selectedItems.has(String(item.id));
+        const itemIdValue = String(item.id ?? '');
+        const itemId = escapeHtmlText(itemIdValue);
+        const itemIdArg = safeInlineString(itemIdValue);
+        const itemName = escapeHtmlText(item.name || '未命名歌曲');
+        const itemSinger = escapeHtmlText(item.singer || '未知歌手');
+        const itemAlbum = escapeHtmlText(item.albumName || '-');
+        const itemInterval = escapeHtmlText(item.interval || '--:--');
+        const itemImage = escapeHtmlText(getImgUrl(item));
+        const isSelected = window.selectedItems.has(itemIdValue);
         const isMatched = window.ListSearch && window.ListSearch.isMatched(index);
         const isCurrentMatch = window.ListSearch && window.ListSearch.isCurrentMatch(index);
 
@@ -2572,25 +2683,25 @@ function renderArtistSongsUI(list, page) {
         if (displayIndex > 12) rowClass += 'deferred-list-item ';
 
         return `
-                <div role="button" tabindex="0" aria-label="${window.batchMode ? '选择' : '播放'} ${escapeHtmlText(item.name || '未命名歌曲')}"
-                     class="${rowClass}" data-song-id="${item.id}"
-                     onclick="window.batchMode ? handleBatchSelect('${item.id}', !window.selectedItems.has('${item.id}')) : playFromView(${index})"
-                     onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.batchMode ? handleBatchSelect('${item.id}', !window.selectedItems.has('${item.id}')) : playFromView(${index}); }">
+                <div role="button" tabindex="0" aria-label="${window.batchMode ? '选择' : '播放'} ${itemName}"
+                     class="${rowClass}" data-song-id="${itemId}"
+                     onclick="window.batchMode ? handleBatchSelect(${itemIdArg}, !window.selectedItems.has(${itemIdArg})) : playFromView(${index})"
+                     onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.batchMode ? handleBatchSelect(${itemIdArg}, !window.selectedItems.has(${itemIdArg})) : playFromView(${index}); }">
                     <!-- Index -->
                     <div class="col-span-2 sm:col-span-1 text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
                         ${window.batchMode ? `
                             <input type="checkbox" 
                                    class="batch-checkbox w-4 h-4 text-emerald-600 rounded" 
-                                   data-song-id="${item.id}"
+                                   data-song-id="${itemId}"
                                    ${isSelected ? 'checked' : ''}
-                            onclick="event.stopPropagation(); handleBatchSelect('${String(item.id)}', this.checked);">
+                            onclick="event.stopPropagation(); handleBatchSelect(${itemIdArg}, this.checked);">
                         ` : `<span class="index-num group-hover:hidden">${index + 1}</span><i class="fas fa-play text-emerald-500 hidden group-hover:block text-[10px]"></i>`}
                     </div>
 
                     <!-- Title -->
                     <div class="col-span-8 sm:col-span-7 md:col-span-6 lg:col-span-4 flex items-center gap-3 min-w-0">
                         <div class="w-10 h-10 md:w-12 md:h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-sm relative">
-                            <img src="${item.img || '/music/assets/logo.svg'}" alt="${escapeHtmlText(item.name || '歌曲')}专辑封面" width="48" height="48" loading="lazy" decoding="async"
+                            <img src="${itemImage}" alt="${itemName}专辑封面" width="48" height="48" loading="lazy" decoding="async"
                                  onerror="this.src='/music/assets/logo.svg'" 
                                  class="w-full h-full object-cover">
                             <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
@@ -2598,7 +2709,7 @@ function renderArtistSongsUI(list, page) {
                             </div>
                         </div>
                         <div class="min-w-0 flex-1">
-                            <div class="font-bold t-text-main text-sm md:text-base leading-tight truncate group-hover:text-emerald-600 transition-colors">${item.name}</div>
+                            <div class="font-bold t-text-main text-sm md:text-base leading-tight truncate group-hover:text-emerald-600 transition-colors">${itemName}</div>
                             <div class="flex items-center gap-1 mt-1">
                                 ${getSourceTag ? getSourceTag(item.source) : ''}
                                 ${getQualityTags ? getQualityTags(item) : ''}
@@ -2608,17 +2719,17 @@ function renderArtistSongsUI(list, page) {
 
                     <!-- Artist -->
                     <div class="hidden sm:flex sm:col-span-3 md:col-span-3 lg:col-span-3 text-sm t-text-muted items-center truncate">
-                        ${item.singer}
+                        ${itemSinger}
                     </div>
 
                     <!-- Album -->
                     <div class="hidden lg:flex lg:col-span-2 text-sm t-text-muted items-center truncate">
-                        ${item.albumName || '-'}
+                        ${itemAlbum}
                     </div>
 
                     <!-- Duration -->
                     <div class="hidden md:flex md:col-span-1 items-center justify-center text-xs font-mono t-text-muted">
-                        ${item.interval || '--:--'}
+                        ${itemInterval}
                     </div>
 
                     <!-- Actions -->
@@ -2626,7 +2737,7 @@ function renderArtistSongsUI(list, page) {
                         <button class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors" title="播放" onclick="event.stopPropagation(); playFromView(${index})">
                             <i class="fas fa-play w-3.5 h-3.5"></i>
                         </button>
-                        <button class="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors" title="下载" onclick="event.stopPropagation(); downloadSong(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                        <button class="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors" title="下载" onclick="event.stopPropagation(); downloadSong(${safeInlineJson(item)})">
                             <i class="fas fa-download w-3.5 h-3.5"></i>
                         </button>
                     </div>
@@ -2809,7 +2920,7 @@ function renderArtistAlbumsUI(list) {
                     <span class="text-sm font-bold t-text-main line-clamp-2 h-10 leading-5 mb-1 group-hover:text-emerald-600 transition-colors" title="${escapeHtmlText(albumName)}">${escapeHtmlText(albumName)}</span>
                     <div class="flex items-center justify-between mt-1">
                         <span class="text-[10px] t-text-muted">${escapeHtmlText(album.publishTime || '')}</span>
-                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 font-bold">${album.total ?? album.count ?? album.size ?? album.songCount ?? 0} 首</span>
+                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 font-bold">${Number(album.total ?? album.count ?? album.size ?? album.songCount ?? 0) || 0} 首</span>
                     </div>
                 </div>
             `;
@@ -3008,13 +3119,13 @@ function getImgUrl(item) {
     if (!item) return '/music/assets/logo.svg';
     const s = item;
     // 优先从标准 meta 获取
-    if (s.meta && s.meta.picUrl) return s.meta.picUrl;
+    if (s.meta && s.meta.picUrl) return safeImageUrl(s.meta.picUrl);
     // 兼容各种 SDK 的原始字段
-    return s.img || s.pic || s.picUrl || s.picture ||
+    return safeImageUrl(s.img || s.pic || s.picUrl || s.picture ||
         (s.album && (s.album.picUrl || s.album.img || s.album.pic)) ||
         (s.al && (s.al.picUrl || s.al.img)) ||
         (s.meta && (s.meta.img || s.meta.pic)) ||
-        '/music/assets/logo.svg';
+        '/music/assets/logo.svg');
 }
 
 // List search logic is now handled by ListSearch service in list_search.js
@@ -3098,13 +3209,22 @@ function renderResults(list) {
 
     pageList.forEach((obj, pageIndex) => {
         const { item, originalIndex: actualIndexInOriginal } = obj;
+        const itemIdValue = String(item.id ?? '');
+        const itemId = escapeHtmlText(itemIdValue);
+        const itemIdArg = safeInlineString(itemIdValue);
+        const itemName = escapeHtmlText(item.name || '未命名歌曲');
+        const itemSingerValue = String(item.singer || '未知歌手');
+        const itemSinger = escapeHtmlText(itemSingerValue);
+        const itemSingerArg = safeInlineString(itemSingerValue);
+        const itemAlbum = escapeHtmlText(item.albumName || '-');
+        const itemInterval = escapeHtmlText(item.interval || '--:--');
         const row = document.createElement('div');
         row.id = `gl-row-${actualIndexInOriginal}`;
         row.dataset.songId = String(item.id);
 
         const isMatched = window.ListSearch.isMatched(actualIndexInOriginal);
         const isCurrentMatch = window.ListSearch.isCurrentMatch(actualIndexInOriginal);
-        const isSelected = window.selectedItems.has(String(item.id));
+        const isSelected = window.selectedItems.has(itemIdValue);
 
         let rowClass = 'grid grid-cols-12 gap-4 p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer ';
         if (isCurrentMatch) rowClass += 'search-current ';
@@ -3137,16 +3257,16 @@ function renderResults(list) {
                 ${window.batchMode ? `
                     <input type="checkbox" 
                            class="batch-checkbox w-4 h-4 text-emerald-600 rounded" 
-                           data-song-id="${item.id}"
+                           data-song-id="${itemId}"
                            ${isSelected ? 'checked' : ''}
-                    onclick="event.stopPropagation(); handleBatchSelect('${String(item.id)}', this.checked);">
+                    onclick="event.stopPropagation(); handleBatchSelect(${itemIdArg}, this.checked);">
                 ` : `<span class="index-num">${actualIndexInOriginal + 1}</span>`}
             </div>
 
             <!-- Title (Image + Text) -->
             <div class="col-span-8 sm:col-span-7 md:col-span-6 ${titleLgSpan} flex items-center overflow-hidden pr-2">
                 <div class="relative w-10 h-10 md:w-12 md:h-12 mr-3 md:mr-4 flex-shrink-0 group cursor-pointer">
-                     <img data-src="${imgUrl}" src="/music/assets/logo.svg" alt="${escapeHtmlText(item.name || '歌曲')}专辑封面" width="48" height="48"
+                     <img data-src="${escapeHtmlText(imgUrl)}" src="/music/assets/logo.svg" alt="${itemName}专辑封面" width="48" height="48"
                           loading="lazy" decoding="async"
                           class="lazy-image w-full h-full rounded-lg object-cover shadow-sm group-hover:shadow-md transition-all group-hover:scale-105 duration-300 dynamic-logo is-placeholder" 
                            onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');">
@@ -3170,21 +3290,21 @@ function renderResults(list) {
 
             <!-- Artist (Hidden on Mobile) -->
             <div class="hidden sm:flex sm:col-span-3 md:col-span-3 lg:col-span-3 t-text-muted text-sm md:text-base items-center hover:text-emerald-600 transition-colors cursor-pointer overflow-hidden"
-                 title="${item.singer}"
-                 onclick="event.stopPropagation(); document.getElementById('search-input').value = '${item.singer.replace(/'/g, "\\'")}'; doSearch();">
+                 title="${itemSinger}"
+                 onclick="event.stopPropagation(); document.getElementById('search-input').value = ${itemSingerArg}; doSearch();">
                 ${createMarqueeHtml(item.singer)}
             </div>
 
             <!-- Album (Hidden until LG) -->
             ${showAlbum ? `
-            <div class="hidden lg:block lg:col-span-2 t-text-muted text-sm truncate flex items-center" title="${item.albumName || ''}">
-                ${item.albumName || '-'}
+            <div class="hidden lg:block lg:col-span-2 t-text-muted text-sm truncate flex items-center" title="${itemAlbum}">
+                ${itemAlbum}
             </div>
             ` : ''}
 
             <!-- Duration (Hidden until MD) -->
             <div class="hidden md:block md:col-span-1 t-text-muted text-sm font-mono text-center flex items-center justify-center">
-                ${item.interval || '--:--'}
+                ${itemInterval}
             </div>
 
             <!-- Actions -->
@@ -3196,13 +3316,13 @@ function renderResults(list) {
                 </button>
                 <button class="p-1 sm:p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors" 
                         title="下载" 
-                        onclick="event.stopPropagation(); downloadSong(${JSON.stringify(item).replace(/"/g, '&quot;')})">
+                        onclick="event.stopPropagation(); downloadSong(${safeInlineJson(item)})">
                     <i class="fas fa-download w-3 h-3 sm:w-4 sm:h-4"></i>
                 </button>
                 ${currentSearchScope !== 'network' ? `
                 <button class="p-1 sm:p-1.5 hover:bg-red-50 rounded-lg text-red-600 transition-colors" 
                         title="删除" 
-                        onclick="event.stopPropagation(); deleteSingleSong('${item.id}')">
+                        onclick="event.stopPropagation(); deleteSingleSong(${itemIdArg})">
                     <i class="fas fa-trash w-3 h-3 sm:w-4 sm:h-4"></i>
                 </button>
                 ` : ''}
@@ -4050,7 +4170,7 @@ async function handleAdminAuth(message) {
             });
 
             if (response.ok) {
-                localStorage.setItem('lx_admin_password', pass);
+                credentialStorage.setItem('lx_admin_password', pass);
                 updateAdminUI(); // 更新 UI 状态
                 return true;
             } else {
@@ -4075,7 +4195,7 @@ window.handleAdminAuth = handleAdminAuth;
 async function requireAdminForOpenWrite(action) {
     const isOpen = currentListData?.username === '_open' || window.isViewingPublicFavorites;
     if (!isOpen) return true; // 不是 _open 数据，无需验证
-    if (localStorage.getItem('lx_admin_password')) return true; // 已登录管理员
+    if (getCredential('lx_admin_password')) return true; // 已登录管理员
     // 弹出管理员登录弹窗
     const authorized = await handleAdminAuth(`该操作需要管理员权限：${action || '修改公开内容'}`);
     return authorized;
@@ -4109,7 +4229,7 @@ window.handleAdminLogin = handleAdminLogin;
 // 管理员退出登录处理
 async function handleAdminLogout() {
     if (!(await showSelect('管理员登出', '确定要退出管理员身份吗？'))) return;
-    localStorage.removeItem('lx_admin_password');
+    credentialStorage.removeItem('lx_admin_password');
     updateAdminUI();
     syncSettingsUI();
 
@@ -4136,7 +4256,7 @@ window.handleAdminLogout = handleAdminLogout;
 
 // 更新管理员相关 UI 元素
 function updateAdminUI() {
-    const isAdmin = !!localStorage.getItem('lx_admin_password');
+    const isAdmin = !!getCredential('lx_admin_password');
     const isPublic = !currentListData?.username || currentListData?.username === 'default';
 
     // 自定义源部分的标签和按钮
@@ -4277,7 +4397,7 @@ async function triggerServerCache(song, url, quality) {
         Object.assign(headers, getUserAuthHeaders());
 
         // 添加管理员验证 Header (如果已登录)
-        const adminPass = localStorage.getItem('lx_admin_password');
+        const adminPass = getCredential('lx_admin_password');
         if (adminPass) headers['x-frontend-auth'] = adminPass;
 
         const coverUrl = typeof getImgUrl === 'function' ? getImgUrl(song) : (song.img || song.meta?.picUrl || '');
@@ -4315,7 +4435,7 @@ async function updateServerCacheConfig(location, pattern) {
     const headers = { 'Content-Type': 'application/json' };
     // 携带 Token（或兼容旧密码），让服务端正确识别身份
     Object.assign(headers, getUserAuthHeaders());
-    const adminPass = localStorage.getItem('lx_admin_password');
+    const adminPass = getCredential('lx_admin_password');
     if (adminPass) headers['x-frontend-auth'] = adminPass;
 
     try {
@@ -4777,7 +4897,7 @@ function setPlayerStatus(status, isPlaying = null, isLoading = false) {
 
     // 如果指定了加载状态，自动应用跳动动画
     if (isLoading && typeof status === 'string') {
-        statusEl.innerHTML = `<span class="animate-loading-dots">${status}<span>.</span><span>.</span><span>.</span></span>`;
+        statusEl.innerHTML = `<span class="animate-loading-dots">${escapeHtmlText(status)}<span>.</span><span>.</span><span>.</span></span>`;
         return;
     }
 
@@ -5940,11 +6060,14 @@ function formatTime(s) {
 function loadSettings() {
     try {
         const saved = localStorage.getItem('lx_settings');
+        let legacyRemoteSyncCode = '';
         if (saved) {
             const loaded = JSON.parse(saved);
+            legacyRemoteSyncCode = loaded?.remoteSyncCode || '';
             settings = normalizeStoredSettings({ ...settings, ...loaded });
             console.log('[Settings] 加载设置成功:', settings);
         }
+        restoreRemoteSyncCode(legacyRemoteSyncCode);
     } catch (e) {
         console.error('[Settings] 加载设置失败:', e);
     }
@@ -6106,7 +6229,7 @@ async function updateSetting(key, value) {
     const isPublic = !isUserLoggedIn() || currentListData?.username === '_open' || currentListData?.username === 'default' || window.isViewingPublicFavorites;
     const enablePublicRestriction = window.lx_config?.['user.enablePublicRestriction'];
     const enableLoginCacheRestriction = window.lx_config?.['user.enableLoginCacheRestriction'];
-    const isAdmin = !!localStorage.getItem('lx_admin_password');
+    const isAdmin = !!getCredential('lx_admin_password');
 
     // 权限校验：针对不同用户类型的受限设置项校验 (置灰逻辑由 syncSettingsUI 同步)
     const isRestricted = !isAdmin && (
@@ -6135,7 +6258,11 @@ async function updateSetting(key, value) {
     settings[key] = value;
     window.settings = settings; // 确保全局引用同步
     try {
-        localStorage.setItem('lx_settings', JSON.stringify(settings));
+        if (key === 'remoteSyncCode') {
+            if (value) credentialStorage.setItem('lx_sync_code', String(value));
+            else credentialStorage.removeItem('lx_sync_code');
+        }
+        persistSettings();
         console.log(`[Settings] ${key} 已更新为:`, value);
     } catch (e) {
         console.error('[Settings] 保存设置失败:', e);
@@ -6382,7 +6509,7 @@ function syncSettingsUI(key = null, value = null) {
     const isPublic = !isUserLoggedIn() || currentListData?.username === '_open' || currentListData?.username === 'default' || window.isViewingPublicFavorites;
     const enablePublicRestriction = window.lx_config?.['user.enablePublicRestriction'];
     const enableLoginCacheRestriction = window.lx_config?.['user.enableLoginCacheRestriction'];
-    const isAdmin = !!localStorage.getItem('lx_admin_password');
+    const isAdmin = !!getCredential('lx_admin_password');
     const restrictedKeys = ['enableServerCache', 'enableServerLyricCache', 'serverCacheLocation', 'serverCacheNamingPattern', 'downloadConcurrency', 'enableOnlyDownloadMode', 'enableRemaster', 'preferredQuality', 'enablePublicSources', 'embedLyricToFile', 'preferServerCache'];
 
     const updateItem = (itemKey, itemValue, isSingle) => {
@@ -6516,8 +6643,9 @@ async function resetAllSettings() {
     try {
         // Reset to default
         settings = { ...DEFAULT_SETTINGS };
+        credentialStorage.removeItem('lx_sync_code');
         window.settings = settings;
-        localStorage.setItem('lx_settings', JSON.stringify(settings));
+        persistSettings();
         localStorage.removeItem('lx_playback_state'); // 同时重置播放进度记忆
 
         // If sync enabled, push to server
@@ -6542,10 +6670,10 @@ async function clearCache(type) {
         clearServerLyric = await showSelect('清除缓存', '是否同时清除本地缓存文件夹内的歌词LRC文件？', { danger: true });
 
         if (clearServerLyric) {
-            const isLogined = !!localStorage.getItem('lx_user_token');
+            const isLogined = !!getCredential('lx_user_token');
             const isPublicUser = !window.currentListData || !window.currentListData.username || window.currentListData.username === 'default';
             if (isPublicUser && window.lx_config && window.lx_config['user.enablePublicRestriction'] && !isLogined) {
-                const isAdminSession = localStorage.getItem('lx_admin_password');
+                const isAdminSession = getCredential('lx_admin_password');
                 const enableServerLyricCache = window.settings && window.settings.enableServerLyricCache === true;
                 if (!enableServerLyricCache && !isAdminSession) {
                     if (typeof window.handleAdminAuth === 'function') {
@@ -6700,7 +6828,7 @@ async function refreshCacheList() {
             throw new Error(data.message || '加载列表失败');
         }
     } catch (e) {
-        container.innerHTML = `<div class="p-10 text-center t-text-muted text-sm">${e.message}</div>`;
+        container.innerHTML = `<div class="p-10 text-center t-text-muted text-sm">${escapeHtmlText(e.message)}</div>`;
     }
 }
 
@@ -6727,12 +6855,12 @@ function renderCacheList() {
         const isSelected = selectedCacheFiles.has(getCacheItemKey(item));
 
         // 样式同步：使用主列表的来源标签生成函数
-        const sourceTagHtml = window.getSourceTag ? window.getSourceTag(item.source) : `<span class="px-1 py-0 rounded text-[10px] font-bold border t-badge-red mr-1">${item.source.toUpperCase()}</span>`;
+        const sourceTagHtml = window.getSourceTag ? window.getSourceTag(item.source) : `<span class="px-1 py-0 rounded text-[10px] font-bold border t-badge-red mr-1">${escapeHtmlText(String(item.source || '').toUpperCase())}</span>`;
 
         // 样式同步：匹配 getQualityTags 的逻辑
         let qTagHtml = '';
         const q = (item.quality || '').toLowerCase();
-        const qName = window.QualityManager?.getQualityDisplayName(q) || q.toUpperCase();
+        const qName = escapeHtmlText(window.QualityManager?.getQualityDisplayName(q) || q.toUpperCase());
 
         if (q === 'master') {
             qTagHtml = `<span class="flex-shrink-0 px-1 py-0 rounded text-[10px] t-badge-purple border border-purple-200 dark:border-purple-500/30 transition-colors">${qName}</span>`;
@@ -6751,12 +6879,13 @@ function renderCacheList() {
         }
 
         const username = (window.currentListData && window.currentListData.username) || localStorage.getItem('lx_sync_user') || '';
-        // <img src> 无法携带自定义请求头，将 token 附到 URL 以通过服务端认证
-        const authToken = (window.getUserAuthHeaders ? window.getUserAuthHeaders()['x-user-token'] : null)
-            || localStorage.getItem('lx_user_token') || '';
         const coverUrl = item.hasCover
-            ? `/api/music/cache/cover?filename=${encodeURIComponent(item.filename)}&user=${encodeURIComponent(username)}${authToken ? `&token=${encodeURIComponent(authToken)}` : ''}`
+            ? `/api/music/cache/cover?filename=${encodeURIComponent(item.filename)}&user=${encodeURIComponent(username)}`
             : '/music/assets/logo.svg';
+        const itemName = escapeHtmlText(item.name || '未命名歌曲');
+        const itemSinger = escapeHtmlText(item.singer || '未知歌手');
+        const itemAlbum = escapeHtmlText(item.album || '');
+        const itemJson = safeInlineJson(item);
 
         return `
             <div class="group flex items-center p-2.5 rounded-2xl hover:t-bg-panel-light transition-all duration-300 gap-3 border border-transparent 
@@ -6774,20 +6903,20 @@ function renderCacheList() {
 
                 <div class="relative w-12 h-12 flex-shrink-0 group-hover:scale-105 transition-transform duration-500">
                     <img class="w-full h-full object-cover rounded-xl shadow-md bg-gray-100" alt="${escapeHtmlText(item.filename || '缓存歌曲')}封面" width="48" height="48" loading="lazy" decoding="async"
-                         src="${coverUrl}" 
+                         src="${escapeHtmlText(coverUrl)}"
                          onerror="this.src='/music/assets/logo.svg'">
                     <div class="absolute inset-0 bg-black/5 rounded-xl"></div>
                 </div>
 
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
-                        <span class="text-sm font-black t-text-main truncate tracking-tight">${item.name}</span>
+                        <span class="text-sm font-black t-text-main truncate tracking-tight">${itemName}</span>
                     </div>
                     <div class="flex items-center flex-wrap gap-1 mt-0.5">
                         ${sourceTagHtml}
                         ${qTagHtml}
-                        <span class="text-[10px] font-bold t-text-muted truncate opacity-60">${item.singer}</span>
-                        ${item.album ? `<span class="text-[10px] t-text-muted opacity-40 ml-1 truncate">· ${item.album}</span>` : ''}
+                        <span class="text-[10px] font-bold t-text-muted truncate opacity-60">${itemSinger}</span>
+                        ${item.album ? `<span class="text-[10px] t-text-muted opacity-40 ml-1 truncate">· ${itemAlbum}</span>` : ''}
                     </div>
                     ${item.hasLyric === true ? `
                         <div class="mt-1">
@@ -6795,7 +6924,7 @@ function renderCacheList() {
                         </div>
                     ` : `
                         <div class="mt-1">
-                            <button onclick="event.stopPropagation(); retryCacheLyric(this, ${JSON.stringify(item).replace(/"/g, '&quot;')})" 
+                            <button onclick="event.stopPropagation(); retryCacheLyric(this, ${itemJson})"
                                     class="text-[9px] bg-red-400 hover:bg-red-500 text-white px-1.5 py-0.5 rounded font-black shadow-sm inline-flex items-center gap-1 transition-colors" title="歌词缺失，点击尝试补全">
                                 <span>LRC+</span>
                                 <i class="fas fa-redo-alt text-[7px]"></i>
@@ -6951,10 +7080,10 @@ async function removeCacheItem(index) {
         showError('文件信息已失效，请刷新后重试');
         return;
     }
-    const isLogined = !!localStorage.getItem('lx_user_token');
+    const isLogined = !!getCredential('lx_user_token');
     const isPublicUser = !window.currentListData || !window.currentListData.username || window.currentListData.username === 'default';
     if (isPublicUser && window.lx_config && window.lx_config['user.enablePublicRestriction'] && !isLogined) {
-        const isAdminSession = localStorage.getItem('lx_admin_password');
+        const isAdminSession = getCredential('lx_admin_password');
         const enableServerCache = window.settings && window.settings.enableServerCache === true;
         if (!enableServerCache && !isAdminSession) {
             if (typeof window.handleAdminAuth === 'function') {
@@ -7000,7 +7129,7 @@ async function batchDeleteCache() {
     }
 
     if ((!window.currentListData || !window.currentListData.username || window.currentListData.username === 'default') && window.lx_config && window.lx_config['user.enablePublicRestriction']) {
-        const isAdminSession = localStorage.getItem('lx_admin_password');
+        const isAdminSession = getCredential('lx_admin_password');
         const enableServerCache = window.settings && window.settings.enableServerCache === true;
         if (!enableServerCache && !isAdminSession) {
             if (typeof window.handleAdminAuth === 'function') {
@@ -7042,7 +7171,7 @@ async function batchDeleteCache() {
 
 async function clearServerCache() {
     if ((!window.currentListData || !window.currentListData.username || window.currentListData.username === 'default') && window.lx_config && window.lx_config['user.enablePublicRestriction']) {
-        const isAdminSession = localStorage.getItem('lx_admin_password');
+        const isAdminSession = getCredential('lx_admin_password');
         const enableServerCache = window.settings && window.settings.enableServerCache === true;
         if (!enableServerCache && !isAdminSession) {
             if (typeof window.handleAdminAuth === 'function') {
@@ -7823,7 +7952,7 @@ function renderLyric(lines, emptyMsg = '暂无歌词') {
     container.innerHTML = '';
 
     if (lines.length === 0) {
-        container.innerHTML = `<p class="t-text-muted text-lg font-medium">${emptyMsg}</p>`;
+        container.innerHTML = `<p class="t-text-muted text-lg font-medium">${escapeHtmlText(emptyMsg)}</p>`;
         return;
     }
 
@@ -7838,7 +7967,7 @@ function renderLyric(lines, emptyMsg = '暂无歌词') {
     const frag = document.createDocumentFragment();
 
     lines.forEach((line, idx) => {
-        const div = document.createElement('div');
+         const div = document.createElement('div');
         div.className = `lyric-line relative py-2 px-1 text-center md:text-left transition-all duration-300`;
         div.dataset.time = line.time;
         div.dataset.index = idx;
@@ -8046,7 +8175,7 @@ async function loadLibraryData() {
 
         if (isPublic) {
             // 公开收藏模式：拉 _open 的歌手/专辑库
-            const adminPass = localStorage.getItem('lx_admin_password');
+            const adminPass = getCredential('lx_admin_password');
             if (adminPass) headers['x-frontend-auth'] = adminPass;
             headers['x-user-name'] = '_open';
             artistsUrl += '?user=_open';
@@ -8099,7 +8228,7 @@ async function saveLibraryArtists(customList = null) {
         let headers = { 'Content-Type': 'application/json' };
         let url = '/api/user/library/artists';
         if (isPublic) {
-            const adminPass = localStorage.getItem('lx_admin_password');
+            const adminPass = getCredential('lx_admin_password');
             if (adminPass) headers['x-frontend-auth'] = adminPass;
             headers['x-user-name'] = '_open';
             url += '?user=_open';
@@ -8119,7 +8248,7 @@ async function saveLibraryAlbums(customList = null) {
         let headers = { 'Content-Type': 'application/json' };
         let url = '/api/user/library/albums';
         if (isPublic) {
-            const adminPass = localStorage.getItem('lx_admin_password');
+            const adminPass = getCredential('lx_admin_password');
             if (adminPass) headers['x-frontend-auth'] = adminPass;
             headers['x-user-name'] = '_open';
             url += '?user=_open';
@@ -8381,24 +8510,27 @@ function renderLibraryArtists(list) {
 
     const grid = container.querySelector('#lib-artist-grid');
     list.forEach(singer => {
+        const singerId = String(singer.id ?? '');
+        const singerSource = String(singer.source || 'wy');
+        const singerName = String(singer.name || '未命名歌手');
         const div = document.createElement('div');
         div.className = 'group relative flex flex-col items-center p-2 md:p-4 rounded-2xl transition-all hover:t-bg-panel hover:shadow-md cursor-pointer border border-transparent hover:border-emerald-500/30';
-        div.dataset.libArtistId = singer.id;
-        div.dataset.libArtistSource = singer.source;
+        div.dataset.libArtistId = singerId;
+        div.dataset.libArtistSource = singerSource;
         const activateArtist = (e) => {
             if (e.target.closest('.lib-batch-check') || e.target.closest('.lib-fav-btn')) return;
             if (window.libraryBatchMode === 'artist') {
-                toggleLibArtistBatchSelect(singer.id);
+                toggleLibArtistBatchSelect(singerId);
                 return;
             }
-            enterArtist(singer.id, singer.source || 'wy');
+            enterArtist(singerId, singerSource);
         };
         div.onclick = activateArtist;
-        makeKeyboardActivatable(div, `打开收藏歌手 ${singer.name || '未命名歌手'}`, activateArtist);
-        div.innerHTML = `
+        makeKeyboardActivatable(div, `打开收藏歌手 ${singerName}`, activateArtist);
+         div.innerHTML = `
             <div class="relative mb-2 md:mb-3">
                 <div class="w-16 h-16 sm:w-24 sm:h-24 md:w-32 md:h-32 rounded-full overflow-hidden shadow-sm">
-                    <img src="${singer.picUrl || '/music/assets/logo.svg'}" alt="${escapeHtmlText(singer.name || '歌手')}头像" width="128" height="128" loading="lazy" decoding="async"
+                    <img src="${escapeHtmlText(safeImageUrl(singer.picUrl))}" alt="${escapeHtmlText(singerName)}头像" width="128" height="128" loading="lazy" decoding="async"
                          onerror="this.src='/music/assets/logo.svg'"
                          class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
                 </div>
@@ -8407,12 +8539,12 @@ function renderLibraryArtists(list) {
                 </div>
                 <button class="lib-fav-btn absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full bg-red-400/80 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10"
                         title="取消收藏"
-                        onclick="event.stopPropagation(); removeLibraryArtist('${singer.id}', '${singer.source}')">
+                        onclick="event.stopPropagation(); removeLibraryArtist(${safeInlineString(singerId)}, ${safeInlineString(singerSource)})">
                     <i class="fas fa-times text-[10px]"></i>
                 </button>
             </div>
-            <span class="text-[11px] md:text-sm font-bold t-text-main text-center truncate w-full" title="${singer.name}">${singer.name}</span>
-            <div class="mt-1">${getSourceTag ? getSourceTag(singer.source || 'wy') : (singer.source || 'wy').toUpperCase()}</div>`;
+            <span class="text-[11px] md:text-sm font-bold t-text-main text-center truncate w-full" title="${escapeHtmlText(singerName)}">${escapeHtmlText(singerName)}</span>
+            <div class="mt-1">${getSourceTag ? getSourceTag(singerSource) : escapeHtmlText(singerSource.toUpperCase())}</div>`;
         grid.appendChild(div);
     });
 }
@@ -8467,23 +8599,26 @@ function renderLibraryAlbums(list) {
 
     const grid = container.querySelector('#lib-album-grid');
     list.forEach(item => {
+        const albumId = String(item.id ?? '');
+        const albumSource = String(item.source || 'wy');
+        const albumName = String(item.name || '未命名专辑');
         const div = document.createElement('div');
         div.className = 'group relative flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20';
-        div.dataset.libAlbumId = item.id;
-        div.dataset.libAlbumSource = item.source;
+        div.dataset.libAlbumId = albumId;
+        div.dataset.libAlbumSource = albumSource;
         const activateAlbum = (e) => {
             if (e.target.closest('.lib-batch-check') || e.target.closest('.lib-fav-btn') || e.target.closest('.lib-album-download-btn')) return;
             if (window.libraryBatchMode === 'album') {
-                toggleLibAlbumBatchSelect(item.id);
+                toggleLibAlbumBatchSelect(albumId);
                 return;
             }
-            enterAlbum(item.id, item.source || 'wy');
+            enterAlbum(albumId, albumSource);
         };
         div.onclick = activateAlbum;
-        makeKeyboardActivatable(div, `打开收藏专辑 ${item.name || '未命名专辑'}`, activateAlbum);
+        makeKeyboardActivatable(div, `打开收藏专辑 ${albumName}`, activateAlbum);
         div.innerHTML = `
             <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative">
-                <img src="${item.picUrl || '/music/assets/logo.svg'}" alt="${escapeHtmlText(item.name || '专辑')}封面" width="320" height="320" loading="lazy" decoding="async"
+                <img src="${escapeHtmlText(safeImageUrl(item.picUrl))}" alt="${escapeHtmlText(albumName)}封面" width="320" height="320" loading="lazy" decoding="async"
                      onerror="this.src='/music/assets/logo.svg'"
                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
                 <div class="lib-batch-check absolute inset-0 bg-black/40 hidden items-center justify-center rounded-xl">
@@ -8494,15 +8629,15 @@ function renderLibraryAlbums(list) {
                         <i class="fas fa-download text-xs"></i>
                     </button>
                     <button type="button" class="lib-fav-btn w-8 h-8 rounded-full bg-red-400/80 hover:bg-red-500 text-white flex items-center justify-center opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all shadow-sm" title="取消收藏"
-                            onclick="event.stopPropagation(); removeLibraryAlbum('${item.id}', '${item.source}')">
+                            onclick="event.stopPropagation(); removeLibraryAlbum(${safeInlineString(albumId)}, ${safeInlineString(albumSource)})">
                         <i class="fas fa-times text-xs"></i>
                     </button>
                 </div>
             </div>
-            <span class="text-sm font-bold t-text-main line-clamp-2 h-10 leading-5 mb-1" title="${item.name}">${item.name}</span>
+            <span class="text-sm font-bold t-text-main line-clamp-2 h-10 leading-5 mb-1" title="${escapeHtmlText(albumName)}">${escapeHtmlText(albumName)}</span>
             <div class="flex items-center justify-between mt-1">
                 <span class="text-[10px] t-text-muted truncate flex-1">
-                    ${item.artistName || '未知歌手'}
+                    ${escapeHtmlText(item.artistName || '未知歌手')}
                     ${item.list && item.list.length ? `<span class="ml-1 text-emerald-500 font-bold">(${item.list.length} 首)</span>` : ''}
                 </span>
                 <span class="text-[10px] t-text-muted ml-2">${getSourceTag ? getSourceTag(item.source) : ''}</span>
@@ -8778,12 +8913,12 @@ async function pushSettingsToServer(force = false) {
         if (isPublicMode) {
             // 公开受限用户：不需账号认证，但需要管理员密码
             headers['x-user-name'] = 'default';
-            const adminPass = localStorage.getItem('lx_admin_password');
+            const adminPass = getCredential('lx_admin_password');
             if (adminPass) headers['x-frontend-auth'] = adminPass;
         } else {
             // 已登录用户：使用 Token（或兼容旧密码）
             Object.assign(headers, getUserAuthHeaders());
-            const adminPass = localStorage.getItem('lx_admin_password');
+            const adminPass = getCredential('lx_admin_password');
             if (adminPass) headers['x-frontend-auth'] = adminPass;
         }
 
@@ -8813,7 +8948,7 @@ async function manualSaveSettings(btn) {
         btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> 正在处理...';
 
         // 1. Sync to localStorage
-        localStorage.setItem('lx_settings', JSON.stringify(settings));
+        persistSettings();
 
         // 2. Force push to server (settings.json)
         await pushSettingsToServer(true);
@@ -8854,11 +8989,11 @@ async function fetchSettingsFromServer() {
         const headers = {};
         if (isPublicMode) {
             headers['x-user-name'] = 'default';
-            const adminPass = localStorage.getItem('lx_admin_password');
+            const adminPass = getCredential('lx_admin_password');
             if (adminPass) headers['x-frontend-auth'] = adminPass;
         } else {
             Object.assign(headers, getUserAuthHeaders());
-            const adminPass = localStorage.getItem('lx_admin_password');
+            const adminPass = getCredential('lx_admin_password');
             if (adminPass) headers['x-frontend-auth'] = adminPass;
         }
 
@@ -8871,8 +9006,9 @@ async function fetchSettingsFromServer() {
             console.log('[Settings] 从服务器加载设置成功:', serverSettings);
             // Merge settings
             settings = normalizeStoredSettings({ ...settings, ...serverSettings });
+            restoreRemoteSyncCode(serverSettings?.remoteSyncCode);
             // Save to local
-            localStorage.setItem('lx_settings', JSON.stringify(settings));
+            persistSettings();
             // Update UI
             syncSettingsUI();
             setupNetworkListAutoCheck();
@@ -8907,7 +9043,7 @@ function updateSyncStatus(html, showLogout = true) {
         // Add "Sync from Remote" button if in LOCAL mode
         if (localStorage.getItem('lx_sync_mode') === 'local') {
             const username = localStorage.getItem('lx_sync_user') || '该用户';
-            fullHtml += ` <button onclick="showRemoteOverwriteModal('${username}')" class="ml-2 text-emerald-500 hover:text-emerald-600 text-[10px] md:text-xs font-bold px-2 py-0.5 rounded border border-emerald-200 hover:bg-emerald-300/10 transition-all inline-flex items-center gap-1" title="连接远程服务器"><i class="fas fa-satellite-dish"></i><span class="hidden sm:inline">连接远程服务器</span></button>`;
+            fullHtml += ` <button onclick="showRemoteOverwriteModal(${safeInlineString(username)})" class="ml-2 text-emerald-500 hover:text-emerald-600 text-[10px] md:text-xs font-bold px-2 py-0.5 rounded border border-emerald-200 hover:bg-emerald-300/10 transition-all inline-flex items-center gap-1" title="连接远程服务器"><i class="fas fa-satellite-dish"></i><span class="hidden sm:inline">连接远程服务器</span></button>`;
         }
     }
     statusEl.innerHTML = fullHtml;
@@ -9046,7 +9182,7 @@ async function handleLocalLogin() {
                         const tokenData = await tokenRes.json();
                         if (tokenData.token) {
                             userToken = tokenData.token;
-                            localStorage.setItem('lx_user_token', userToken);
+                            credentialStorage.setItem('lx_user_token', userToken);
                             console.log('[Auth] 新用户 Token 已获取并保存');
                         }
                     }
@@ -9075,11 +9211,11 @@ async function handleLocalLogin() {
             // [Cache] Save list data immediately for offline availability / quick load
             await window.ListStore.set(listData).catch(e => console.error('[IDBStore] 保存失败:', e));
 
-            updateSyncStatus(`<i class="fas fa-check-circle text-emerald-500"></i> 已同步 (用户: ${user})`);
+            updateSyncStatus(`<i class="fas fa-check-circle text-emerald-500"></i> 已同步 (用户: ${escapeHtmlText(user)})`);
             // Save credentials to localStorage (Simple version)
             localStorage.setItem('lx_sync_mode', 'local'); // [Fix] Save mode
             localStorage.setItem('lx_sync_user', user);
-            localStorage.setItem('lx_sync_pass', pass);
+            credentialStorage.setItem('lx_sync_pass', pass);
 
             // [新增] 成功登录后立即更新顶部栏 UI
             if (typeof updateUserUI === 'function') updateUserUI();
@@ -9100,7 +9236,7 @@ async function handleLocalLogin() {
             statusEl.innerHTML = '<i class="fas fa-times-circle text-red-500"></i> 登录失败: 用户名或密码错误';
         }
     } catch (e) {
-        statusEl.innerHTML = `<i class="fas fa-exclamation-circle text-red-500"></i> 错误: ${e.message}`;
+        statusEl.innerHTML = `<i class="fas fa-exclamation-circle text-red-500"></i> 错误: ${escapeHtmlText(e.message)}`;
     }
 }
 
@@ -9187,9 +9323,9 @@ function handleRemoteConnect() {
 
     try {
         let authInfo = null;
-        if (localStorage.getItem('lx_sync_url') === url && localStorage.getItem('lx_sync_code') === code) {
+        if (localStorage.getItem('lx_sync_url') === url && getCredential('lx_sync_code') === code) {
             try {
-                const savedStr = localStorage.getItem('lx_ws_auth');
+                const savedStr = getCredential('lx_ws_auth');
                 if (savedStr) authInfo = JSON.parse(savedStr);
             } catch (e) { }
         }
@@ -9234,22 +9370,22 @@ function handleRemoteConnect() {
                 // Save connection info and authInfo to localStorage
                 localStorage.setItem('lx_sync_mode', 'remote');
                 localStorage.setItem('lx_sync_url', url);
-                localStorage.setItem('lx_sync_code', code);
+                credentialStorage.setItem('lx_sync_code', code);
 
                 // Save authInfo for reconnection
                 if (syncManager.client.authInfo) {
-                    localStorage.setItem('lx_ws_auth', JSON.stringify(syncManager.client.authInfo));
+                    credentialStorage.setItem('lx_ws_auth', JSON.stringify(syncManager.client.authInfo));
                     console.log('[Cache] WS认证信息已保存');
                 }
             } else {
-                statusEl.innerHTML = `<i class="fas fa-times-circle text-red-500"></i> 连接失败: ${msg || '未知错误'}`;
+                statusEl.innerHTML = `<i class="fas fa-times-circle text-red-500"></i> 连接失败: ${escapeHtmlText(msg || '未知错误')}`;
             }
         };
 
         syncManager.client.connect();
 
     } catch (e) {
-        statusEl.innerHTML = `<i class="fas fa-exclamation-circle text-red-500"></i> 错误: ${e.message}`;
+        statusEl.innerHTML = `<i class="fas fa-exclamation-circle text-red-500"></i> 错误: ${escapeHtmlText(e.message)}`;
     }
 }
 
@@ -9411,7 +9547,8 @@ async function handleRemoteOverwriteConnect(silent = false) {
             // Save address and code to settings and sync to server
             settings.remoteSyncUrl = url;
             settings.remoteSyncCode = code;
-            localStorage.setItem('lx_settings', JSON.stringify(settings));
+            credentialStorage.setItem('lx_sync_code', code);
+            persistSettings();
             if (settings.saveAccountSettingsToFile) {
                 pushSettingsToServer();
             }
@@ -9463,7 +9600,7 @@ async function handleRemoteOverwriteConnect(silent = false) {
             }
 
             // Update the status on the main settings page too
-            updateSyncStatus(`<i class="fas fa-check-circle text-emerald-500"></i> 远程同步任务已完成 (${username})`);
+            updateSyncStatus(`<i class="fas fa-check-circle text-emerald-500"></i> 远程同步任务已完成 (${escapeHtmlText(username)})`);
         } else if (status === 'started' || status === 'syncing') {
             if (!silent) {
                 switchRemoteModalStep('remote-overwrite-step2');
@@ -9523,7 +9660,7 @@ function persistFavoriteSidebarOrder(ids) {
     settings.favoriteSidebarOrder = ids;
     window.settings = settings;
     try {
-        localStorage.setItem('lx_settings', JSON.stringify(settings));
+        persistSettings();
     } catch (e) {
         console.error('[Settings] 保存收藏侧边栏排序失败:', e);
     }
@@ -9588,12 +9725,14 @@ function renderMyLists(data) {
     // Helper to create list item
     const createItem = (listObj, name, icon, count) => {
         const id = typeof listObj === 'string' ? listObj : listObj.id;
+        const idValue = String(id ?? '');
+        const idArg = safeInlineString(idValue);
         const displayName = String(name || '未命名歌单');
         const div = document.createElement('div');
         div.className = "px-6 py-2 text-sm t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden";
-        div.setAttribute('data-sidebar-list-id', id);
-        div.setAttribute('data-sidebar-sort-id', id);
-        const activateList = () => handleListClick(id);
+        div.setAttribute('data-sidebar-list-id', idValue);
+        div.setAttribute('data-sidebar-sort-id', idValue);
+        const activateList = () => handleListClick(idValue);
         div.onclick = activateList;
         makeKeyboardActivatable(div, `打开歌单 ${displayName}`, activateList);
 
@@ -9612,10 +9751,10 @@ function renderMyLists(data) {
             opsHtml = `
                 <button type="button" class="refresh-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 hidden group-hover:block flex-shrink-0 text-[10px] mr-2 transition-all active:rotate-180"
                    title="更新歌单内容" aria-label="更新歌单内容"
-                   onclick="event.stopPropagation(); handleRefreshList('${id}', event)"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
+                   onclick="event.stopPropagation(); handleRefreshList(${idArg}, event)"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
                 <button type="button" class="jump-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 hidden group-hover:block flex-shrink-0 text-[10px] mr-2 transition-all"
                    title="打开原始歌单" aria-label="打开原始歌单"
-                   onclick="event.stopPropagation(); handleJumpToOriginalList('${id}', event)"><i class="fas fa-external-link-alt" aria-hidden="true"></i></button>
+                   onclick="event.stopPropagation(); handleJumpToOriginalList(${idArg}, event)"><i class="fas fa-external-link-alt" aria-hidden="true"></i></button>
                 ${updateBadge}
             `;
         }
@@ -9628,8 +9767,8 @@ function renderMyLists(data) {
             <i class="fas ${icon} w-5 t-text-muted group-hover:text-emerald-500 transition-colors flex-shrink-0"></i>
             ${displayName.length > 8 ? `<div class="ml-2 flex-1 overflow-hidden">${nameHtml}</div>` : nameHtml}
             <span class="text-xs text-gray-300 group-hover:t-text-muted mr-2 flex-shrink-0">${count}</span>
-            ${typeof listObj !== 'string' ? `<button type="button" class="text-gray-300 hover:text-emerald-500 flex-shrink-0 mr-2 transition-colors" title="重命名歌单" aria-label="重命名歌单" onclick="event.stopPropagation(); handleRenameList('${id}', event)"><i class="fas fa-pen text-[10px]" aria-hidden="true"></i></button>` : ''}
-            ${id !== 'default' && id !== 'love' ? `<button type="button" class="bg-transparent border-0 p-0 text-gray-300 hover:text-red-500 hidden group-hover:block flex-shrink-0" title="删除歌单" aria-label="删除歌单" onclick="event.stopPropagation(); handleRemoveList('${id}', event)"><i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
+            ${typeof listObj !== 'string' ? `<button type="button" class="text-gray-300 hover:text-emerald-500 flex-shrink-0 mr-2 transition-colors" title="重命名歌单" aria-label="重命名歌单" onclick="event.stopPropagation(); handleRenameList(${idArg}, event)"><i class="fas fa-pen text-[10px]" aria-hidden="true"></i></button>` : ''}
+            ${idValue !== 'default' && idValue !== 'love' ? `<button type="button" class="bg-transparent border-0 p-0 text-gray-300 hover:text-red-500 hidden group-hover:block flex-shrink-0" title="删除歌单" aria-label="删除歌单" onclick="event.stopPropagation(); handleRemoveList(${idArg}, event)"><i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
         `;
         return div;
     };
@@ -9647,7 +9786,7 @@ function renderMyLists(data) {
                 <i class="fas fa-grip-vertical text-xs"></i>
             </span>
             <i class="fas ${icon} w-5 t-text-muted group-hover:text-emerald-500 transition-colors flex-shrink-0"></i>
-            <span class="ml-2 flex-1 truncate">${name}</span>
+             <span class="ml-2 flex-1 truncate">${escapeHtmlText(name)}</span>
             <span id="${countId}" class="text-xs text-gray-300 group-hover:t-text-muted mr-2 flex-shrink-0">0</span>
         `;
         return div;
@@ -10254,7 +10393,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (syncMode === 'local') {
         // Local mode: auto-login
         const user = localStorage.getItem('lx_sync_user');
-        const pass = localStorage.getItem('lx_sync_pass');
+        const pass = getCredential('lx_sync_pass');
         if (user && pass) {
             document.getElementById('sync-local-user').value = user;
             document.getElementById('sync-local-pass').value = pass;
@@ -10264,8 +10403,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else if (syncMode === 'remote') {
         // Remote mode: auto-reconnect
         const url = localStorage.getItem('lx_sync_url');
-        const code = localStorage.getItem('lx_sync_code');
-        const authStr = localStorage.getItem('lx_ws_auth');
+        const code = getCredential('lx_sync_code');
+        const authStr = getCredential('lx_ws_auth');
 
         if (url && code) {
             document.getElementById('sync-remote-url').value = url;
@@ -10307,7 +10446,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             updateSyncStatus('<i class="fas fa-check-circle text-green-500"></i> 已自动重连');
                         } else {
                             console.log('[Cache] 自动重连失败,需要手动重新配对');
-                            localStorage.removeItem('lx_ws_auth'); // Clear invalid auth
+                            credentialStorage.removeItem('lx_ws_auth'); // Clear invalid auth
                         }
                     };
                     syncManager.client.connect();
@@ -10339,7 +10478,7 @@ async function pushDataChange(customListData) {
 
     // 2. 如果是公开/未登录用户且开启了公开收藏开关
     if (isPublicList && window.lx_config?.['user.enablePublicFavorites']) {
-        const isAdmin = !!localStorage.getItem('lx_admin_password');
+        const isAdmin = !!getCredential('lx_admin_password');
         if (isAdmin) {
             try {
                 const res = await fetch('/api/user/list?user=_open', {
@@ -10474,7 +10613,7 @@ async function handleFileUpload(input) {
 
         // 先验证脚本
         showInfo('正在验证脚本...');
-        const adminPass = localStorage.getItem('lx_admin_password');
+        const adminPass = getCredential('lx_admin_password');
         const headers = { 'Content-Type': 'application/json', ...getUserAuthHeaders() };
         if (adminPass) headers['x-frontend-auth'] = adminPass;
 
@@ -10572,7 +10711,7 @@ async function handleUrlImport() {
 
         const username = currentListData?.username || 'default';
         const headers = { 'Content-Type': 'application/json', ...getUserAuthHeaders() };
-        const adminPass = localStorage.getItem('lx_admin_password');
+        const adminPass = getCredential('lx_admin_password');
         if (adminPass) headers['x-frontend-auth'] = adminPass;
 
         // 从服务器代理下载
@@ -10649,7 +10788,7 @@ async function handleUrlImport() {
 // 上传自定义源到服务器
 async function uploadCustomSource(filename, content, type, allowUnsafeVM = false) {
     const headers = { 'Content-Type': 'application/json', ...getUserAuthHeaders() };
-    const adminPass = localStorage.getItem('lx_admin_password');
+    const adminPass = getCredential('lx_admin_password');
     if (adminPass) headers['x-frontend-auth'] = adminPass;
 
     const response = await fetch('/api/custom-source/upload', {
@@ -10700,10 +10839,10 @@ async function fetchCustomSources() {
     try {
         const username = currentListData?.username || 'default';
         const headers = getUserAuthHeaders();
-        const adminPass = localStorage.getItem('lx_admin_password');
+        const adminPass = getCredential('lx_admin_password');
         if (adminPass) headers['x-frontend-auth'] = adminPass;
 
-        const res = await fetch(`/api/custom-source/list?username=${username}`, {
+        const res = await fetch(`/api/custom-source/list?username=${encodeURIComponent(username)}`, {
             headers: headers
         });
 
@@ -10736,7 +10875,7 @@ function updateSourceScopeUI() {
         tagHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-500 whitespace-nowrap inline-block">公开</span>`;
     } else {
         // User logged in
-        let userTag = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-600 whitespace-nowrap inline-block">${username}</span>`;
+        let userTag = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-600 whitespace-nowrap inline-block">${escapeHtmlText(username)}</span>`;
         if (showPublic) {
             userTag += `<span class="ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-500 whitespace-nowrap inline-block">公开</span>`
         }
@@ -10748,7 +10887,7 @@ function updateSourceScopeUI() {
     if (modalTag) {
         modalTag.innerHTML = isPublic
             ? `<div class="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100 w-fit mb-2"><i class="fas fa-globe"></i> 上传到: 公开</div>`
-            : `<div class="flex items-center gap-2 text-xs text-purple-600 bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-100 w-fit mb-2"><i class="fas fa-user-circle"></i> 上传到: ${username}</div>`;
+            : `<div class="flex items-center gap-2 text-xs text-purple-600 bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-100 w-fit mb-2"><i class="fas fa-user-circle"></i> 上传到: ${escapeHtmlText(username)}</div>`;
     }
 }
 
@@ -10762,7 +10901,7 @@ async function renderCustomSources() {
     // 判断当前状态：是否由于权限被拦截
     // list === null 表示后端返回了 403
     // 或者前端认为应该拦截：开启了公开限制 && 非登录用户 && 非管理员
-    const isAdmin = !!localStorage.getItem('lx_admin_password');
+    const isAdmin = !!getCredential('lx_admin_password');
     const isUser = !!userToken;
     const isPublicRestrictionEnabled = !!window.lx_config?.['user.enablePublicRestriction'];
     const isPublicRestrictionActive = isPublicRestrictionEnabled && !isUser && !isAdmin;
@@ -10845,7 +10984,8 @@ async function renderCustomSources() {
                 supportedBadges = `<div class="flex flex-wrap gap-1.5 mt-2">
                 ${source.supportedSources.map(s => {
                     const info = sourceMap[s] || { name: s, color: 't-badge-gray' };
-                    return `<span class="px-1.5 py-0.5 rounded-md text-[10px] font-medium transition-colors border border-transparent ${info.color}">${info.name}</span>`;
+                    const badgeName = escapeHtmlText(info.name);
+                    return `<span class="px-1.5 py-0.5 rounded-md text-[10px] font-medium transition-colors border border-transparent ${info.color}">${badgeName}</span>`;
                 }).join('')}
             </div>`;
             } else {
@@ -10866,15 +11006,16 @@ async function renderCustomSources() {
                 if (source.status === 'success') {
                     statusBadge = `<span class="text-[10px] bg-emerald-50 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30 px-1.5 py-0.5 rounded-full border border-emerald-100 flex items-center gap-1 transition-colors"><i class="fas fa-check-circle"></i>正常</span>`;
                 } else if (source.status === 'failed') {
-                    statusBadge = `<span class="text-[10px] bg-red-50 text-red-600 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30 px-1.5 py-0.5 rounded-full border border-red-100 flex items-center gap-1 cursor-help transition-colors" title="${source.error || '加载失败'}"><i class="fas fa-times-circle"></i>失败</span>`;
-                    errorMsg = `<div class="text-[10px] text-red-500 dark:text-red-400 mt-1 flex items-start gap-1 p-1.5 bg-red-50 dark:bg-red-900/20 rounded transition-colors"><i class="fas fa-info-circle mt-0.5 flex-shrink-0"></i><span class="break-all">${source.error || '未知错误'}</span></div>`;
+                    const sourceError = escapeHtmlText(source.error || '加载失败');
+                    statusBadge = `<span class="text-[10px] bg-red-50 text-red-600 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30 px-1.5 py-0.5 rounded-full border border-red-100 flex items-center gap-1 cursor-help transition-colors" title="${sourceError}"><i class="fas fa-times-circle"></i>失败</span>`;
+                    errorMsg = `<div class="text-[10px] text-red-500 dark:text-red-400 mt-1 flex items-start gap-1 p-1.5 bg-red-50 dark:bg-red-900/20 rounded transition-colors"><i class="fas fa-info-circle mt-0.5 flex-shrink-0"></i><span class="break-all">${sourceError}</span></div>`;
                 } else {
                     statusBadge = `<span class="text-[10px] bg-blue-50 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30 px-1.5 py-0.5 rounded-full border border-blue-100 flex items-center gap-1 transition-colors"><i class="fas fa-circle-notch fa-spin"></i>加载...</span>`;
                 }
             }
 
             const ownerTag = (source.owner && source.owner !== 'open') ?
-                `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-600">${source.owner}</span>` :
+                `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-600">${escapeHtmlText(source.owner)}</span>` :
                 `<span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-500">公开</span>`;
 
             const vmTag = source.allowUnsafeVM ?
@@ -10898,16 +11039,16 @@ async function renderCustomSources() {
                     </div>
                     ${errorMsg}
                     <div class="flex flex-wrap items-center text-[10px] t-text-muted gap-x-3 gap-y-1 mt-1.5">
-                        <span class="flex items-center"><i class="fas fa-user mr-1 opacity-70"></i>${source.author || '未知'}</span>
+                        <span class="flex items-center"><i class="fas fa-user mr-1 opacity-70"></i>${escapeHtmlText(source.author || '未知')}</span>
                         <span class="flex items-center"><i class="far fa-hdd mr-1 opacity-70"></i>${size}</span>
-                        <span class="t-bg-main t-text-muted px-1.5 py-0.5 rounded-lg shrink-0 transition-colors font-mono pointer-events-none border t-border-main">${source.version ? (/^v/i.test(source.version) ? source.version : 'v' + source.version) : '未知'}</span>
+                        <span class="t-bg-main t-text-muted px-1.5 py-0.5 rounded-lg shrink-0 transition-colors font-mono pointer-events-none border t-border-main">${escapeHtmlText(source.version ? (/^v/i.test(source.version) ? source.version : 'v' + source.version) : '未知')}</span>
                         ${statusBadge}
                     </div>
                     ${supportedBadges}
                 </div>
                 
                 <div class="flex flex-col items-end gap-2 shrink-0">
-                    <button onclick="toggleSource('${source.id}', ${source.enabled})" 
+                    <button onclick="toggleSource(${safeInlineString(source.id)}, ${source.enabled})"
                             class="px-3 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap w-20 flex justify-center items-center ${source.enabled
                     ? (source.status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-500/30' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-500/30')
                     : 't-bg-track t-text-muted hover:t-bg-item-hover'}">
@@ -10916,14 +11057,14 @@ async function renderCustomSources() {
                     
                     <div class="flex items-center gap-1">
                         ${source.enabled && source.status === 'failed' && canManageSource ? `
-                        <button onclick="reloadSource('${source.id}')" 
+                        <button onclick="reloadSource(${safeInlineString(source.id)})"
                                 class="p-1.5 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 rounded-lg transition-colors"
                                 title="尝试重新加载">
                             <i class="fas fa-sync-alt text-sm"></i>
                         </button>` : ''}
                         
                         ${canManageSource ? `
-                        <button onclick="deleteSource('${source.id}')" 
+                        <button onclick="deleteSource(${safeInlineString(source.id)})"
                                 class="p-1.5 t-text-muted hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/40 rounded-lg transition-colors"
                                 title="删除">
                             <i class="fas fa-trash-alt text-sm"></i>
@@ -10975,7 +11116,7 @@ async function renderCustomSources() {
                     try {
                         const username = currentListData?.username || 'default';
                         const headers = { 'Content-Type': 'application/json', ...getUserAuthHeaders() };
-                        const adminPass = localStorage.getItem('lx_admin_password');
+                        const adminPass = getCredential('lx_admin_password');
                         if (adminPass) headers['x-frontend-auth'] = adminPass;
 
                         const response = await fetch('/api/custom-source/reorder', {
@@ -11013,7 +11154,7 @@ async function renderCustomSources() {
 async function reloadSource(sourceId) {
     try {
         const username = currentListData?.username || 'default';
-        const adminPass = localStorage.getItem('lx_admin_password');
+        const adminPass = getCredential('lx_admin_password');
         const headers = { 'Content-Type': 'application/json', ...getUserAuthHeaders() };
         if (adminPass) headers['x-frontend-auth'] = adminPass;
 
@@ -11042,7 +11183,7 @@ async function toggleSource(sourceId, currentEnabled, allowUnsafeVM = false) {
     try {
         const username = currentListData?.username || 'default';
         const headers = { 'Content-Type': 'application/json', ...getUserAuthHeaders() };
-        const adminPass = localStorage.getItem('lx_admin_password');
+        const adminPass = getCredential('lx_admin_password');
         if (adminPass) headers['x-frontend-auth'] = adminPass;
 
         const response = await fetch('/api/custom-source/toggle', {
@@ -11094,7 +11235,7 @@ async function deleteSource(sourceId) {
     try {
         const username = currentListData?.username || 'default';
         const headers = { 'Content-Type': 'application/json', ...getUserAuthHeaders() };
-        const adminPass = localStorage.getItem('lx_admin_password');
+        const adminPass = getCredential('lx_admin_password');
         if (adminPass) headers['x-frontend-auth'] = adminPass;
 
         const response = await fetch('/api/custom-source/delete', {
@@ -11746,7 +11887,7 @@ async function fetchComments() {
 
     } catch (e) {
         console.error('Fetch comments failed:', e);
-        if (list) list.innerHTML = `<div class="text-center py-10 text-red-400 font-bold">加载失败: ${e.message}</div>`;
+        if (list) list.innerHTML = `<div class="text-center py-10 text-red-400 font-bold">加载失败: ${escapeHtmlText(e.message)}</div>`;
     } finally {
         if (loader) loader.classList.add('hidden');
         isCommentLoading = false;
@@ -11796,11 +11937,11 @@ function renderComments(comments) {
 
 function createCommentItemHTML(comment, isReply = false) {
     const timeStr = comment.timeStr || (comment.time ? new Date(comment.time).toLocaleString() : '');
-    const location = comment.location ? ` • ${comment.location}` : '';
+    const location = comment.location ? ` • ${escapeHtmlText(comment.location)}` : '';
 
     // 头像处理
     const defaultAvatar = '/music/assets/logo.svg';
-    const avatar = comment.avatar || defaultAvatar;
+    const avatar = safeImageUrl(comment.avatar, defaultAvatar);
     const isDefault = avatar.includes('logo.svg') || !comment.avatar;
     const avatarClass = `w-8 h-8 md:w-10 md:h-10 rounded-full shadow-sm hover:scale-110 transition-transform t-bg-main flex-shrink-0 object-cover ${isDefault ? 'dynamic-logo is-placeholder p-1.5' : ''}`;
 
@@ -11822,22 +11963,24 @@ function createCommentItemHTML(comment, isReply = false) {
                  onerror="if(!this.dataset.tried){this.dataset.tried=1;this.src='/music/assets/logo.svg';this.classList.add('dynamic-logo','is-placeholder','p-1.5','bg-emerald-50');this.style.filter='var(--logo-filter, none)';}">
             <div class="flex-1 min-w-0">
                 <div class="flex items-center justify-between mb-1">
-                    <span class="text-xs md:text-sm font-black t-text-main truncate">${comment.userName}</span>
+                 <span class="text-xs md:text-sm font-black t-text-main truncate">${escapeHtmlText(comment.userName || '用户')}</span>
                     <div class="flex items-center gap-1.5 text-[10px] t-text-muted font-bold">
                         <i class="far fa-thumbs-up"></i>
                         <span>${comment.likedCount || 0}</span>
                     </div>
                 </div>
-                <p class="text-xs md:text-sm t-text-muted leading-relaxed break-words whitespace-pre-wrap">${comment.text}</p>
+                <p class="text-xs md:text-sm t-text-muted leading-relaxed break-words whitespace-pre-wrap">${escapeHtmlText(comment.text || '')}</p>
                 ${comment.images && comment.images.length > 0 ? `
                     <div class="mt-2 flex flex-wrap gap-2">
-                        ${comment.images.map(img => `
-                            <button type="button" class="border-0 p-0 bg-transparent rounded-lg cursor-pointer hover:opacity-90 transition-opacity" aria-label="打开评论图片" onclick="window.open('${img}', '_blank')">
-                                <img src="${img}" loading="lazy" fetchpriority="low" width="200" height="300" alt="评论图片"
+                        ${comment.images.map(img => {
+                            const imageUrl = safeImageUrl(img);
+                            return `
+                            <button type="button" class="border-0 p-0 bg-transparent rounded-lg cursor-pointer hover:opacity-90 transition-opacity" aria-label="打开评论图片" onclick="window.open(${safeInlineString(imageUrl)}, '_blank', 'noopener')">
+                                <img src="${escapeHtmlText(imageUrl)}" loading="lazy" fetchpriority="low" width="200" height="300" alt="评论图片"
                                      class="w-[200px] h-[300px] object-contain rounded-lg shadow-sm"
                                      onerror="this.closest('button').style.display='none'">
                             </button>
-                        `).join('')}
+                        `; }).join('')}
                     </div>
                 ` : ''}
                 <div class="mt-2 flex items-center gap-3 text-[10px] t-text-muted font-bold uppercase tracking-tight">
@@ -11967,6 +12110,13 @@ function showInput(title, message, options = {}) {
         confirmColor = 'bg-emerald-500',
         inputType = 'text'
     } = options;
+    const safeTitle = escapeHtmlText(title);
+    const safeMessage = escapeHtmlText(message);
+    const safePlaceholder = escapeHtmlText(placeholder);
+    const safeDefaultValue = escapeHtmlText(defaultValue);
+    const safeConfirmText = escapeHtmlText(confirmText);
+    const safeCancelText = escapeHtmlText(cancelText);
+    const safeInputType = ['text', 'password', 'url', 'number', 'search'].includes(inputType) ? inputType : 'text';
 
     return new Promise((resolve) => {
         const modal = document.createElement('div');
@@ -11978,7 +12128,7 @@ function showInput(title, message, options = {}) {
             <div class="t-bg-panel rounded-xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all animate-slide-up relative z-10 border t-border-main">
                 <!-- Header -->
                 <div class="px-5 py-4 border-b border-emerald-100/50 flex justify-between items-center bg-emerald-50/50">
-                    <h3 class="text-sm font-bold t-text-main">${title}</h3>
+                    <h3 class="text-sm font-bold t-text-main">${safeTitle}</h3>
                     <button id="modal-close-x" data-overlay-close aria-label="关闭" class="t-text-muted hover:text-emerald-500 transition-colors">
                         <i class="fas fa-times text-lg"></i>
                     </button>
@@ -11990,20 +12140,20 @@ function showInput(title, message, options = {}) {
                             <i class="fas fa-edit text-lg"></i>
                         </div>
                         <div class="flex-1">
-                            <p class="text-sm t-text-muted leading-relaxed mb-4">${message}</p>
-                            <input type="${inputType}" id="modal-input" 
+                            <p class="text-sm t-text-muted leading-relaxed mb-4">${safeMessage}</p>
+                            <input type="${safeInputType}" id="modal-input"
                                 class="w-full px-4 py-2.5 t-bg-main border t-border-main rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all text-sm"
-                                placeholder="${placeholder}" value="${defaultValue}">
+                                placeholder="${safePlaceholder}" value="${safeDefaultValue}">
                         </div>
                     </div>
                 </div>
                 <!-- Footer -->
                 <div class="p-4 t-bg-main/50 border-t t-border-main/50 flex gap-3 flex-row-reverse">
                     <button id="confirm-ok" class="flex-1 py-2.5 text-sm font-bold text-white ${confirmColor} hover:opacity-90 rounded-xl shadow-lg transition-all active:scale-95">
-                        ${confirmText}
+                        ${safeConfirmText}
                     </button>
                     <button id="confirm-cancel" class="flex-1 py-2.5 text-sm font-bold t-text-muted hover:t-text-main hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all">
-                        ${cancelText}
+                        ${safeCancelText}
                     </button>
                 </div>
             </div>
@@ -12050,6 +12200,10 @@ function showSelect(title, message, options = {}) {
     } = options;
 
     const btnColor = danger ? 'bg-red-500 hover:bg-red-600 shadow-red-100' : `${confirmColor} hover:opacity-90 shadow-emerald-100`;
+    const safeTitle = escapeHtmlText(title);
+    const safeMessage = escapeHtmlText(message);
+    const safeConfirmText = escapeHtmlText(confirmText);
+    const safeCancelText = escapeHtmlText(cancelText);
 
     return new Promise((resolve) => {
         const modal = document.createElement('div');
@@ -12061,7 +12215,7 @@ function showSelect(title, message, options = {}) {
             <div class="t-bg-panel rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all animate-slide-up relative z-10 border t-border-main">
                 <!-- Header -->
                 <div class="px-5 py-4 border-b border-emerald-100/50 flex justify-between items-center bg-emerald-50/50">
-                    <h3 class="text-sm font-bold t-text-main">${title}</h3>
+                    <h3 class="text-sm font-bold t-text-main">${safeTitle}</h3>
                     <button id="modal-close-x" data-overlay-close aria-label="关闭" class="t-text-muted hover:text-emerald-500 transition-colors">
                         <i class="fas fa-times text-lg"></i>
                     </button>
@@ -12073,17 +12227,17 @@ function showSelect(title, message, options = {}) {
                             <i class="fas ${danger ? 'fa-exclamation-triangle' : 'fa-question-circle'} text-lg"></i>
                         </div>
                         <div class="flex-1">
-                            <p class="text-sm t-text-muted leading-relaxed">${message}</p>
+                            <p class="text-sm t-text-muted leading-relaxed">${safeMessage}</p>
                         </div>
                     </div>
                 </div>
                 <!-- Footer -->
                 <div class="p-4 t-bg-main/50 border-t t-border-main/50 flex gap-3 flex-row-reverse">
                     <button id="confirm-ok" class="flex-1 py-2.5 text-sm font-bold text-white ${btnColor} rounded-xl shadow-lg transition-all active:scale-95">
-                        ${confirmText}
+                        ${safeConfirmText}
                     </button>
                     <button id="confirm-cancel" class="flex-1 py-2.5 text-sm font-bold t-text-muted hover:t-text-main hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all">
-                        ${cancelText}
+                        ${safeCancelText}
                     </button>
                 </div>
             </div>
@@ -12114,30 +12268,36 @@ function showSelect(title, message, options = {}) {
  * 通用多选选择列表
  */
 function showOptions(title, message, options = []) {
+    const safeTitle = escapeHtmlText(title);
+    const safeMessage = escapeHtmlText(message);
     return new Promise((resolve) => {
         const modal = document.createElement('div');
         modal.id = `runtime-options-modal-${Date.now()}`;
         modal.dataset.a11yOverlay = 'modal';
         modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-4 animate-fade-in";
 
-        const optionsHtml = options.map(opt => `
-            <button class="w-full text-left px-4 py-3.5 t-text-main hover:bg-emerald-500 hover:text-white transition-all rounded-xl font-bold text-sm flex items-center justify-between group" data-value="${opt}">
-                <span>${opt}</span>
+        const optionsHtml = options.map(opt => {
+            const optionText = String(opt ?? '');
+            const safeOption = escapeHtmlText(optionText);
+            return `
+            <button class="w-full text-left px-4 py-3.5 t-text-main hover:bg-emerald-500 hover:text-white transition-all rounded-xl font-bold text-sm flex items-center justify-between group" data-value="${safeOption}">
+                <span>${safeOption}</span>
                 <i class="fas fa-chevron-right text-[10px] opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all"></i>
             </button>
-        `).join('');
+        `;
+        }).join('');
 
         modal.innerHTML = `
             <div class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"></div>
             <div class="t-bg-panel rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all animate-slide-up relative z-10 border t-border-main">
                 <div class="px-5 py-4 border-b border-emerald-100/50 flex justify-between items-center bg-emerald-50/50">
-                    <h3 class="text-sm font-bold t-text-main">${title}</h3>
+                    <h3 class="text-sm font-bold t-text-main">${safeTitle}</h3>
                     <button id="opt-close-x" data-overlay-close aria-label="关闭" class="t-text-muted hover:text-emerald-500 transition-colors">
                         <i class="fas fa-times text-lg"></i>
                     </button>
                 </div>
                 <div class="p-3">
-                    <p class="px-3 py-2 text-xs t-text-muted mb-2 font-medium">${message}</p>
+                    <p class="px-3 py-2 text-xs t-text-muted mb-2 font-medium">${safeMessage}</p>
                     <div class="max-h-[60vh] overflow-y-auto custom-scrollbar space-y-1">
                         ${optionsHtml}
                     </div>
@@ -12305,7 +12465,7 @@ function showLoading(message = '正在处理...') {
                 <div class="w-12 h-12 rounded-full border-4 border-emerald-100 border-t-emerald-500 animate-spin"></div>
                 <i class="fas fa-music text-emerald-500 absolute inset-0 flex items-center justify-center text-xs"></i>
             </div>
-            <p class="text-sm font-bold t-text-main animate-pulse">${message}</p>
+            <p class="text-sm font-bold t-text-main animate-pulse">${escapeHtmlText(message)}</p>
         </div>
     `;
     document.body.appendChild(overlay);
@@ -12569,7 +12729,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const savedMode = localStorage.getItem('lx_sync_mode');
         if (savedMode === 'local') {
             const u = localStorage.getItem('lx_sync_user');
-            const p = localStorage.getItem('lx_sync_pass');
+            const p = getCredential('lx_sync_pass');
             if (u && p) {
                 // [优化] 如果已经有有效的 Token，不再重复登录
                 if (userToken) {
@@ -12588,7 +12748,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } else if (savedMode === 'remote') {
             const url = localStorage.getItem('lx_sync_url');
-            const code = localStorage.getItem('lx_sync_code');
+            const code = getCredential('lx_sync_code');
             if (url && code) {
                 console.log('[AutoLogin] 检测到远程同步设置，正在自动连接...');
                 // Fill UI
@@ -13137,8 +13297,14 @@ function renderSearchTips(tips) {
         const button = document.createElement('button');
         button.type = 'button';
         button.className = 'search-tip-item w-full border-0 bg-transparent px-4 py-2.5 hover:t-bg-muted cursor-pointer transition-colors text-sm flex items-center gap-3 text-left';
-        button.setAttribute('aria-label', `搜索 ${tip}`);
-        button.innerHTML = `<i class="fas fa-search t-text-muted text-xs" aria-hidden="true"></i><span class="truncate">${tip}</span>`;
+        button.setAttribute('aria-label', `搜索 ${String(tip ?? '')}`);
+        const icon = document.createElement('i');
+        icon.className = 'fas fa-search t-text-muted text-xs';
+        icon.setAttribute('aria-hidden', 'true');
+        const label = document.createElement('span');
+        label.className = 'truncate';
+        label.textContent = String(tip ?? '');
+        button.append(icon, label);
         button.onclick = (e) => {
             e.stopPropagation(); // 防止触发 document click
             input.value = tip;
@@ -13225,8 +13391,15 @@ function renderTokenList(tokens) {
     }
 
     list.innerHTML = tokens.map(t => {
-        const masked = `${t.token.slice(0, 6)}...${t.token.slice(-4)}`;
-        const isExpired = t.expiresAt && t.expiresAt < Date.now();
+        const tokenValue = String(t.token ?? '');
+        const tokenNameValue = String(t.name ?? '未命名 Token');
+        const masked = `${tokenValue.slice(0, 6)}...${tokenValue.slice(-4)}`;
+        const maskedArg = safeInlineString(masked);
+        const tokenArg = safeInlineString(tokenValue);
+        const tokenName = escapeHtmlText(tokenNameValue);
+        const tokenNameArg = safeInlineString(tokenNameValue);
+        const expiresAt = Number(t.expiresAt) || 0;
+        const isExpired = expiresAt > 0 && expiresAt < Date.now();
         const isDisabled = !!t.disabled;
 
         return `
@@ -13234,14 +13407,14 @@ function renderTokenList(tokens) {
             <div class="flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div class="flex-1 min-w-0">
                     <div class="text-sm font-bold t-text-main mb-1.5 truncate flex flex-wrap items-center gap-2">
-                        <span>${t.name}</span>
-                        <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-mono border border-emerald-500/20">${masked}</span>
+                        <span>${tokenName}</span>
+                        <span class="px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-[10px] font-mono border border-emerald-500/20">${escapeHtmlText(masked)}</span>
                         ${isExpired ? '<span class="px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 text-[9px] font-bold border border-red-500/20 whitespace-nowrap">已过期</span>' : ''}
                         ${isDisabled ? '<span class="px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-500 text-[9px] font-bold border border-orange-500/20 whitespace-nowrap">已禁用</span>' : ''}
                     </div>
                     <div class="text-[11px] t-text-muted mt-2 flex flex-col sm:flex-row sm:flex-wrap gap-y-1 sm:gap-x-4 items-start sm:items-center opacity-80">
                         <span class="inline-flex items-center gap-1.5"><i class="far fa-calendar-plus opacity-50 text-[10px]"></i> ${new Date(t.createdAt).toLocaleString()}</span>
-                        <span class="inline-flex items-center gap-1.5"><i class="far fa-clock opacity-50 text-[10px]"></i> ${t.expiresAt ? new Date(t.expiresAt).toLocaleString() : '永久有效'}</span>
+                        <span class="inline-flex items-center gap-1.5"><i class="far fa-clock opacity-50 text-[10px]"></i> ${expiresAt ? escapeHtmlText(new Date(expiresAt).toLocaleString()) : '永久有效'}</span>
                     </div>
                     ${t.lastUsed ? `<div class="text-[10px] text-emerald-500/90 mt-2 flex items-center gap-1.5 font-medium"><i class="fas fa-history text-[9px]"></i> 最后调用: ${new Date(t.lastUsed).toLocaleString()}</div>` : ''}
                 </div>
@@ -13251,25 +13424,25 @@ function renderTokenList(tokens) {
                     <div class="flex items-center gap-2">
                         <span class="text-[11px] t-text-muted opacity-70 hidden sm:inline">${isDisabled ? '停用中' : '生效中'}</span>
                         <label class="relative inline-flex items-center cursor-pointer scale-[0.85]">
-                            <input type="checkbox" ${!isDisabled ? 'checked' : ''} onchange="handleToggleTokenStatus('${masked}', !this.checked)" class="sr-only peer">
+                            <input type="checkbox" ${!isDisabled ? 'checked' : ''} onchange="handleToggleTokenStatus(${maskedArg}, !this.checked)" class="sr-only peer">
                             <div class="w-11 h-6 bg-gray-200/50 peer-focus:outline-none rounded-full peer dark:bg-gray-700/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-500"></div>
                         </label>
                     </div>
                     
                     <div class="flex items-center gap-1">
-                        <button onclick="openTokenLogsModal('${masked}', '${t.name}')"
+                        <button onclick="openTokenLogsModal(${maskedArg}, ${tokenNameArg})"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:t-bg-primary hover:text-white transition-all group/btn" title="查看日志">
                             <i class="fas fa-list-ul text-[13px] md:text-[14px]"></i>
                         </button>
-                        <button onclick="openEditTokenModal('${masked}', '${t.name}', ${t.expiresAt})"
+                        <button onclick="openEditTokenModal(${maskedArg}, ${tokenNameArg}, ${expiresAt})"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:t-bg-primary hover:text-white transition-all group/btn" title="编辑信息">
                             <i class="fas fa-pencil-alt text-[13px] md:text-[14px]"></i>
                         </button>
-                        <button onclick="copyTokenToClipboard('${t.token}')"
+                        <button onclick="copyTokenToClipboard(${tokenArg})"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:bg-blue-500 hover:text-white transition-all group/btn" title="复制 Token">
                             <i class="far fa-copy text-[13px] md:text-[14px]"></i>
                         </button>
-                        <button onclick="handleRemoveToken('${t.token}')"
+                        <button onclick="handleRemoveToken(${tokenArg})"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:bg-red-500 hover:text-white transition-all group/btn" title="删除 Token">
                             <i class="far fa-trash-alt text-[13px] md:text-[14px]"></i>
                         </button>
@@ -13567,6 +13740,7 @@ async function handleRefreshTokenLogs() {
         } else {
             // 解析日志行，美化显示
             list.innerHTML = logs.map(line => {
+                line = String(line ?? '');
                 // [语义化解析] 提取审计日志核心字段
                 const auditMatch = line.match(/used by (.*?) from (.*?) to access (.*?)$/);
                 const timeMatch = line.match(/\[([\d-T:\.]+)\]/);
@@ -13580,20 +13754,20 @@ async function handleRefreshTokenLogs() {
                         <div class="flex items-center justify-between border-b t-border-main border-dashed pb-2 mb-1 opacity-80">
                             <div class="flex items-center gap-1.5">
                                 <i class="fas fa-fingerprint text-[10px] text-emerald-500"></i>
-                                <span class="text-[10px] font-bold t-text-main">用户 ${user}</span>
+                                <span class="text-[10px] font-bold t-text-main">用户 ${escapeHtmlText(user)}</span>
                             </div>
-                            <span class="px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-500 font-mono text-[9px]">${timeStr}</span>
+                            <span class="px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-500 font-mono text-[9px]">${escapeHtmlText(timeStr)}</span>
                         </div>
                         <div class="space-y-1.5">
                             <div class="flex items-center gap-2 text-[11px] t-text-main">
                                 <i class="fas fa-network-wired w-4 opacity-40 text-center"></i>
-                                <span class="opacity-50">来源 IP:</span> <span class="font-mono text-emerald-500/80 tracking-tighter">${ip}</span>
+                                <span class="opacity-50">来源 IP:</span> <span class="font-mono text-emerald-500/80 tracking-tighter">${escapeHtmlText(ip)}</span>
                             </div>
                             <div class="flex items-start gap-2 text-[11px] t-text-main">
                                 <i class="fas fa-link w-4 opacity-40 text-center mt-0.5"></i>
                                 <div class="flex-1">
                                     <span class="opacity-50">请求路径:</span> 
-                                    <span class="font-medium break-all text-blue-500/80 ml-1 italic font-mono">${url}</span>
+                                    <span class="font-medium break-all text-blue-500/80 ml-1 italic font-mono">${escapeHtmlText(url)}</span>
                                 </div>
                             </div>
                         </div>
@@ -13611,17 +13785,17 @@ async function handleRefreshTokenLogs() {
                              </div>
                              <div class="text-[11px] t-text-main font-extrabold">全局：${isEnabled ? '启用' : '停用'} API 验证鉴权</div>
                          </div>
-                         <span class="text-[9px] t-text-muted opacity-60">${timeStr}</span>
+                         <span class="text-[9px] t-text-muted opacity-60">${escapeHtmlText(timeStr)}</span>
                     </div>`;
                 }
 
                 // 情况 C: 原始日志 (兜底显示)
-                return `<div class="p-3 t-bg-track rounded-xl t-text-muted text-[10px] opacity-70 italic border t-border-main border-dashed">${line}</div>`;
+                return `<div class="p-3 t-bg-track rounded-xl t-text-muted text-[10px] opacity-70 italic border t-border-main border-dashed">${escapeHtmlText(line)}</div>`;
             }).join('');
         }
     } catch (e) {
         console.error('[TokenLog] Error:', e);
-        list.innerHTML = `<div class="py-12 text-center text-red-500 italic opacity-50">拉取日志失败: ${e.message}</div>`;
+        list.innerHTML = `<div class="py-12 text-center text-red-500 italic opacity-50">拉取日志失败: ${escapeHtmlText(e.message)}</div>`;
     } finally {
         if (refreshBtn) {
             setTimeout(() => {

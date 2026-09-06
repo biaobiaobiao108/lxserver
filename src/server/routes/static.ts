@@ -2,6 +2,7 @@ import path from 'node:path'
 import fs from 'node:fs'
 import { Router, type HttpContext } from '../core'
 import { checkPlayerAuthSession } from '../auth'
+import { resolveInside } from '@/utils/pathSecurity'
 
 /** 防目录穿越检查：确保目标路径在安全根目录内 */
 export const isPathInside = (child: string, parent: string): boolean => {
@@ -15,21 +16,20 @@ export const isPathInside = (child: string, parent: string): boolean => {
 /** 基于 Bun.file 原生零拷贝分发静态文件 */
 export const serveStaticFile = async (ctx: HttpContext, filePath: string): Promise<Response | null> => {
   const staticRoot = global.lx?.staticPath ?? path.join(process.cwd(), 'public')
-  if (!isPathInside(filePath, staticRoot)) {
-    return ctx.text('Forbidden', 403)
-  }
+  let safeFilePath: string
+  try { safeFilePath = resolveInside(staticRoot, filePath) } catch { return ctx.text('Forbidden', 403) }
 
-  if (!fs.existsSync(filePath)) {
+  if (!fs.existsSync(safeFilePath)) {
     return null
   }
   try {
-    const stats = fs.statSync(filePath)
+    const stats = fs.statSync(safeFilePath)
     if (!stats.isFile()) return null
   } catch {
     return null
   }
 
-  const bunFile = Bun.file(filePath)
+  const bunFile = Bun.file(safeFilePath)
   const size = bunFile.size
   const mtime = bunFile.lastModified
   const etag = `W/"${size}-${mtime}"`

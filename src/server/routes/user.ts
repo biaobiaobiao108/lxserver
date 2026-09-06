@@ -9,16 +9,20 @@ import {
   renameUserSpace,
   migrateUserData,
   finishRenameUserSpace,
+  syncUsersToDatabase,
+  deleteUserDataFromDatabase,
+  releaseUserSpace,
 } from '@/user'
 import { File, SYNC_CLOSE_CODE } from '@/constants'
 import { startupLog } from '@/utils/log4js'
 import { getDb } from '@/database'
+import { assertSafePathSegment } from '@/utils/pathSecurity'
 
 /** 辅助获取请求的目标用户空间名称 */
-const resolveTargetUsername = (ctx: HttpContext, requireAuth = true): string | null => {
+const resolveTargetUsername = (ctx: HttpContext, _requireAuth = true): string | null => {
   const config = (global.lx?.config ?? {}) as any
-  const targetUserParam = ctx.query.get('user')
-  const reqUsername = ctx.headers.get('x-user-name') || targetUserParam || ''
+  const targetUserParam = ctx.query.get('user') || ''
+  const reqUsername = ctx.headers.get('x-user-name') || targetUserParam
   const isAdmin = verifyAdminAuth(ctx.request)
   const tokenUser = verifyUserAuth(ctx)
 
@@ -26,42 +30,30 @@ const resolveTargetUsername = (ctx: HttpContext, requireAuth = true): string | n
     config['user.enablePublicNonAdminAccess'] || isAdmin || !!tokenUser
   )
 
-  if (targetUserParam === '_open' || reqUsername === '_open' || (!reqUsername && !tokenUser)) {
+  if (reqUsername === '_open') {
     if (canAccessOpen) return '_open'
+    return null
   }
 
-  if (tokenUser) return tokenUser
-  if (!requireAuth && reqUsername && reqUsername !== '_open') return reqUsername
-  return null
+  if (!reqUsername || reqUsername === 'default') return tokenUser || (canAccessOpen ? '_open' : null)
+  if (isAdmin) {
+    try { return assertSafePathSegment(reqUsername, 'user name') } catch { return null }
+  }
+  return tokenUser && tokenUser === reqUsername ? tokenUser : null
 }
 
 const saveUsers = () => {
   try {
     const db = getDb()
-    const now = Date.now()
-    const insertStmt = db.prepare(`
-      INSERT OR REPLACE INTO users (name, password, max_snapshot_num, add_music_location_type, created_at, updated_at)
-      VALUES (?, ?, ?, ?, COALESCE((SELECT created_at FROM users WHERE name = ?), ?), ?)
-    `)
     const currentNames = new Set(global.lx.config.users.map((u: any) => u.name))
     // Remove users not in current list
     const existingUsers = db.query<{ name: string }, []>('SELECT name FROM users').all()
     for (const u of existingUsers) {
-      if (!currentNames.has(u.name)) {
-        db.run('DELETE FROM users WHERE name = ?', [u.name])
+      if (!currentNames.has(u.name) && u.name !== '_open') {
+        deleteUserDataFromDatabase(u.name)
       }
     }
-    for (const u of global.lx.config.users) {
-      insertStmt.run(
-        u.name,
-        u.password,
-        u.maxSnapshotNum ?? 10,
-        u['list.addMusicLocationType'] ?? 'bottom',
-        u.name,
-        now,
-        now
-      )
-    }
+    syncUsersToDatabase(global.lx.config.users)
   } catch (err) {
     console.error('Failed to sync users to SQLite:', err)
   }
@@ -81,6 +73,26 @@ const saveUsers = () => {
   }
 }
 
+const resolveSnapshotUsername = (ctx: HttpContext, userParam: string): string | null => {
+  const isAdmin = verifyAdminAuth(ctx.request)
+  if (isAdmin) {
+    if (userParam === 'default' || userParam === 'open' || userParam === '_open') return '_open'
+    try { return assertSafePathSegment(userParam, 'user name') } catch { return null }
+  }
+
+  if (userParam === 'default' || userParam === 'open' || userParam === '_open') {
+    const config = (global.lx?.config ?? {}) as any
+    const tokenUser = verifyUserAuth(ctx)
+    const canAccessOpen = config['user.enablePublicFavorites'] && (
+      config['user.enablePublicNonAdminAccess'] || !!tokenUser
+    )
+    return canAccessOpen ? '_open' : null
+  }
+
+  const tokenUser = verifyUserAuth(ctx)
+  return tokenUser && tokenUser === userParam ? tokenUser : null
+}
+
 /** 注册用户歌单、账户管理、偏好与曲库数据管理路由 */
 export const createUserRouter = (): Router => {
   const router = new Router()
@@ -88,9 +100,9 @@ export const createUserRouter = (): Router => {
   // 0. 用户账户管理 (GET / POST / PUT / DELETE /api/users)
   router.get('/api/users', (ctx) => {
     if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
-    const users = (global.lx.config.users || []).map((u: any) => ({ name: u.name, password: u.password }))
+    const users = (global.lx.config.users || []).map((u: any) => ({ name: u.name, hasPassword: Boolean(u.password) }))
     if (global.lx.config['user.enablePublicFavorites']) {
-      users.unshift({ name: '_open', password: '' })
+      users.unshift({ name: '_open', hasPassword: false })
     }
     return new Response(JSON.stringify(users), {
       status: 200,
@@ -106,6 +118,12 @@ export const createUserRouter = (): Router => {
     try {
       const { name, password } = await ctx.bodyJson<{ name?: string; password?: string }>()
       if (!name || !password) return ctx.text('Missing name or password', 400)
+      try {
+        assertSafePathSegment(name, 'user name')
+      } catch {
+        return ctx.text('Invalid user name', 422)
+      }
+      if (name === '_open') return ctx.text('Reserved user name', 422)
       if (global.lx.config.users.some((u: any) => u.name === name)) {
         return ctx.text('User already exists', 409)
       }
@@ -131,6 +149,14 @@ export const createUserRouter = (): Router => {
       const { name, newName, password } = await ctx.bodyJson<{ name?: string; newName?: string; password?: string }>()
       if (!name || (!password && !newName)) {
         return ctx.text('Missing required fields', 400)
+      }
+      if (newName) {
+        try {
+          assertSafePathSegment(newName, 'user name')
+        } catch {
+          return ctx.text('Invalid user name', 422)
+        }
+        if (newName === '_open') return ctx.text('Reserved user name', 422)
       }
       const userIdx = global.lx.config.users.findIndex((u: any) => u.name === name)
       if (userIdx === -1) {
@@ -181,6 +207,7 @@ export const createUserRouter = (): Router => {
         const idx = global.lx.config.users.findIndex((u: any) => u.name === targetName)
         if (idx !== -1) {
           const user = global.lx.config.users[idx]
+          releaseUserSpace(targetName, true)
           if (body.deleteData && user.dataPath) {
             deletedUsers.push({ name: targetName, dataPath: user.dataPath })
           }
@@ -194,6 +221,7 @@ export const createUserRouter = (): Router => {
         if (body.deleteData && deletedUsers.length > 0) {
           for (const user of deletedUsers) {
             try {
+              releaseUserSpace(user.name, true)
               if (fs.existsSync(user.dataPath)) {
                 fs.rmSync(user.dataPath, { recursive: true, force: true })
               }
@@ -234,31 +262,14 @@ export const createUserRouter = (): Router => {
 
   // 2. 覆盖保存用户歌单数据 (POST /api/user/list)
   router.post('/api/user/list', async (ctx) => {
-    const config = (global.lx?.config ?? {}) as any
-    const targetUserParam = ctx.query.get('user')
-    const reqUsername = ctx.headers.get('x-user-name') || targetUserParam || ''
     const isAdmin = verifyAdminAuth(ctx.request)
-    const tokenUser = verifyUserAuth(ctx)
-
-    let username: string | null = null
-    const canAccessOpen = config['user.enablePublicFavorites'] && (
-      config['user.enablePublicNonAdminAccess'] || isAdmin || !!tokenUser
-    )
-
-    if (targetUserParam === '_open' || reqUsername === '_open' || (!reqUsername && !tokenUser)) {
-      if (!canAccessOpen) {
-        return ctx.json({ success: false, error: '权限不足：未开启公开访问。' }, 403)
-      }
-      if (!isAdmin) {
-        return ctx.json({ success: false, error: '权限不足：公共歌单修改受限，请先验证管理员身份。' }, 403)
-      }
-      username = '_open'
-    } else {
-      username = tokenUser || reqUsername || null
-    }
+    const username = resolveTargetUsername(ctx, false)
 
     if (!username) {
       return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    }
+    if (username === '_open' && !isAdmin) {
+      return ctx.json({ success: false, error: '权限不足：公共歌单修改受限，请先验证管理员身份。' }, 403)
     }
 
     try {
@@ -499,21 +510,11 @@ export const createUserRouter = (): Router => {
 
   // 7. 快照管理 (GET & POST /api/data/*)
   router.get('/api/data', async (ctx) => {
-    const isAdmin = verifyAdminAuth(ctx.request)
     const userParam = ctx.query.get('user')
     if (!userParam) return ctx.text('Missing user param', 400)
 
-    let verifiedUser: string | null = null
-    if (isAdmin) {
-      verifiedUser = userParam
-    } else if (userParam === 'default' || userParam === '_open') {
-      verifiedUser = '_open'
-    } else {
-      verifiedUser = verifyUserAuth(ctx)
-      if (!verifiedUser || verifiedUser !== userParam) {
-        return ctx.text('Forbidden: User mismatch or unauthorized', 403)
-      }
-    }
+    const verifiedUser = resolveSnapshotUsername(ctx, userParam)
+    if (!verifiedUser) return ctx.text('Forbidden: User mismatch or unauthorized', 403)
 
     try {
       const userSpace = getUserSpace(verifiedUser)
@@ -525,21 +526,11 @@ export const createUserRouter = (): Router => {
   })
 
   router.get('/api/data/snapshots', async (ctx) => {
-    const isAdmin = verifyAdminAuth(ctx.request)
     const userParam = ctx.query.get('user')
     if (!userParam) return ctx.text('Missing user param', 400)
 
-    let verifiedUser: string | null = null
-    if (isAdmin) {
-      verifiedUser = userParam
-    } else if (userParam === 'default' || userParam === '_open') {
-      verifiedUser = '_open'
-    } else {
-      verifiedUser = verifyUserAuth(ctx)
-      if (!verifiedUser || verifiedUser !== userParam) {
-        return ctx.text('Forbidden', 403)
-      }
-    }
+    const verifiedUser = resolveSnapshotUsername(ctx, userParam)
+    if (!verifiedUser) return ctx.text('Forbidden', 403)
 
     try {
       const userSpace = getUserSpace(verifiedUser)
@@ -551,22 +542,12 @@ export const createUserRouter = (): Router => {
   })
 
   router.get('/api/data/snapshot', async (ctx) => {
-    const isAdmin = verifyAdminAuth(ctx.request)
     const userParam = ctx.query.get('user')
     const id = ctx.query.get('id')
     if (!userParam || !id) return ctx.text('Missing parameters', 400)
 
-    let verifiedUser: string | null = null
-    if (isAdmin) {
-      verifiedUser = userParam
-    } else if (userParam === 'default' || userParam === '_open') {
-      verifiedUser = '_open'
-    } else {
-      verifiedUser = verifyUserAuth(ctx)
-      if (!verifiedUser || verifiedUser !== userParam) {
-        return ctx.text('Forbidden', 403)
-      }
-    }
+    const verifiedUser = resolveSnapshotUsername(ctx, userParam)
+    if (!verifiedUser) return ctx.text('Forbidden', 403)
 
     try {
       const userSpace = getUserSpace(verifiedUser)
@@ -579,21 +560,11 @@ export const createUserRouter = (): Router => {
   })
 
   router.post('/api/data/restore-snapshot', async (ctx) => {
-    const isAdmin = verifyAdminAuth(ctx.request)
     const userParam = ctx.query.get('user')
     if (!userParam) return ctx.text('Missing user param', 400)
 
-    let verifiedUser: string | null = null
-    if (isAdmin) {
-      verifiedUser = userParam
-    } else if (userParam === 'default' || userParam === '_open') {
-      verifiedUser = '_open'
-    } else {
-      verifiedUser = verifyUserAuth(ctx)
-      if (!verifiedUser || verifiedUser !== userParam) {
-        return ctx.text('Forbidden', 403)
-      }
-    }
+    const verifiedUser = resolveSnapshotUsername(ctx, userParam)
+    if (!verifiedUser) return ctx.text('Forbidden', 403)
 
     try {
       const { id } = await ctx.bodyJson<{ id?: string }>()
@@ -607,21 +578,11 @@ export const createUserRouter = (): Router => {
   })
 
   router.post('/api/data/delete-snapshot', async (ctx) => {
-    const isAdmin = verifyAdminAuth(ctx.request)
     const userParam = ctx.query.get('user')
     if (!userParam) return ctx.text('Missing user param', 400)
 
-    let verifiedUser: string | null = null
-    if (isAdmin) {
-      verifiedUser = userParam
-    } else if (userParam === 'default' || userParam === '_open') {
-      verifiedUser = '_open'
-    } else {
-      verifiedUser = verifyUserAuth(ctx)
-      if (!verifiedUser || verifiedUser !== userParam) {
-        return ctx.text('Forbidden', 403)
-      }
-    }
+    const verifiedUser = resolveSnapshotUsername(ctx, userParam)
+    if (!verifiedUser) return ctx.text('Forbidden', 403)
 
     try {
       const { id } = await ctx.bodyJson<{ id?: string }>()
@@ -635,24 +596,14 @@ export const createUserRouter = (): Router => {
   })
 
   router.post('/api/data/upload-snapshot', async (ctx) => {
-    const isAdmin = verifyAdminAuth(ctx.request)
     const userParam = ctx.query.get('user')
     const time = parseInt(ctx.query.get('time') || '0')
     const filename = ctx.query.get('filename')
 
     if (!userParam || !filename) return ctx.text('Missing parameters', 400)
 
-    let verifiedUser: string | null = null
-    if (isAdmin) {
-      verifiedUser = userParam
-    } else if (userParam === 'default' || userParam === '_open') {
-      verifiedUser = '_open'
-    } else {
-      verifiedUser = verifyUserAuth(ctx)
-      if (!verifiedUser || verifiedUser !== userParam) {
-        return ctx.text('Forbidden', 403)
-      }
-    }
+    const verifiedUser = resolveSnapshotUsername(ctx, userParam)
+    if (!verifiedUser) return ctx.text('Forbidden', 403)
 
     try {
       const body = await ctx.bodyText()

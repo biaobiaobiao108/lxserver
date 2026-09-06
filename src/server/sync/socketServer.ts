@@ -11,6 +11,7 @@ import { serverStatus } from '../state'
 let socketServerInstance: LX.SocketServer | null = null
 let currentHost = 'http://localhost'
 let heartbeatInterval: Timer | null = null
+const MAX_SYNC_MESSAGE_BYTES = 20 * 1024 * 1024
 
 function noop() {}
 
@@ -289,6 +290,12 @@ export const createBunWebSocketHandlers = () => {
       const msg = typeof message === 'string' ? message : message.toString('utf-8')
       const socket = getOrCreateSocketAdapter(ws)
       socket.isAlive = true
+
+      if (Buffer.byteLength(msg, 'utf8') > MAX_SYNC_MESSAGE_BYTES) {
+        syncLog.warn('sync message too large, closing connection')
+        socket.close(SYNC_CLOSE_CODE.failed)
+        return
+      }
 
       if (msg === 'pong') return
 

@@ -3,6 +3,7 @@ import path from 'node:path'
 import { randomBytes } from 'node:crypto'
 import { filterFileName, toMD5 } from '@/utils'
 import { getDb, getDbStatement } from '@/database'
+import { assertSafePathSegment } from '@/utils/pathSecurity'
 
 export interface ServerInfo {
   serverId: string
@@ -37,7 +38,47 @@ export const setVersion = (version: number): void => {
 
 export const getUserDirname = (userName: string): string => {
   if (userName === '_open') return '_open'
+  assertSafePathSegment(userName, 'user name')
   return `${filterFileName(userName)}_${toMD5(userName).substring(0, 6)}`
+}
+
+/** Synchronize configured users without deleting data belonging to removed users. */
+export const syncUsersToDatabase = (users: LX.Config['users']): void => {
+  const db = getDb()
+  const now = Date.now()
+  const tx = db.transaction(() => {
+    const stmt = db.prepare(`
+      INSERT OR REPLACE INTO users (name, password, max_snapshot_num, add_music_location_type, created_at, updated_at)
+      VALUES (?, ?, ?, ?, COALESCE((SELECT created_at FROM users WHERE name = ?), ?), ?)
+    `)
+    for (const user of users) {
+      stmt.run(
+        user.name,
+        '',
+        user.maxSnapshotNum ?? 10,
+        user['list.addMusicLocationType'] ?? 'bottom',
+        user.name,
+        now,
+        now,
+      )
+    }
+  })
+  tx()
+}
+
+/** Remove every database record owned by a user before the account is deleted. */
+export const deleteUserDataFromDatabase = (userName: string): void => {
+  const db = getDb()
+  const tx = db.transaction(() => {
+    db.run('DELETE FROM device_snapshot_state WHERE client_id IN (SELECT client_id FROM devices WHERE user_name = ?)', [userName])
+    db.run('DELETE FROM snapshots WHERE user_name = ?', [userName])
+    db.run('DELETE FROM snapshot_meta WHERE user_name = ?', [userName])
+    db.run('DELETE FROM user_settings WHERE user_name = ?', [userName])
+    db.run('DELETE FROM cache_index WHERE user_name = ?', [userName])
+    db.run('DELETE FROM devices WHERE user_name = ?', [userName])
+    db.run('DELETE FROM users WHERE name = ?', [userName])
+  })
+  tx()
 }
 
 export const getUserConfig = (userName: string): Required<LX.User> => {
@@ -52,7 +93,7 @@ export const getUserConfig = (userName: string): Required<LX.User> => {
   if (row) {
     return {
       name: row.name,
-      password: row.password,
+      password: global.lx.config.users?.find(u => u.name === userName)?.password ?? row.password,
       maxSnapshotNum: row.max_snapshot_num ?? 10,
       'list.addMusicLocationType': row.add_music_location_type as any ?? 'bottom',
     }
@@ -97,7 +138,7 @@ export const migrateUserData = (oldName: string, newName: string): string => {
     if (oldUser) {
       db.run(
         'INSERT OR REPLACE INTO users (name, password, max_snapshot_num, add_music_location_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-        [newName, oldUser.password, oldUser.max_snapshot_num, oldUser.add_music_location_type, oldUser.created_at, now]
+        [newName, '', oldUser.max_snapshot_num, oldUser.add_music_location_type, oldUser.created_at, now]
       )
     }
 

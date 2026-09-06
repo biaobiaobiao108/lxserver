@@ -29,7 +29,8 @@ const config: LX.Config = {
     // },
   ],
 
-  'frontend.password': '123456',
+  // 必须由部署者显式设置；禁止使用空密码或示例密码启动。
+  'frontend.password': '',
 
   // WebDAV 配置
   'webdav.enable': false,
@@ -43,7 +44,7 @@ const config: LX.Config = {
 
   // Web播放器配置
   'player.enableAuth': false,
-  'player.password': '123456',
+  'player.password': '',
 
   // 代理配置
   'proxy.all.enabled': false,

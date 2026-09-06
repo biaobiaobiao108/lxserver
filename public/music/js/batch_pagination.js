@@ -200,7 +200,7 @@ async function batchDeleteFromList() {
     if (window.SyncManager.mode === 'local') {
         // Local mode: Use user credentials to directly manipulate data
         const username = localStorage.getItem('lx_sync_user');
-        const password = localStorage.getItem('lx_sync_pass');
+        const password = sessionStorage.getItem('lx_sync_pass');
 
         if (!username || !password) {
             showError('请先登录本地账号');

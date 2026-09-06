@@ -1,6 +1,7 @@
 import * as path from 'path'
 import * as fs from 'fs'
 import * as crypto from 'crypto'
+import { assertSafePathSegment, resolveInside } from '@/utils/pathSecurity'
 
 // elFinder 文件管理器连接器
 export class ElFinderConnector {
@@ -20,32 +21,25 @@ export class ElFinderConnector {
     }
 
     // 解码hash为路径
-    private decode(hash: string): string {
+    public decode(hash: string): string {
+        if (typeof hash !== 'string' || hash.length > 4096) throw new Error('Invalid file hash')
         if (hash.startsWith('TMP_')) {
             const tmpPath = Buffer.from(hash.substring(4), 'base64').toString('utf-8')
-            const resolved = path.resolve(tmpPath)
-            const tmpDir = require('os').tmpdir()
-            if (!resolved.startsWith(tmpDir + path.sep) && resolved !== tmpDir) {
-                throw new Error('Invalid temporary path')
-            }
-            return resolved
+            return resolveInside(require('os').tmpdir(), tmpPath)
         }
         try {
             const rawHash = hash.startsWith('l1_') ? hash.substring(3) : hash
             const base64 = rawHash.replace(/-/g, '+').replace(/_/g, '/')
             const relative = Buffer.from(base64, 'base64').toString('utf-8')
-            const resolved = path.resolve(this.root, relative)
-            if (!resolved.startsWith(this.root + path.sep) && resolved !== this.root) {
-                throw new Error('Path traversal detected')
-            }
-            return resolved
-        } catch {
-            return this.root
+            return resolveInside(this.root, relative)
+        } catch (error: any) {
+            throw new Error(error?.message || 'Invalid file hash')
         }
     }
 
     // 获取文件/文件夹信息
-    private async getFileInfo(filePath: string): Promise<any> {
+    public async getFileInfo(filePath: string): Promise<any> {
+        filePath = resolveInside(this.root, filePath)
         try {
             const stats = await fs.promises.stat(filePath)
             const name = path.basename(filePath)
@@ -302,7 +296,7 @@ export class ElFinderConnector {
     private async cmdMkdir(params: any): Promise<any> {
         const target = this.decode(params.target)
         const name = params.name
-        const newDir = path.join(target, name)
+        const newDir = resolveInside(this.root, target, assertSafePathSegment(name, 'directory name'))
 
         try {
             await fs.promises.mkdir(newDir)
@@ -317,7 +311,7 @@ export class ElFinderConnector {
     private async cmdMkfile(params: any): Promise<any> {
         const target = this.decode(params.target)
         const name = params.name
-        const newFile = path.join(target, name)
+        const newFile = resolveInside(this.root, target, assertSafePathSegment(name, 'file name'))
 
         try {
             await fs.promises.writeFile(newFile, '')
@@ -332,7 +326,7 @@ export class ElFinderConnector {
     private async cmdRename(params: any): Promise<any> {
         const target = this.decode(params.target)
         const name = params.name
-        const newPath = path.join(path.dirname(target), name)
+        const newPath = resolveInside(this.root, path.dirname(target), assertSafePathSegment(name, 'file name'))
 
         try {
             await fs.promises.rename(target, newPath)
@@ -350,6 +344,7 @@ export class ElFinderConnector {
 
         for (const hash of targets) {
             const filePath = this.decode(hash)
+            if (filePath === this.root) continue
             try {
                 const stats = await fs.promises.stat(filePath)
                 if (stats.isDirectory()) {
@@ -377,7 +372,7 @@ export class ElFinderConnector {
         for (const hash of targets) {
             const src = this.decode(hash)
             const name = path.basename(src)
-            const dstPath = path.join(dst, name)
+            const dstPath = resolveInside(this.root, dst, assertSafePathSegment(name, 'file name'))
 
             try {
                 if (cut) {
@@ -401,12 +396,14 @@ export class ElFinderConnector {
     }
 
     private async copyRecursive(src: string, dst: string): Promise<void> {
+        src = resolveInside(this.root, src)
+        dst = resolveInside(this.root, dst)
         const stats = await fs.promises.stat(src)
         if (stats.isDirectory()) {
             await fs.promises.mkdir(dst, { recursive: true })
             const files = await fs.promises.readdir(src)
             for (const file of files) {
-                await this.copyRecursive(path.join(src, file), path.join(dst, file))
+                await this.copyRecursive(resolveInside(this.root, src, file), resolveInside(this.root, dst, file))
             }
         } else {
             await fs.promises.copyFile(src, dst)
@@ -434,6 +431,7 @@ export class ElFinderConnector {
     // file - 下载文件
     private async cmdFile(params: any): Promise<any> {
         const target = this.decode(params.target)
+        resolveInside(this.root, target)
         return { path: target }
     }
 
@@ -450,11 +448,11 @@ export class ElFinderConnector {
             const name = path.basename(src, ext)
 
             let newName = `${name} copy${ext}`
-            let dest = path.join(dir, newName)
+            let dest = resolveInside(this.root, dir, assertSafePathSegment(newName, 'file name'))
             let i = 1
             while (fs.existsSync(dest)) {
                 newName = `${name} copy ${i}${ext}`
-                dest = path.join(dir, newName)
+                dest = resolveInside(this.root, dir, assertSafePathSegment(newName, 'file name'))
                 i++
             }
 
@@ -539,7 +537,8 @@ export class ElFinderConnector {
     private async cmdArchive(params: any): Promise<any> {
         const { ZipArchive } = await import('archiver')
         const targets = Array.isArray(params['targets[]']) ? params['targets[]'] : [params['targets[]']]
-        const name = params.name || 'archive.zip'
+        if (targets.length === 0 || targets.length > 500) return { error: ['Too many archive targets'] }
+        const name = assertSafePathSegment(params.name || 'archive.zip', 'archive name')
         const type = params.type || 'application/zip'
 
         if (type !== 'application/zip') {
@@ -549,7 +548,7 @@ export class ElFinderConnector {
         // 确定目标目录（第一个文件的父目录）
         const firstFile = this.decode(targets[0])
         const dir = path.dirname(firstFile)
-        const archivePath = path.join(dir, name)
+        const archivePath = resolveInside(this.root, dir, name)
 
         const output = fs.createWriteStream(archivePath)
         const archive = new ZipArchive({ zlib: { level: 9 } })
@@ -584,7 +583,6 @@ export class ElFinderConnector {
 
     // extract - 解压
     private async cmdExtract(params: any): Promise<any> {
-        const { Extract } = await import('unzipper')
         const target = this.decode(params.target)
         const makedir = params.makedir === '1'
         const dir = path.dirname(target)
@@ -593,31 +591,64 @@ export class ElFinderConnector {
         let extractPath = dir
         if (makedir) {
             const folderName = path.basename(target, path.extname(target))
-            extractPath = path.join(dir, folderName)
+            extractPath = resolveInside(this.root, dir, assertSafePathSegment(folderName, 'directory name'))
             if (!fs.existsSync(extractPath)) {
                 fs.mkdirSync(extractPath)
             }
         }
 
-        return new Promise((resolve, reject) => {
-            fs.createReadStream(target)
-                .pipe(Extract({ path: extractPath }))
-                .on('close', async () => {
-                    // 简单起见，返回解压目录的信息，或者强制刷新
-                    // elFinder 期望返回 added 列表，这里我们返回解压后的根目录（如果是 makedir）或父目录的更新
-                    if (makedir) {
-                        const info = await this.getFileInfo(extractPath)
-                        resolve({ added: [info] })
-                    } else {
-                        // 如果解压到当前目录，很难知道增加了哪些文件，通常返回空 added 并让前端刷新
-                        // 或者我们可以尝试列出目录
-                        resolve({ added: [] }) // 前端可能不会自动刷新，但至少操作完成了
+        const { Open } = await import('unzipper')
+        const directory = await Open.file(target)
+        if (directory.files.length > 10_000) throw new Error('Archive contains too many files')
+        let totalBytes = 0
+        const maxEntryBytes = 500 * 1024 * 1024
+        const maxArchiveBytes = 1024 * 1024 * 1024
+        for (const entry of directory.files) {
+            const relative = String(entry.path || '').replace(/\\/g, '/')
+            if (!relative || relative.split('/').some(part => !part || part === '..' || part === '.')) continue
+            const destination = resolveInside(extractPath, relative)
+            if (entry.type === 'Directory') {
+                fs.mkdirSync(destination, { recursive: true })
+                continue
+            }
+            const declaredSize = Number(entry.uncompressedSize || 0)
+            if (Number.isFinite(declaredSize) && declaredSize > maxEntryBytes) throw new Error('Archive entry is too large')
+            fs.mkdirSync(path.dirname(destination), { recursive: true })
+            const input = entry.stream()
+            const output = fs.createWriteStream(destination)
+            let entryBytes = 0
+            let settled = false
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    const fail = (error: Error) => {
+                        if (settled) return
+                        settled = true
+                        input.destroy()
+                        output.destroy()
+                        reject(error)
                     }
+                    input.on('data', (chunk: Buffer) => {
+                        entryBytes += chunk.length
+                        totalBytes += chunk.length
+                        if (entryBytes > maxEntryBytes) fail(new Error('Archive entry is too large'))
+                        else if (totalBytes > maxArchiveBytes) fail(new Error('Archive is too large'))
+                    })
+                    input.on('error', fail)
+                    output.on('error', fail)
+                    output.on('finish', () => {
+                        if (settled) return
+                        settled = true
+                        resolve()
+                    })
+                    input.pipe(output)
                 })
-                .on('error', (err: any) => {
-                    reject({ error: [err.message] })
-                })
-        })
+            } catch (error) {
+                try { fs.unlinkSync(destination) } catch { }
+                throw error
+            }
+        }
+        const info = makedir ? await this.getFileInfo(extractPath) : null
+        return { added: makedir && info ? [info] : [] }
     }
 
     // size - 获取大小
@@ -656,15 +687,20 @@ export class ElFinderConnector {
         if (params.download === '1') {
             // 下载阶段
             const target = this.decode(params.target)
+            if (!path.basename(target).startsWith('elfinder_zipdl_') || path.extname(target) !== '.zip') {
+                throw new Error('Invalid temporary archive')
+            }
+            resolveInside(require('os').tmpdir(), target)
             return { path: target }
         }
 
         // 准备阶段
         const { ZipArchive } = await import('archiver')
         const targets = Array.isArray(params['targets[]']) ? params['targets[]'] : [params['targets[]']]
+        if (targets.length === 0 || targets.length > 500) return { error: ['Too many download targets'] }
         const zipName = 'download.zip'
         const tempDir = require('os').tmpdir()
-        const zipPath = path.join(tempDir, `elfinder_zipdl_${Date.now()}_${Math.random().toString(36).substr(2)}.zip`)
+        const zipPath = path.join(tempDir, `elfinder_zipdl_${Date.now()}_${crypto.randomBytes(16).toString('hex')}.zip`)
 
         const output = fs.createWriteStream(zipPath)
         const archive = new ZipArchive({ zlib: { level: 1 } })
@@ -709,6 +745,8 @@ export class ElFinderConnector {
     private async cmdPut(params: any): Promise<any> {
         const target = this.decode(params.target)
         const content = params.content
+        if (typeof content !== 'string' && !Buffer.isBuffer(content)) return { error: ['errPut', 'Invalid content'] }
+        if (Buffer.byteLength(content) > 5 * 1024 * 1024) return { error: ['errPut', 'Content too large'] }
         try {
             await fs.promises.writeFile(target, content)
             const info = await this.getFileInfo(target)
@@ -720,7 +758,7 @@ export class ElFinderConnector {
 }
 
 export function getSystemRoot(): string {
-    return process.cwd()
+    return global.lx?.dataPath || path.join(process.cwd(), 'data')
 }
 
 export function getDataFolder(): string {

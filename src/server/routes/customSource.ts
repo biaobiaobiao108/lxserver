@@ -7,7 +7,7 @@ import * as customSourceHandlers from '../customSourceHandlers'
 export const createCustomSourceRouter = (): Router => {
   const router = new Router()
 
-  // 1. 源脚本校验 (无需登录)
+  // 1. 源脚本校验（公共源必须管理员鉴权，私有源必须匹配当前用户）
   router.post('/api/custom-source/validate', (ctx) => {
     return adaptNodeHandler(ctx, customSourceHandlers.handleValidate)
   })
@@ -37,7 +37,16 @@ export const createCustomSourceRouter = (): Router => {
 
   // 3. 列表查询
   router.get('/api/custom-source/list', (ctx) => {
-    const username = ctx.query.get('username') || 'default'
+    const requested = ctx.query.get('username') || ctx.headers.get('x-user-name') || ''
+    const isAdmin = verifyAdminAuth(ctx.request)
+    const currentUser = verifyUserAuth(ctx)
+    let username = 'default'
+    if (requested && requested !== 'default' && requested !== 'open' && requested !== '_open') {
+      if (!isAdmin && currentUser !== requested) return ctx.json({ success: false, error: '无权查看其他用户的自定义源' }, 403)
+      username = requested
+    } else if (currentUser) {
+      username = currentUser
+    }
     return adaptNodeHandler(ctx, customSourceHandlers.handleList, username)
   })
 

@@ -3,6 +3,7 @@ import path from 'path'
 import crypto from 'crypto'
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
+import { resolveInside } from './pathSecurity'
 
 interface WebDAVConfig {
     enable?: boolean
@@ -27,8 +28,15 @@ const normalizeRemotePath = (p?: string, defaultPath: string = ''): string => {
     let str = (p || '').trim()
     if (!str) str = defaultPath
     if (!str.startsWith('/')) str = '/' + str
-    return str.replace(/\/+$/, '')
+    str = str.replace(/\/+$/, '')
+    if (str.split('/').some(part => part === '..' || part.includes('\\') || /[\u0000-\u001f\u007f]/.test(part))) {
+        throw new Error('Invalid WebDAV path')
+    }
+    return str
 }
+
+const protectedFiles = new Set(['config.js', 'users.json', 'lxserver.db', 'lxserver.db-wal', 'lxserver.db-shm'])
+const isProtectedFile = (relativePath: string) => protectedFiles.has(relativePath.replace(/\\/g, '/'))
 
 class WebDAVSync extends EventEmitter {
     private config: WebDAVConfig
@@ -121,28 +129,25 @@ class WebDAVSync extends EventEmitter {
             const items = fs.readdirSync(dir)
             for (const item of items) {
                 const fullPath = path.join(dir, item)
-                const stat = fs.statSync(fullPath)
+                const stat = fs.lstatSync(fullPath)
+                if (stat.isSymbolicLink()) continue
                 if (stat.isDirectory()) {
                     scanDir(fullPath)
                 } else {
                     const relativePath = path.relative(this.dataPath, fullPath)
-                    const isIgnored = relativePath.includes('temp-') ||
+                    const normalizedPath = relativePath.replace(/\\/g, '/')
+                    const isIgnored = normalizedPath.includes('temp-') ||
                         relativePath.endsWith('.log') ||
                         relativePath.endsWith('.db-shm') ||
-                        relativePath.endsWith('.db-wal')
+                        relativePath.endsWith('.db-wal') ||
+                        isProtectedFile(normalizedPath)
                     if (!isIgnored) {
-                        files.set(relativePath, this.getFileHash(fullPath))
+                        files.set(normalizedPath, this.getFileHash(fullPath))
                     }
                 }
             }
         }
         scanDir(this.dataPath)
-
-        // [新增] 扫描根目录下的 config.js
-        const rootConfigPath = path.join(process.cwd(), 'config.js')
-        if (fs.existsSync(rootConfigPath)) {
-            files.set('config.js', this.getFileHash(rootConfigPath))
-        }
 
         return files
     }
@@ -172,13 +177,19 @@ class WebDAVSync extends EventEmitter {
 
     private getRelativeRemotePath(remoteFilename: string): string {
         const prefix = this.syncPath.endsWith('/') ? this.syncPath : this.syncPath + '/'
+        let relative: string
         if (remoteFilename.startsWith(prefix)) {
-            return remoteFilename.slice(prefix.length)
+            relative = remoteFilename.slice(prefix.length)
+        } else if (remoteFilename.startsWith(this.syncPath)) {
+            relative = remoteFilename.slice(this.syncPath.length).replace(/^\/+/, '')
+        } else {
+            relative = remoteFilename.replace(/^\/+/, '')
         }
-        if (remoteFilename.startsWith(this.syncPath)) {
-            return remoteFilename.slice(this.syncPath.length).replace(/^\/+/, '')
+        relative = relative.replace(/\\/g, '/')
+        if (!relative || relative.split('/').some(part => !part || part === '..' || part === '.')) {
+            throw new Error('Invalid remote file path')
         }
-        return remoteFilename.replace(/^\/+/, '')
+        return relative
     }
 
     private async runConcurrent<T, R>(
@@ -200,6 +211,8 @@ class WebDAVSync extends EventEmitter {
     }
 
     async deleteRemoteFile(relativePath: string): Promise<boolean> {
+        if (isProtectedFile(relativePath)) return false
+        resolveInside(this.dataPath, relativePath)
         if (!this.client) await this.initClient()
         if (!this.client) return false
 
@@ -227,8 +240,8 @@ class WebDAVSync extends EventEmitter {
         if (!this.client) return false
 
         try {
-            const isRootConfig = relativePath === 'config.js'
-            const localPath = isRootConfig ? path.join(process.cwd(), 'config.js') : path.join(this.dataPath, relativePath)
+            if (isProtectedFile(relativePath)) return false
+            const localPath = resolveInside(this.dataPath, relativePath)
             if (!fs.existsSync(localPath)) return false
 
             const stat = fs.statSync(localPath)
@@ -303,8 +316,8 @@ class WebDAVSync extends EventEmitter {
 
         try {
             const remotePath = `${this.syncPath}/${relativePath.replace(/\\/g, '/')}`
-            const isRootConfig = relativePath === 'config.js'
-            const localPath = isRootConfig ? path.join(process.cwd(), 'config.js') : path.join(this.dataPath, relativePath)
+            if (isProtectedFile(relativePath)) return false
+            const localPath = resolveInside(this.dataPath, relativePath)
 
             // 确保本地目录存在
             const localDir = path.dirname(localPath)
@@ -327,11 +340,6 @@ class WebDAVSync extends EventEmitter {
             }
 
             fs.writeFileSync(localPath, content)
-
-            if (isRootConfig) {
-                console.log('config.js restored from WebDAV, content changed.')
-                // 这里可以发出事件提醒主进程，不过由于用户是手动触发恢复或启动时恢复，已经有重启逻辑覆盖
-            }
 
             this.addLog({
                 timestamp: Date.now(),
@@ -391,14 +399,8 @@ class WebDAVSync extends EventEmitter {
                 archive.pipe(output)
                 archive.glob('**/*', {
                     cwd: this.dataPath,
-                    ignore: ['temp-*.zip', '*.log', 'lx-sync-backup-*.zip', '*.db-shm', '*.db-wal'],
+                    ignore: ['temp-*.zip', '*.log', 'lx-sync-backup-*.zip', '*.db-shm', '*.db-wal', '**/config.js', '**/users.json', '**/lxserver.db'],
                 })
-
-                // [新增] 将根目录下的 config.js 也打包进去
-                const rootConfigPath = path.join(process.cwd(), 'config.js')
-                if (fs.existsSync(rootConfigPath)) {
-                    archive.file(rootConfigPath, { name: 'config.js' })
-                }
 
                 archive.finalize()
             })
@@ -608,6 +610,7 @@ class WebDAVSync extends EventEmitter {
             })
 
             const content = await this.client.getFileContents(latestBackup.filename)
+            if (Buffer.byteLength(content as any) > 1024 * 1024 * 1024) throw new Error('Backup is too large')
             const zipPath = path.join(this.dataPath, 'temp-restore.zip')
 
             // 修复类型错误：使用 as any
@@ -643,24 +646,55 @@ class WebDAVSync extends EventEmitter {
     }
 
     public async extractZip(zipPath: string, targetPath: string): Promise<void> {
-        const { Extract } = await import('unzipper')
-        await new Promise<void>((resolve, reject) => {
-            fs.createReadStream(zipPath)
-                .pipe(Extract({ path: targetPath }))
-                .on('close', () => resolve())
-                .on('error', (err) => reject(err))
-        })
-
-        const extractedConfig = path.join(targetPath, 'config.js')
-        const rootConfig = path.join(process.cwd(), 'config.js')
-
-        if (fs.existsSync(extractedConfig) && path.resolve(extractedConfig) !== path.resolve(rootConfig)) {
-            console.log(`[Restore] Moving extracted config.js from ${extractedConfig} to ${rootConfig}`)
+        const { Open } = await import('unzipper')
+        const directory = await Open.file(zipPath)
+        if (directory.files.length > 10_000) throw new Error('Backup contains too many files')
+        let totalBytes = 0
+        const maxEntryBytes = 500 * 1024 * 1024
+        const maxArchiveBytes = 1024 * 1024 * 1024
+        for (const entry of directory.files) {
+            const relative = String(entry.path || '').replace(/\\/g, '/')
+            if (!relative || relative.split('/').some(part => !part || part === '..' || part === '.')) continue
+            if (isProtectedFile(relative)) continue
+            const destination = resolveInside(targetPath, relative)
+            if (entry.type === 'Directory') {
+                fs.mkdirSync(destination, { recursive: true })
+                continue
+            }
+            const declaredSize = Number(entry.uncompressedSize || 0)
+            if (Number.isFinite(declaredSize) && declaredSize > maxEntryBytes) throw new Error('Backup entry is too large')
+            fs.mkdirSync(path.dirname(destination), { recursive: true })
+            const input = entry.stream()
+            const output = fs.createWriteStream(destination)
+            let entryBytes = 0
+            let settled = false
             try {
-                fs.copyFileSync(extractedConfig, rootConfig)
-                fs.unlinkSync(extractedConfig)
-            } catch (err: any) {
-                console.error('[Restore] Failed to move config.js to root:', err.message)
+                await new Promise<void>((resolve, reject) => {
+                    const fail = (error: Error) => {
+                        if (settled) return
+                        settled = true
+                        input.destroy()
+                        output.destroy()
+                        reject(error)
+                    }
+                    input.on('data', (chunk: Buffer) => {
+                        entryBytes += chunk.length
+                        totalBytes += chunk.length
+                        if (entryBytes > maxEntryBytes) fail(new Error('Backup entry is too large'))
+                        else if (totalBytes > maxArchiveBytes) fail(new Error('Backup is too large'))
+                    })
+                    input.on('error', fail)
+                    output.on('error', fail)
+                    output.on('finish', () => {
+                        if (settled) return
+                        settled = true
+                        resolve()
+                    })
+                    input.pipe(output)
+                })
+            } catch (error) {
+                try { fs.unlinkSync(destination) } catch { }
+                throw error
             }
         }
     }
@@ -702,8 +736,6 @@ class WebDAVSync extends EventEmitter {
                 console.log(`Restoring ${files.length} files from WebDAV (${this.syncPath})...`)
                 const total = files.length
                 let current = 0
-                let hasConfig = false
-
                 this.emit('progress', { type: 'restore', status: 'start', total, message: '开始从云端恢复数据...' })
 
                 const remoteFileSet = new Set<string>()
@@ -711,7 +743,7 @@ class WebDAVSync extends EventEmitter {
                 for (const file of files) {
                     current++
                     const relativePath = this.getRelativeRemotePath(file.filename)
-                    if (relativePath === 'config.js') hasConfig = true
+                    if (isProtectedFile(relativePath)) continue
                     remoteFileSet.add(relativePath)
 
                     this.emit('progress', {
@@ -724,15 +756,6 @@ class WebDAVSync extends EventEmitter {
                     })
 
                     await this.downloadFile(relativePath)
-                }
-
-                // 如果恢复的文件中没有 config.js，说明云端配置缺失，将当前内存配置（含环境变量）同步上去
-                if (!hasConfig) {
-                    console.log('Cloud config.js not found, saving current memory config and uploading...')
-                    if (global.lx && global.lx.saveConfig) {
-                        global.lx.saveConfig()
-                    }
-                    await this.uploadFile('config.js')
                 }
 
                 // 双向数据一致性补齐：检查本地是否存在但云端缺失的文件，自动补传至云端
@@ -764,27 +787,13 @@ class WebDAVSync extends EventEmitter {
             this.emit('progress', { type: 'restore', status: 'start', message: '正在从云端下载备份...' })
             const result = await this.downloadLatestBackup()
             if (result) {
-                // 检查解压后根目录是否确实有了 config.js
-                const rootConfigPath = path.join(process.cwd(), 'config.js')
-                if (!fs.existsSync(rootConfigPath)) {
-                    console.log('Backup restored but config.js is missing, saving current config and uploading...')
-                    if (global.lx && global.lx.saveConfig) {
-                        global.lx.saveConfig()
-                    }
-                    await this.uploadFile('config.js')
-                }
                 this.emit('progress', { type: 'restore', status: 'finish', message: '备份恢复完成' })
                 return true
             } else {
                 // 如果未找到散文件也未找到备份，说明是第一次配置或云端为空
                 // 主动全量上传本地所有文件到云端进行初始化（后台异步执行，不阻塞启动）
-                console.log(`Cloud is empty, saving current config and uploading all files to initialize ${this.syncPath}...`)
+                console.log(`Cloud is empty, uploading local data to initialize ${this.syncPath}...`)
                 this.emit('progress', { type: 'restore', status: 'processing', message: '云端为空，正在后台同步本地全部数据到云端...' })
-
-                // 保存当前内存中的配置（包含环境变量生效后的结果）到磁盘
-                if (global.lx && global.lx.saveConfig) {
-                    global.lx.saveConfig()
-                }
 
                 void this.syncAllFiles().then((res) => {
                     if (res) {

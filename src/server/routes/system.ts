@@ -8,11 +8,58 @@ import { verifyAdminAuth } from '../auth'
 import { serverStatus } from '../state'
 import { startupLog } from '@/utils/log4js'
 import { getUserDirname } from '@/user'
+import { resolveInside } from '@/utils/pathSecurity'
+
+const parseBoolean = (value: unknown, fallback: boolean): boolean => {
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') {
+    if (value.toLowerCase() === 'true' || value === '1' || value === 'on') return true
+    if (value.toLowerCase() === 'false' || value === '0' || value === 'off') return false
+  }
+  return fallback
+}
+
+const parseBoundedInteger = (value: unknown, min: number, max: number, fallback: number): number => {
+  const parsed = Number(value)
+  return Number.isInteger(parsed) ? Math.min(Math.max(parsed, min), max) : fallback
+}
+
+const normalizeConfiguredPath = (value: unknown, fallback: string, allowEmpty = false): string => {
+  if (typeof value !== 'string') return fallback
+  const trimmed = value.trim()
+  if (!trimmed && allowEmpty) return ''
+  if (!trimmed.startsWith('/') || /[\u0000-\u001f\\]/.test(trimmed)) throw new Error('路径格式无效')
+  const parts = trimmed.split('/').filter(Boolean)
+  if (parts.some(part => part === '.' || part === '..')) throw new Error('路径不能包含 . 或 ..')
+  const normalized = `/${parts.join('/')}`
+  if (normalized === '/api' || normalized.startsWith('/api/')) throw new Error('路径不能以 /api 开头')
+  return normalized === '/' && allowEmpty ? '' : normalized
+}
+
+const validateHttpEndpoint = (value: unknown, field: string): string => {
+  if (typeof value !== 'string' || !value.trim()) return ''
+  const url = new URL(value.trim())
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error(`${field} 仅支持 http 或 https`)
+  if (url.username || url.password) throw new Error(`${field} 不应在 URL 中包含凭据`)
+  return url.toString().replace(/\/$/, '')
+}
+
+const redactUrlCredentials = (value: unknown): string => {
+  if (typeof value !== 'string' || !value.trim()) return ''
+  try {
+    const url = new URL(value.trim())
+    url.username = ''
+    url.password = ''
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return '[configured]'
+  }
+}
 
 /** 重新加载服务器运行时数据 */
 export const reloadServerData = async (): Promise<void> => {
   startupLog.info('Hot-reloading server data (users and config)...')
-  const configPath = process.env.CONFIG_PATH || path.join(process.cwd(), 'config.js')
+  const configPath = process.env.CONFIG_PATH || path.join(global.lx.dataPath, 'config.js')
   if (fs.existsSync(configPath)) {
     try {
       delete require.cache[require.resolve(configPath)]
@@ -183,19 +230,19 @@ export const createSystemRouter = (): Router => {
       'user.enableLoginCacheRestriction': c['user.enableLoginCacheRestriction'],
       'user.enableCacheSizeLimit': c['user.enableCacheSizeLimit'],
       'user.cacheSizeLimit': c['user.cacheSizeLimit'],
-      'frontend.password': c['frontend.password'],
+      'frontend.passwordConfigured': Boolean(c['frontend.password']),
       'player.enableAuth': c['player.enableAuth'] || false,
-      'player.password': c['player.password'] || '',
+      'player.passwordConfigured': Boolean(c['player.password']),
       'webdav.enable': c['webdav.enable'] ?? false,
-      'webdav.url': c['webdav.url'] || '',
+      'webdav.url': redactUrlCredentials(c['webdav.url']),
       'webdav.username': c['webdav.username'] || '',
-      'webdav.password': c['webdav.password'] || '',
+      'webdav.passwordConfigured': Boolean(c['webdav.password']),
       'webdav.syncPath': c['webdav.syncPath'] || '/lx-sync',
       'webdav.backupPath': c['webdav.backupPath'] || '/lx-sync-backups',
       'sync.interval': c['sync.interval'] || 60,
       'sync.backupInterval': c['sync.backupInterval'] || 24,
       'proxy.all.enabled': c['proxy.all.enabled'] || false,
-      'proxy.all.address': c['proxy.all.address'] || '',
+      'proxy.all.address': redactUrlCredentials(c['proxy.all.address']),
       'admin.path': c['admin.path'] ?? '',
       'player.path': c['player.path'] ?? '/music',
       'subsonic.enable': c['subsonic.enable'] ?? true,
@@ -220,67 +267,84 @@ export const createSystemRouter = (): Router => {
       const newConfig = await ctx.bodyJson<Record<string, any>>()
       const c = global.lx.config
       if (newConfig.serverName !== undefined) c.serverName = newConfig.serverName
-      if (newConfig.maxSnapshotNum !== undefined) c.maxSnapshotNum = parseInt(newConfig.maxSnapshotNum)
+      if (newConfig.maxSnapshotNum !== undefined) c.maxSnapshotNum = parseBoundedInteger(newConfig.maxSnapshotNum, 1, 10000, c.maxSnapshotNum)
       if (newConfig['list.addMusicLocationType'] !== undefined) c['list.addMusicLocationType'] = newConfig['list.addMusicLocationType']
-      if (newConfig['proxy.enabled'] !== undefined) c['proxy.enabled'] = newConfig['proxy.enabled']
-      if (newConfig['proxy.header'] !== undefined) c['proxy.header'] = newConfig['proxy.header']
-      if (newConfig['user.enablePath'] !== undefined) c['user.enablePath'] = newConfig['user.enablePath']
-      if (newConfig['user.enableRoot'] !== undefined) c['user.enableRoot'] = newConfig['user.enableRoot']
-      if (newConfig['user.enablePublicRestriction'] !== undefined) c['user.enablePublicRestriction'] = newConfig['user.enablePublicRestriction']
-      if (newConfig['user.enablePublicNonAdminLocalMusic'] !== undefined) c['user.enablePublicNonAdminLocalMusic'] = newConfig['user.enablePublicNonAdminLocalMusic']
-      if (newConfig['user.enablePublicFavorites'] !== undefined) c['user.enablePublicFavorites'] = newConfig['user.enablePublicFavorites']
-      if (newConfig['user.enablePublicNonAdminAccess'] !== undefined) c['user.enablePublicNonAdminAccess'] = newConfig['user.enablePublicNonAdminAccess']
-      if (newConfig['user.enableLoginCacheRestriction'] !== undefined) c['user.enableLoginCacheRestriction'] = newConfig['user.enableLoginCacheRestriction']
-      if (newConfig['user.enableCacheSizeLimit'] !== undefined) c['user.enableCacheSizeLimit'] = newConfig['user.enableCacheSizeLimit']
-      if (newConfig['user.cacheSizeLimit'] !== undefined) c['user.cacheSizeLimit'] = parseInt(newConfig['user.cacheSizeLimit']) || 2000
-      if (newConfig['system.allowUnsafeVM'] !== undefined) c['system.allowUnsafeVM'] = newConfig['system.allowUnsafeVM']
-      if (newConfig['frontend.password'] !== undefined) c['frontend.password'] = newConfig['frontend.password']
-      if (newConfig['player.enableAuth'] !== undefined) c['player.enableAuth'] = newConfig['player.enableAuth']
-      if (newConfig['player.password'] !== undefined) c['player.password'] = newConfig['player.password']
+      if (newConfig['proxy.enabled'] !== undefined) c['proxy.enabled'] = parseBoolean(newConfig['proxy.enabled'], c['proxy.enabled'])
+      if (newConfig['proxy.header'] !== undefined) c['proxy.header'] = typeof newConfig['proxy.header'] === 'string' ? newConfig['proxy.header'].slice(0, 256) : c['proxy.header']
+      if (newConfig['user.enablePath'] !== undefined) c['user.enablePath'] = parseBoolean(newConfig['user.enablePath'], c['user.enablePath'] ?? false)
+      if (newConfig['user.enableRoot'] !== undefined) c['user.enableRoot'] = parseBoolean(newConfig['user.enableRoot'], c['user.enableRoot'] ?? false)
+      if (newConfig['user.enablePublicRestriction'] !== undefined) c['user.enablePublicRestriction'] = parseBoolean(newConfig['user.enablePublicRestriction'], c['user.enablePublicRestriction'] ?? false)
+      if (newConfig['user.enablePublicNonAdminLocalMusic'] !== undefined) c['user.enablePublicNonAdminLocalMusic'] = parseBoolean(newConfig['user.enablePublicNonAdminLocalMusic'], c['user.enablePublicNonAdminLocalMusic'] ?? false)
+      if (newConfig['user.enablePublicFavorites'] !== undefined) c['user.enablePublicFavorites'] = parseBoolean(newConfig['user.enablePublicFavorites'], c['user.enablePublicFavorites'] ?? false)
+      if (newConfig['user.enablePublicNonAdminAccess'] !== undefined) c['user.enablePublicNonAdminAccess'] = parseBoolean(newConfig['user.enablePublicNonAdminAccess'], c['user.enablePublicNonAdminAccess'] ?? false)
+      if (newConfig['user.enableLoginCacheRestriction'] !== undefined) c['user.enableLoginCacheRestriction'] = parseBoolean(newConfig['user.enableLoginCacheRestriction'], c['user.enableLoginCacheRestriction'] ?? false)
+      if (newConfig['user.enableCacheSizeLimit'] !== undefined) c['user.enableCacheSizeLimit'] = parseBoolean(newConfig['user.enableCacheSizeLimit'], c['user.enableCacheSizeLimit'] ?? false)
+      if (newConfig['user.cacheSizeLimit'] !== undefined) c['user.cacheSizeLimit'] = parseBoundedInteger(newConfig['user.cacheSizeLimit'], 1, 1024 * 1024, 2000)
+      if (newConfig['system.allowUnsafeVM'] !== undefined) c['system.allowUnsafeVM'] = parseBoolean(newConfig['system.allowUnsafeVM'], false)
+      if (newConfig['frontend.password'] !== undefined) {
+        if (typeof newConfig['frontend.password'] !== 'string') {
+          return ctx.json({ success: false, error: '管理员密码格式无效' }, 422)
+        }
+        if (newConfig['frontend.password'].trim()) {
+          if (newConfig['frontend.password'] === '123456') return ctx.json({ success: false, error: '管理员密码不能使用示例密码' }, 422)
+          c['frontend.password'] = newConfig['frontend.password']
+        }
+      }
+      if (newConfig['player.enableAuth'] !== undefined) c['player.enableAuth'] = parseBoolean(newConfig['player.enableAuth'], false)
+      if (newConfig['player.password'] !== undefined) {
+        if (typeof newConfig['player.password'] !== 'string') {
+          return ctx.json({ success: false, error: '播放器密码格式无效' }, 422)
+        }
+        if (newConfig['player.password'].trim()) {
+          if (newConfig['player.password'] === '123456') return ctx.json({ success: false, error: '播放器密码不能使用示例密码' }, 422)
+          c['player.password'] = newConfig['player.password']
+        } else if (c['player.enableAuth'] && !c['player.password']) {
+          return ctx.json({ success: false, error: '播放器启用认证时必须配置密码' }, 422)
+        }
+      }
 
       // WebDAV 配置
-      if (newConfig['webdav.enable'] !== undefined) c['webdav.enable'] = newConfig['webdav.enable']
-      if (newConfig['webdav.url'] !== undefined) c['webdav.url'] = newConfig['webdav.url']
-      if (newConfig['webdav.username'] !== undefined) c['webdav.username'] = newConfig['webdav.username']
-      if (newConfig['webdav.password'] !== undefined) c['webdav.password'] = newConfig['webdav.password']
-      if (newConfig['webdav.syncPath'] !== undefined) c['webdav.syncPath'] = newConfig['webdav.syncPath']
-      if (newConfig['webdav.backupPath'] !== undefined) c['webdav.backupPath'] = newConfig['webdav.backupPath']
-      if (newConfig['sync.interval'] !== undefined) c['sync.interval'] = parseInt(newConfig['sync.interval'])
-      if (newConfig['sync.backupInterval'] !== undefined) c['sync.backupInterval'] = parseInt(newConfig['sync.backupInterval']) || 24
-      if (newConfig['proxy.all.enabled'] !== undefined) c['proxy.all.enabled'] = newConfig['proxy.all.enabled']
-      if (newConfig['proxy.all.address'] !== undefined) c['proxy.all.address'] = newConfig['proxy.all.address']
+      if (newConfig['webdav.enable'] !== undefined) c['webdav.enable'] = parseBoolean(newConfig['webdav.enable'], false)
+      if (newConfig['webdav.url'] !== undefined) {
+        const normalizedUrl = validateHttpEndpoint(newConfig['webdav.url'], 'WebDAV 地址')
+        const currentUrl = redactUrlCredentials(c['webdav.url'])
+        c['webdav.url'] = normalizedUrl && normalizedUrl === currentUrl ? c['webdav.url'] : normalizedUrl
+      }
+      if (newConfig['webdav.username'] !== undefined && typeof newConfig['webdav.username'] === 'string') c['webdav.username'] = newConfig['webdav.username'].slice(0, 256)
+      if (newConfig['webdav.password'] !== undefined && typeof newConfig['webdav.password'] === 'string' && newConfig['webdav.password']) c['webdav.password'] = newConfig['webdav.password']
+      if (newConfig['webdav.syncPath'] !== undefined) c['webdav.syncPath'] = normalizeConfiguredPath(newConfig['webdav.syncPath'], '/lx-sync')
+      if (newConfig['webdav.backupPath'] !== undefined) c['webdav.backupPath'] = normalizeConfiguredPath(newConfig['webdav.backupPath'], '/lx-sync-backups')
+      if (newConfig['sync.interval'] !== undefined) c['sync.interval'] = parseBoundedInteger(newConfig['sync.interval'], 5, 86400, 60)
+      if (newConfig['sync.backupInterval'] !== undefined) c['sync.backupInterval'] = parseBoundedInteger(newConfig['sync.backupInterval'], 1, 720, 24)
+      if (newConfig['proxy.all.enabled'] !== undefined) c['proxy.all.enabled'] = parseBoolean(newConfig['proxy.all.enabled'], false)
+      if (newConfig['proxy.all.address'] !== undefined && typeof newConfig['proxy.all.address'] === 'string') {
+        const normalizedAddress = newConfig['proxy.all.address'].slice(0, 2048)
+        const currentAddress = redactUrlCredentials(c['proxy.all.address'])
+        c['proxy.all.address'] = normalizedAddress && normalizedAddress === currentAddress
+          ? c['proxy.all.address']
+          : normalizedAddress
+      }
 
       if (newConfig['admin.path'] !== undefined || newConfig['player.path'] !== undefined) {
-        const adminPath = (newConfig['admin.path'] !== undefined ? newConfig['admin.path'] : (c['admin.path'] ?? ''))
-        const playerPath = (newConfig['player.path'] !== undefined ? newConfig['player.path'] : (c['player.path'] ?? '/music'))
-        const normalizedAdmin = adminPath.replace(/\/+$/, '')
-        const normalizedPlayer = playerPath.replace(/\/+$/, '')
+        const normalizedAdmin = normalizeConfiguredPath(newConfig['admin.path'] !== undefined ? newConfig['admin.path'] : (c['admin.path'] ?? ''), '', true)
+        const normalizedPlayer = normalizeConfiguredPath(newConfig['player.path'] !== undefined ? newConfig['player.path'] : (c['player.path'] ?? '/music'), '/music')
 
-        if (!playerPath || !playerPath.startsWith('/')) {
-          return ctx.json({ success: false, error: '播放器路径不能为空且必须以 / 开头' }, 422)
-        }
-        if (normalizedAdmin !== '' && !normalizedAdmin.startsWith('/')) {
-          return ctx.json({ success: false, error: '后台路径必须以 / 开头或为空' }, 422)
-        }
         if ((normalizedAdmin || '/') === (normalizedPlayer || '/')) {
           return ctx.json({ success: false, error: '后台管理路径与播放器路径不能相同' }, 422)
-        }
-        if (normalizedAdmin.startsWith('/api') || normalizedPlayer.startsWith('/api')) {
-          return ctx.json({ success: false, error: '路径不能以 /api 开头' }, 422)
         }
         c['admin.path'] = normalizedAdmin
         c['player.path'] = normalizedPlayer
       }
 
-      if (newConfig['subsonic.enable'] !== undefined) c['subsonic.enable'] = newConfig['subsonic.enable']
+      if (newConfig['subsonic.enable'] !== undefined) c['subsonic.enable'] = parseBoolean(newConfig['subsonic.enable'], true)
       if (newConfig['subsonic.path'] !== undefined) {
-        c['subsonic.path'] = newConfig['subsonic.path'].replace(/\/+$/, '') || '/rest'
+        c['subsonic.path'] = normalizeConfiguredPath(newConfig['subsonic.path'], '/rest')
       }
-      if (newConfig['subsonic.enableDebug'] !== undefined) c['subsonic.enableDebug'] = newConfig['subsonic.enableDebug']
-      if (newConfig['subsonic.onlineSearch'] !== undefined) c['subsonic.onlineSearch'] = newConfig['subsonic.onlineSearch']
+      if (newConfig['subsonic.enableDebug'] !== undefined) c['subsonic.enableDebug'] = parseBoolean(newConfig['subsonic.enableDebug'], true)
+      if (newConfig['subsonic.onlineSearch'] !== undefined) c['subsonic.onlineSearch'] = parseBoolean(newConfig['subsonic.onlineSearch'], true)
       if (newConfig['subsonic.onlineSearchMode'] !== undefined) c['subsonic.onlineSearchMode'] = newConfig['subsonic.onlineSearchMode']
       if (newConfig['subsonic.onlineSearchSources'] !== undefined) c['subsonic.onlineSearchSources'] = newConfig['subsonic.onlineSearchSources']
-      if (newConfig['subsonic.lyricTranslation'] !== undefined) c['subsonic.lyricTranslation'] = newConfig['subsonic.lyricTranslation']
+      if (newConfig['subsonic.lyricTranslation'] !== undefined) c['subsonic.lyricTranslation'] = parseBoolean(newConfig['subsonic.lyricTranslation'], true)
       if (newConfig['singer.sourcePriority'] !== undefined) {
         const priority = String(newConfig['singer.sourcePriority']).split(',').filter(s => s === 'tx' || s === 'wy') as Array<'tx' | 'wy'>
         if (priority.length > 0) c['singer.sourcePriority'] = priority
@@ -428,7 +492,7 @@ export const createSystemRouter = (): Router => {
       if (!webdavSync) throw new Error('Backup system not initialized')
       const zipName = await webdavSync.createBackup()
       if (!zipName) throw new Error('Backup creation failed')
-      const zipPath = path.join(global.lx.dataPath, zipName)
+      const zipPath = resolveInside(global.lx.dataPath, zipName)
       if (!fs.existsSync(zipPath)) throw new Error('ZIP file not found')
       const bunFile = Bun.file(zipPath)
       setTimeout(() => {
@@ -450,15 +514,14 @@ export const createSystemRouter = (): Router => {
     if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
     const dirPath = ctx.query.get('path') || ''
     const resolvedRoot = path.resolve(global.lx.dataPath)
-    const fullPath = path.resolve(global.lx.dataPath, dirPath)
-    if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
-      return ctx.text('Forbidden', 403)
-    }
+    let fullPath: string
+    try { fullPath = resolveInside(resolvedRoot, dirPath) } catch { return ctx.text('Forbidden', 403) }
 
     try {
-      const items = fs.readdirSync(fullPath).map((name) => {
+      const items = fs.readdirSync(fullPath).flatMap((name) => {
         const itemPath = path.join(fullPath, name)
-        const stat = fs.statSync(itemPath)
+        const stat = fs.lstatSync(itemPath)
+        if (stat.isSymbolicLink()) return []
         return {
           name,
           path: path.relative(global.lx.dataPath, itemPath),
@@ -477,11 +540,10 @@ export const createSystemRouter = (): Router => {
     if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
     const filePath = ctx.query.get('path') || ''
     const resolvedRoot = path.resolve(global.lx.dataPath)
-    const fullPath = path.resolve(global.lx.dataPath, filePath)
-    if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
-      return ctx.text('Forbidden', 403)
-    }
+    let fullPath: string
+    try { fullPath = resolveInside(resolvedRoot, filePath) } catch { return ctx.text('Forbidden', 403) }
     if (!fs.existsSync(fullPath)) return ctx.text('File not found', 404)
+    if (!fs.statSync(fullPath).isFile()) return ctx.text('File not found', 404)
     return new Response(Bun.file(fullPath), {
       headers: {
         'Content-Type': 'application/octet-stream',
@@ -495,16 +557,16 @@ export const createSystemRouter = (): Router => {
     try {
       const { path: filePath, content, isDirectory } = await ctx.bodyJson<{ path?: string; content?: string; isDirectory?: boolean }>()
       const resolvedRoot = path.resolve(global.lx.dataPath)
-      const fullPath = path.resolve(global.lx.dataPath, filePath || '')
-      if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
-        return ctx.text('Forbidden', 403)
+      const fullPath = resolveInside(resolvedRoot, filePath || '')
+      if (!isDirectory && (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 5 * 1024 * 1024)) {
+        return ctx.text('File content is missing or too large', 422)
       }
       if (isDirectory) {
         fs.mkdirSync(fullPath, { recursive: true })
       } else {
         const dir = path.dirname(fullPath)
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
-        fs.writeFileSync(fullPath, content || '')
+        fs.writeFileSync(fullPath, content as string)
       }
       return ctx.json({ success: true })
     } catch (err: any) {
@@ -517,10 +579,8 @@ export const createSystemRouter = (): Router => {
     try {
       const { path: filePath } = await ctx.bodyJson<{ path?: string }>()
       const resolvedRoot = path.resolve(global.lx.dataPath)
-      const fullPath = path.resolve(global.lx.dataPath, filePath || '')
-      if (!fullPath.startsWith(resolvedRoot + path.sep) && fullPath !== resolvedRoot) {
-        return ctx.text('Forbidden', 403)
-      }
+      const fullPath = resolveInside(resolvedRoot, filePath || '')
+      if (fullPath === resolvedRoot) return ctx.text('Cannot delete data root', 422)
       const stat = fs.statSync(fullPath)
       if (stat.isDirectory()) {
         fs.rmSync(fullPath, { recursive: true })

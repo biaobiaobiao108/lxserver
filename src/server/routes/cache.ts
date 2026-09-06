@@ -14,6 +14,8 @@ import * as remasterQueue from '../remasterQueue'
 import musicSdkRaw from '@/modules/utils/musicSdk/index.js'
 const musicSdk = musicSdkRaw as any
 import { accessLog } from '@/utils/log4js'
+import { assertSafeRemoteHttpUrl } from '../networkSecurity'
+import { resolveInside } from '@/utils/pathSecurity'
 
 type MusicTagNative = {
   MusicTagger: new () => any
@@ -24,6 +26,34 @@ let musicTagNative: MusicTagNative | null = null
 const getMusicTagNative = (): MusicTagNative => {
   if (!musicTagNative) musicTagNative = require('music-tag-native') as MusicTagNative
   return musicTagNative
+}
+
+const readResponseBuffer = async (response: Response, maxBytes: number): Promise<Buffer | null> => {
+  const contentLength = Number(response.headers.get('content-length') || 0)
+  if (Number.isFinite(contentLength) && contentLength > maxBytes) return null
+  if (!response.body) {
+    const data = Buffer.from(await response.arrayBuffer())
+    return data.length <= maxBytes ? data : null
+  }
+
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > maxBytes) {
+        await reader.cancel()
+        return null
+      }
+      chunks.push(value)
+    }
+    return Buffer.concat(chunks.map(chunk => Buffer.from(chunk)), total)
+  } finally {
+    reader.releaseLock()
+  }
 }
 
 /** 辅助获取缓存与下载任务的目标用户名 */
@@ -225,12 +255,6 @@ export const createCacheRouter = (): Router => {
     }
 
     const result = fileCache.checkCache({ name, singer, source, songmid, songId, quality, exactQuality }, username)
-    if (result && result.exists && username !== '_open' && username !== 'default') {
-      const token = ctx.headers.get('x-user-token')
-      if (token) {
-        result.url += `&token=${encodeURIComponent(token)}`
-      }
-    }
     return ctx.json(result)
   })
 
@@ -251,6 +275,7 @@ export const createCacheRouter = (): Router => {
         concurrency?: number
       }>()
       if (!Array.isArray(tasks) || tasks.length === 0) throw new Error('Missing tasks')
+      if (tasks.length > 100) throw new Error('Too many tasks')
       if (concurrency !== undefined) serverDownloadQueue.setConcurrency(username, concurrency)
       if (namingPattern) {
         if (!verifyAdminAuth(ctx.request)) throw new Error('Unauthorized to change cache naming pattern')
@@ -321,6 +346,7 @@ export const createCacheRouter = (): Router => {
       } = await ctx.bodyJson<any>()
 
       if (!songInfo || !url) return ctx.text('Missing params', 400)
+      const safeDownloadUrl = await assertSafeRemoteHttpUrl(String(url))
 
       const reqUsername = ctx.headers.get('x-user-name') || ''
       const isPublic = !reqUsername || reqUsername === 'default'
@@ -353,7 +379,7 @@ export const createCacheRouter = (): Router => {
 
       void fileCache.downloadAndCache(
         songInfo,
-        url,
+        safeDownloadUrl.toString(),
         quality,
         username,
         controller.signal,
@@ -435,8 +461,7 @@ export const createCacheRouter = (): Router => {
     const isPublic = !reqUsername || reqUsername === '_open' || reqUsername === 'default'
 
     if (!isPublic) {
-      const urlToken = ctx.query.get('token')
-      const tokenUser = urlToken ? verifyUserAuth({ headers: { 'x-user-token': urlToken } } as any) : verifyUserAuth(ctx)
+      const tokenUser = verifyUserAuth(ctx)
       if (!tokenUser || tokenUser !== reqUsername) {
         return ctx.text('Unauthorized', 401)
       }
@@ -456,9 +481,10 @@ export const createCacheRouter = (): Router => {
       for (const folder of roots) {
         const dir = fileCache.getCacheDir(normalizedUsername, folder === 'music', loc)
         const safeFilename = decodedFilename.replace(/\\/g, '/')
-        const checkPath = path.resolve(dir, safeFilename)
-        const resolvedDir = path.resolve(dir)
-        if (!checkPath.startsWith(resolvedDir + path.sep) && checkPath !== resolvedDir) {
+        let checkPath: string
+        try {
+          checkPath = resolveInside(dir, safeFilename)
+        } catch {
           continue
         }
         if (fs.existsSync(checkPath)) {
@@ -633,8 +659,7 @@ export const createCacheRouter = (): Router => {
     let username = '_open'
 
     if (!isPublic) {
-      const urlToken = ctx.query.get('token')
-      const tokenUser = urlToken ? verifyUserAuth({ headers: { 'x-user-token': urlToken } } as any) : verifyUserAuth(ctx)
+      const tokenUser = verifyUserAuth(ctx)
       if (!tokenUser) return ctx.text('Unauthorized', 401)
       username = tokenUser
     }
@@ -734,6 +759,7 @@ export const createCacheRouter = (): Router => {
       const { filenames } = await ctx.bodyJson<{ filenames?: string[] | string }>()
       if (!filenames) throw new Error('Missing filenames')
       const fileList = Array.isArray(filenames) ? filenames : [filenames]
+      if (fileList.length > 500) throw new Error('Too many files')
       const result = await fileCache.switchFolder(fileList, username)
       return ctx.json({ success: true, ...result })
     } catch (e: any) {
@@ -756,6 +782,7 @@ export const createCacheRouter = (): Router => {
       const { filenames } = await ctx.bodyJson<{ filenames?: string[] | string }>()
       if (!filenames) throw new Error('Missing filenames')
       const fileList = Array.isArray(filenames) ? filenames : [filenames]
+      if (fileList.length > 500) throw new Error('Too many files')
       const result = await fileCache.switchBaseLocation(fileList, username)
       return ctx.json({ success: true, ...result })
     } catch (e: any) {
@@ -778,6 +805,7 @@ export const createCacheRouter = (): Router => {
       const { filenames } = await ctx.bodyJson<{ filenames?: string[] | string }>()
       if (!filenames) throw new Error('Missing filenames')
       const fileList = Array.isArray(filenames) ? filenames : [filenames]
+      if (fileList.length > 500) throw new Error('Too many files')
       const result = await fileCache.batchUpdateMetadata(fileList, username)
       return ctx.json({ success: true, ...result })
     } catch (e: any) {
@@ -799,6 +827,7 @@ export const createCacheRouter = (): Router => {
     try {
       const { filenames } = await ctx.bodyJson<{ filenames?: string[] }>()
       if (!filenames || !Array.isArray(filenames)) throw new Error('Missing filenames')
+      if (filenames.length > 500) throw new Error('Too many files')
 
       let successCount = 0
       let skippedCount = 0
@@ -811,7 +840,8 @@ export const createCacheRouter = (): Router => {
 
         for (const f of ['cache', 'music'] as const) {
           const dir = fileCache.getCacheDir(username, f === 'music')
-          const candidate = path.join(dir, filename)
+          const candidate = fileCache.resolveCacheRelativePath(dir, filename)
+          if (!candidate) continue
           if (fs.existsSync(candidate)) {
             filePath = candidate
             folder = f
@@ -873,11 +903,11 @@ export const createCacheRouter = (): Router => {
           const baseName = filename.slice(0, filename.length - ext.length)
           const lrcFilename = baseName + '.lrc'
           const dir = fileCache.getCacheDir(username, folder === 'music')
-          const lrcPath = path.join(dir, lrcFilename)
+          const lrcPath = fileCache.resolveCacheRelativePath(dir, lrcFilename)
 
           let lyricText: string | null = null
 
-          if (fs.existsSync(lrcPath)) {
+          if (lrcPath && fs.existsSync(lrcPath)) {
             lyricText = fs.readFileSync(lrcPath, 'utf8')
             console.log(`[EmbedLyric] Using local .lrc for: ${filename}`)
           } else if (songInfo && songInfo.source && songInfo.source !== 'unknown') {
@@ -949,7 +979,8 @@ export const createCacheRouter = (): Router => {
       if (!filename) return ctx.text('Missing filename', 400)
       const { identifyLocalSong } = require('./utils/identify')
       const dir = fileCache.getCacheDir(verified, folder === 'music')
-      const filePath = path.join(dir, filename)
+      const filePath = fileCache.resolveCacheRelativePath(dir, filename)
+      if (!filePath) throw new Error('Invalid filename')
       if (!fs.existsSync(filePath)) throw new Error('文件不存在: ' + filename)
       const results = await identifyLocalSong(filePath)
       return ctx.json({ success: true, results })
@@ -1013,7 +1044,7 @@ export const createCacheRouter = (): Router => {
   // 9. 音乐文件下载中继代理 (GET /api/music/download)
   router.get('/api/music/download', (ctx) => {
     const urlStr = ctx.query.get('url')
-    const filename = ctx.query.get('filename') || 'download.mp3'
+    const filename = (ctx.query.get('filename') || 'download.mp3').slice(0, 255)
     const isInline = ctx.query.get('inline') === '1'
 
     if (!urlStr) return ctx.text('Missing url param', 400)
@@ -1025,14 +1056,14 @@ export const createCacheRouter = (): Router => {
         const rangeHeader = ctx.headers.get('range')
         const isFullRange = rangeHeader === 'bytes=0-'
 
-        const doFetch = (targetUrl: string, attempt: number) => {
+        const doFetch = async (targetUrl: string, attempt: number) => {
           if (attempt > 5) {
             resolve(ctx.text('Too Many Redirects', 502))
             return
           }
 
           try {
-            const parsedUrl = new URL(targetUrl)
+            const parsedUrl = await assertSafeRemoteHttpUrl(targetUrl)
             const options: any = {
               method: 'GET',
               headers: {
@@ -1050,12 +1081,19 @@ export const createCacheRouter = (): Router => {
                 const location = proxyRes.headers.location
                 if (location) {
                   proxyRes.resume()
-                  const nextUrl = location.startsWith('http') ? location : new URL(location, targetUrl).href
-                  doFetch(nextUrl, attempt + 1)
+                  const nextUrl = new URL(location, parsedUrl).href
+                  void doFetch(nextUrl, attempt + 1)
                   return
                 }
               }
 
+              const maxAudioBytes = 500 * 1024 * 1024
+              const declaredLength = Number(proxyRes.headers['content-length'] || 0)
+              if (declaredLength > maxAudioBytes) {
+                proxyRes.resume()
+                resolve(ctx.text('Remote file is too large', 413))
+                return
+              }
               let contentType = proxyRes.headers['content-type'] || 'application/octet-stream'
               if (contentType.includes('audio/') || contentType.includes('video/')) {
                 contentType = contentType.split(';')[0].trim()
@@ -1090,7 +1128,10 @@ export const createCacheRouter = (): Router => {
                 let lastSpeedAt = Date.now()
                 let lastSpeedBytes = 0
                 let currentSpeed = 0
-                const ext = path.extname(filename) || '.mp3'
+                const requestedExt = path.extname(filename).toLowerCase()
+                const ext = ['.mp3', '.flac', '.m4a', '.ogg', '.wav', '.aac', '.opus'].includes(requestedExt)
+                  ? requestedExt
+                  : '.mp3'
                 const tempPath = path.join(os.tmpdir(), `lx_tag_${Date.now()}_${crypto.randomBytes(8).toString('hex')}${ext}`)
                 const tempStream = fs.createWriteStream(tempPath)
                 let tempStreamError: Error | null = null
@@ -1118,6 +1159,14 @@ export const createCacheRouter = (): Router => {
 
                 proxyRes.on('data', (c: any) => {
                   received += c.length
+                  if (received > maxAudioBytes) {
+                    proxyRes.destroy(new Error('Remote file is too large'))
+                    tempStream.destroy()
+                    fs.unlink(tempPath, () => { })
+                    markProgressError('Remote file is too large')
+                    settleTaggedResponse(ctx.text('Remote file is too large', 413))
+                    return
+                  }
                   if (taskId) {
                     const now = Date.now()
                     if (now - lastSpeedAt >= 1000) {
@@ -1198,13 +1247,11 @@ export const createCacheRouter = (): Router => {
                       try {
                         let imgBuf: Buffer | null = null
                         if (imageUrl.startsWith('http')) {
-                          const imgResp = await (global as any).fetch(imageUrl)
-                          if (imgResp.ok) imgBuf = Buffer.from(await imgResp.arrayBuffer())
-                        } else if (imageUrl.startsWith('/api')) {
-                          const hostLabel = ctx.headers.get('host') || '127.0.0.1:2026'
-                          const internalUrl = `http://${hostLabel}${imageUrl}`
-                          const imgResp = await (global as any).fetch(internalUrl)
-                          if (imgResp.ok) imgBuf = Buffer.from(await imgResp.arrayBuffer())
+                          const safeImageUrl = await assertSafeRemoteHttpUrl(imageUrl)
+                          const imgResp = await (global as any).fetch(safeImageUrl, { redirect: 'error' })
+                          if (imgResp.ok) {
+                            imgBuf = await readResponseBuffer(imgResp, 10 * 1024 * 1024)
+                          }
                         }
                         if (imgBuf && imgBuf.length > 0) {
                           tagger.pictures = [new (getMusicTagNative().MetaPicture)('image/jpeg', new Uint8Array(imgBuf), 'Cover')]
@@ -1257,6 +1304,11 @@ export const createCacheRouter = (): Router => {
               }
 
               // 零缓冲流式代理返回给客户端
+              let received = 0
+              proxyRes.on('data', (chunk: Buffer) => {
+                received += chunk.length
+                if (received > maxAudioBytes) proxyRes.destroy(new Error('Remote file is too large'))
+              })
               const stream = new ReadableStream({
                 start(controller) {
                   proxyRes.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)))
@@ -1286,7 +1338,7 @@ export const createCacheRouter = (): Router => {
           }
         }
 
-        doFetch(urlStr, 0)
+        void doFetch(urlStr, 0)
       } catch (err: any) {
         console.error('[DownloadProxy] Error:', err)
         resolve(ctx.text('Server Error', 500))

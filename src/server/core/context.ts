@@ -29,13 +29,14 @@ export class HttpContext {
 
   /** 获取客户端真实 IP（优先从反向代理头获取） */
   private extractIP(): string {
-    const xForwardedFor = this.headers.get('x-forwarded-for')
-    if (xForwardedFor) {
-      const first = xForwardedFor.split(',')[0]?.trim()
-      if (first) return first
+    if (global.lx?.config?.['proxy.enabled']) {
+      const headerName = (global.lx.config['proxy.header'] || 'x-forwarded-for').toLowerCase()
+      const forwarded = this.headers.get(headerName)
+      if (forwarded) {
+        const first = forwarded.split(',')[0]?.trim()
+        if (first) return first
+      }
     }
-    const xRealIp = this.headers.get('x-real-ip')
-    if (xRealIp) return xRealIp.trim()
     return '127.0.0.1'
   }
 
@@ -51,7 +52,11 @@ export class HttpContext {
     for (const item of cookieHeader.split(';')) {
       const [key, ...rest] = item.trim().split('=')
       if (key) {
-        parsed[key.trim()] = decodeURIComponent(rest.join('='))
+        try {
+          parsed[key.trim()] = decodeURIComponent(rest.join('='))
+        } catch {
+          parsed[key.trim()] = rest.join('=')
+        }
       }
     }
     this._cookies = parsed
@@ -61,7 +66,7 @@ export class HttpContext {
   /** 解析 JSON 请求体 */
   async bodyJson<T = any>(): Promise<T> {
     try {
-      return (await this.request.json()) as T
+      return JSON.parse(await this.readBodyText()) as T
     } catch {
       throw new Error('Invalid JSON body')
     }
@@ -69,7 +74,42 @@ export class HttpContext {
 
   /** 解析纯文本请求体 */
   async bodyText(): Promise<string> {
-    return await this.request.text()
+    return this.readBodyText()
+  }
+
+  private async readBodyText(maxBytes = 20 * 1024 * 1024): Promise<string> {
+    const declaredLength = Number(this.headers.get('content-length') || 0)
+    if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+      throw new Error('Request body is too large')
+    }
+
+    if (!this.request.body) return ''
+    const reader = this.request.body.getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = value instanceof Uint8Array ? value : new Uint8Array(value)
+        total += chunk.byteLength
+        if (total > maxBytes) {
+          await reader.cancel()
+          throw new Error('Request body is too large')
+        }
+        chunks.push(chunk)
+      }
+    } finally {
+      reader.releaseLock()
+    }
+
+    const bytes = new Uint8Array(total)
+    let offset = 0
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset)
+      offset += chunk.byteLength
+    }
+    return new TextDecoder().decode(bytes)
   }
 
   /** 原生 FormData 解析 (用于大文件/表单上传，零第三方依赖) */

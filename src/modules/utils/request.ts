@@ -280,7 +280,7 @@ const fetchData = async (
       timeout,
       agent: await getRequestAgent(url),
       json: format === 'json',
-      rejectUnauthorized: false,
+      rejectUnauthorized: true,
     },
     (err, resp, body) => {
       if (err) return callback(err, null, null)

@@ -5,10 +5,19 @@ import type { IncomingMessage } from 'node:http'
 import { Router, type HttpContext } from '../core'
 import {
   verifyAdminAuth,
+  createAdminSession,
+  removeAdminSession,
+  ADMIN_SESSION_COOKIE_NAME,
   checkPlayerAuthSession,
   createPlayerSession,
   removePlayerSession,
   SESSION_COOKIE_NAME,
+  clearLoginFailures,
+  isLoginRateLimited,
+  recordLoginFailure,
+  safeStringEqual,
+  getCookieValue,
+  USER_SESSION_COOKIE_NAME,
 } from '../auth'
 import { File } from '@/constants'
 import { getUserDirname } from '@/user'
@@ -34,6 +43,48 @@ export interface UserTokenConfig {
 export const userSessions = new Map<string, { username: string; createdAt: number }>()
 export const USER_SESSION_TTL = 7 * 24 * 60 * 60 * 1000 // 7天
 const PLAYER_SESSION_TTL = 24 * 60 * 60 * 1000 // 24小时
+const MAX_USER_SESSIONS = 10_000
+const MAX_PERSISTENT_TOKENS_PER_USER = 100
+const MAX_TOKEN_NAME_LENGTH = 128
+const MAX_TOKEN_LIFETIME_MS = 10 * 365 * 24 * 60 * 60 * 1000
+
+const normalizeTokenName = (value: unknown): string => {
+  const name = typeof value === 'string' ? value.trim() : ''
+  return (name || '未命名 Token').slice(0, MAX_TOKEN_NAME_LENGTH)
+}
+
+const parseTokenExpiry = (expireDays: unknown, expiresAt: unknown, now = Date.now()): number | null => {
+  if (expiresAt !== undefined) {
+    if (expiresAt === null) return null
+    if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) throw new Error('Invalid expiration time')
+    if (expiresAt < now || expiresAt > now + MAX_TOKEN_LIFETIME_MS) throw new Error('Expiration time is out of range')
+    return Math.trunc(expiresAt)
+  }
+  if (expireDays !== undefined) {
+    if (typeof expireDays !== 'number' || !Number.isFinite(expireDays) || expireDays < 0 || expireDays > 3650) {
+      throw new Error('Expiration days are out of range')
+    }
+    return expireDays === 0 ? null : now + Math.trunc(expireDays * 24 * 60 * 60 * 1000)
+  }
+  return null
+}
+
+const pruneExpiredUserSessions = (now = Date.now()) => {
+  for (const [token, session] of userSessions) {
+    if (now - session.createdAt > USER_SESSION_TTL) userSessions.delete(token)
+  }
+}
+
+const issueUserSession = (username: string): string => {
+  pruneExpiredUserSessions()
+  if (userSessions.size >= MAX_USER_SESSIONS) {
+    const oldest = [...userSessions.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt)[0]
+    if (oldest) userSessions.delete(oldest[0])
+  }
+  const token = crypto.randomBytes(32).toString('hex')
+  userSessions.set(token, { username, createdAt: Date.now() })
+  return token
+}
 
 /** 持久化 Token 快速查找缓存：token → username */
 export const persistentTokens = new Map<string, string>()
@@ -148,16 +199,16 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
 
   if ('cookies' in req && 'remoteAddress' in req) {
     // HttpContext
-    token = req.headers.get('x-user-token')
+    token = req.headers.get('x-user-token') || req.cookies[USER_SESSION_COOKIE_NAME] || null
     ip = req.remoteAddress
     url = req.pathname
   } else if ('headers' in req && typeof (req.headers as any).get === 'function') {
     // Web Request
-    token = (req.headers as Headers).get('x-user-token')
+    token = (req.headers as Headers).get('x-user-token') || getCookieValue(req as Request, USER_SESSION_COOKIE_NAME)
     url = (req as Request).url
   } else if ('headers' in req) {
     // IncomingMessage
-    token = (req.headers as any)['x-user-token']
+    token = (req.headers as any)['x-user-token'] || getCookieValue(req as any, USER_SESSION_COOKIE_NAME)
     url = (req as any).url || ''
   }
 
@@ -167,6 +218,7 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
     if (session && Date.now() - session.createdAt <= USER_SESSION_TTL) {
       return session.username
     }
+    if (session) userSessions.delete(token)
 
     // 2. 持久化 API Token 验证
     const persistentUsername = persistentTokens.get(token)
@@ -217,18 +269,28 @@ export const createAuthRouter = (): Router => {
   // 1. 管理后台密码校验与老版管理员登录
   router.post('/api/admin/verify', (ctx) => {
     if (verifyAdminAuth(ctx.request)) {
-      return ctx.json({ success: true })
+      const sessionId = createAdminSession()
+      return ctx.json({ success: true }, 200, {
+        'Set-Cookie': `${ADMIN_SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${8 * 60 * 60}${ctx.url.protocol === 'https:' ? '; Secure' : ''}`,
+      })
     }
     return ctx.json({ success: false, error: '管理员密码验证失败' }, 401)
   })
 
   router.post('/api/login', async (ctx) => {
     try {
+      const ip = ctx.remoteAddress || 'unknown'
+      if (isLoginRateLimited(ip)) return ctx.json({ success: false, message: 'Too many attempts' }, 429)
       const { password } = await ctx.bodyJson<{ password?: string }>()
-      if (password === global.lx?.config?.['frontend.password']) {
+      if (safeStringEqual(password, global.lx?.config?.['frontend.password'])) {
+        clearLoginFailures(ip)
         loginLog.info(`Admin login success from ${ctx.remoteAddress}`)
-        return ctx.json({ success: true })
+        const sessionId = createAdminSession()
+        return ctx.json({ success: true }, 200, {
+          'Set-Cookie': `${ADMIN_SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${8 * 60 * 60}${ctx.url.protocol === 'https:' ? '; Secure' : ''}`,
+        })
       }
+      recordLoginFailure(ip)
       loginLog.warn(`Admin login failed from ${ctx.remoteAddress}`)
       return ctx.json({ success: false }, 401)
     } catch {
@@ -236,16 +298,28 @@ export const createAuthRouter = (): Router => {
     }
   })
 
+  router.post('/api/logout', (ctx) => {
+    const sessionId = ctx.cookies[ADMIN_SESSION_COOKIE_NAME]
+    if (sessionId) removeAdminSession(sessionId)
+    return ctx.json({ success: true }, 200, {
+      'Set-Cookie': `${ADMIN_SESSION_COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0${ctx.url.protocol === 'https:' ? '; Secure' : ''}`,
+    })
+  })
+
   // 1.1 用户登录验证与 Session 颁发
   router.post('/api/user/verify', async (ctx) => {
     try {
+      const ip = ctx.remoteAddress || 'unknown'
+      if (isLoginRateLimited(ip)) return ctx.json({ success: false, message: 'Too many attempts' }, 429)
       const { username, password } = await ctx.bodyJson<{ username?: string; password?: string }>()
       if (!username || !password) return ctx.text('Missing username or password', 400)
-      const user = (global.lx?.config?.users || []).find((u: any) => u.name === username && u.password === password)
+      const user = (global.lx?.config?.users || []).find((u: any) => u.name === username && safeStringEqual(u.password, password))
       if (user) {
+        clearLoginFailures(ip)
         loginLog.info(`User login success: ${username} from ${ctx.remoteAddress}`)
         return ctx.json({ success: true })
       }
+      recordLoginFailure(ip)
       loginLog.warn(`User login failed: ${username} from ${ctx.remoteAddress}`)
       return ctx.json({ success: false, message: 'Invalid credentials' }, 401)
     } catch {
@@ -255,15 +329,20 @@ export const createAuthRouter = (): Router => {
 
   router.post('/api/user/login', async (ctx) => {
     try {
+      const ip = ctx.remoteAddress || 'unknown'
+      if (isLoginRateLimited(ip)) return ctx.json({ success: false, message: 'Too many attempts' }, 429)
       const { username, password } = await ctx.bodyJson<{ username?: string; password?: string }>()
       if (!username || !password) return ctx.json({ success: false, message: 'Missing username or password' }, 400)
-      const user = (global.lx?.config?.users || []).find((u: any) => u.name === username && u.password === password)
+      const user = (global.lx?.config?.users || []).find((u: any) => u.name === username && safeStringEqual(u.password, password))
       if (user) {
-        const token = crypto.randomBytes(32).toString('hex')
-        userSessions.set(token, { username, createdAt: Date.now() })
+        clearLoginFailures(ip)
+        const token = issueUserSession(username)
         loginLog.info(`User token issued: ${username} from ${ctx.remoteAddress}`)
-        return ctx.json({ success: true, token, username })
+        return ctx.json({ success: true, token, username }, 200, {
+          'Set-Cookie': `${USER_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${USER_SESSION_TTL / 1000}${ctx.url.protocol === 'https:' ? '; Secure' : ''}`,
+        })
       }
+      recordLoginFailure(ip)
       loginLog.warn(`User login failed: ${username} from ${ctx.remoteAddress}`)
       return ctx.json({ success: false, message: 'Invalid credentials' }, 401)
     } catch {
@@ -272,29 +351,35 @@ export const createAuthRouter = (): Router => {
   })
 
   router.post('/api/user/logout', (ctx) => {
-    const token = ctx.headers.get('x-user-token')
+    const token = ctx.headers.get('x-user-token') || ctx.cookies[USER_SESSION_COOKIE_NAME]
     if (token) userSessions.delete(token)
-    return ctx.json({ success: true })
+    return ctx.json({ success: true }, 200, {
+      'Set-Cookie': `${USER_SESSION_COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0${ctx.url.protocol === 'https:' ? '; Secure' : ''}`,
+    })
   })
 
   // 2. Web 播放器登录（颁发 HttpOnly Cookie Session）
   router.post('/api/music/auth', async (ctx) => {
     try {
+      const ip = ctx.remoteAddress || 'unknown'
+      if (isLoginRateLimited(ip)) return ctx.json({ success: false, message: 'Too many attempts' }, 429)
       const { password } = await ctx.bodyJson<{ password?: string }>()
       const correctPassword = global.lx?.config?.['player.password'] || ''
 
-      if (password === correctPassword) {
+      if (safeStringEqual(password, correctPassword)) {
+        clearLoginFailures(ip)
         const sessionId = createPlayerSession()
         loginLog.info(`Player login success from ${ctx.remoteAddress}`)
         return new Response(JSON.stringify({ success: true }), {
           status: 200,
           headers: {
             'Content-Type': 'application/json',
-            'Set-Cookie': `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${PLAYER_SESSION_TTL / 1000}`,
+            'Set-Cookie': `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${PLAYER_SESSION_TTL / 1000}${ctx.url.protocol === 'https:' ? '; Secure' : ''}`,
           },
         })
       }
 
+      recordLoginFailure(ip)
       loginLog.warn(`Player login failed from ${ctx.remoteAddress}`)
       return ctx.json({ success: false })
     } catch (err: any) {
@@ -365,17 +450,19 @@ export const createAuthRouter = (): Router => {
     try {
       const { name, expireDays, expiresAt } = await ctx.bodyJson<{ name?: string; expireDays?: number; expiresAt?: number | null }>()
       const config = getUserTokenConfig(username)
+      if (!Array.isArray(config.tokens)) config.tokens = []
+      if (config.tokens.length >= MAX_PERSISTENT_TOKENS_PER_USER) return ctx.text('Too many tokens', 400)
       const newTokenValue = `lx_tk_${crypto.randomBytes(16).toString('hex')}`
       const newToken: UserToken = {
-        name: name || '未命名 Token',
+        name: normalizeTokenName(name),
         token: newTokenValue,
         createdAt: Date.now(),
-        expiresAt: (expiresAt !== undefined && expiresAt !== null) ? expiresAt : (expireDays ? Date.now() + (expireDays * 24 * 60 * 60 * 1000) : null),
+        expiresAt: parseTokenExpiry(expireDays, expiresAt),
         lastUsed: undefined,
       }
       config.tokens.push(newToken)
       saveUserTokenConfig(username, config)
-      tokenLog.info(`User ${username} generated a new token: ${name}`)
+      tokenLog.info(`User ${username} generated a new token: ${newToken.name}`)
       return ctx.json({ success: true, token: newTokenValue })
     } catch (e: any) {
       return ctx.text(e.message, 400)
@@ -427,11 +514,11 @@ export const createAuthRouter = (): Router => {
         return masked === tokenMasked
       })
       if (tokenItem) {
-        if (name !== undefined) tokenItem.name = name
+        if (name !== undefined) tokenItem.name = normalizeTokenName(name)
         if (expiresAt !== undefined) {
-          tokenItem.expiresAt = expiresAt
+          tokenItem.expiresAt = parseTokenExpiry(undefined, expiresAt)
         } else if (expireDays !== undefined) {
-          tokenItem.expiresAt = expireDays ? Date.now() + (expireDays * 24 * 60 * 60 * 1000) : null
+          tokenItem.expiresAt = parseTokenExpiry(expireDays, undefined)
         }
         saveUserTokenConfig(username, config)
         tokenLog.info(`User ${username} updated token config: ${tokenMasked}`)

@@ -177,7 +177,7 @@ async function deleteSingleSong(songId) {
     if (window.SyncManager.mode === 'local') {
         // Local mode: Use user credentials
         const username = localStorage.getItem('lx_sync_user');
-        const password = localStorage.getItem('lx_sync_pass');
+        const password = sessionStorage.getItem('lx_sync_pass');
 
         if (!username || !password) {
             showError('请先登录本地账号');
@@ -357,7 +357,7 @@ async function downloadSong(songOrId, forceQuality = null, suppressAlerts = fals
     // 权限校验：公开受限模式下，如果管理员关闭了“缓存歌曲文件”功能，则下载/缓存歌曲需要验证管理员身份
     const isPublic = !isUserLoggedIn() || !window.currentListData?.username || window.currentListData?.username === 'default' || window.currentListData?.username === '_open';
     const enablePublicRestriction = window.lx_config?.['user.enablePublicRestriction'];
-    const isAdmin = !!localStorage.getItem('lx_admin_password');
+    const isAdmin = !!sessionStorage.getItem('lx_admin_password');
     const isServerCacheAllowed = window.settings?.enableServerCache === true;
 
     if (isPublic && enablePublicRestriction && !isServerCacheAllowed && !isAdmin) {
@@ -447,7 +447,7 @@ async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
     // 权限校验：公开受限模式下，如果管理员关闭了“缓存歌曲文件”功能，则批量下载/缓存歌曲需要验证管理员身份
     const isPublic = !isUserLoggedIn() || !window.currentListData?.username || window.currentListData?.username === 'default' || window.currentListData?.username === '_open';
     const enablePublicRestriction = window.lx_config?.['user.enablePublicRestriction'];
-    const isAdmin = !!localStorage.getItem('lx_admin_password');
+    const isAdmin = !!sessionStorage.getItem('lx_admin_password');
     const isServerCacheAllowed = window.settings?.enableServerCache === true;
 
     if (isPublic && enablePublicRestriction && !isServerCacheAllowed && !isAdmin) {

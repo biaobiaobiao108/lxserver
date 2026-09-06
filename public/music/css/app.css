@@ -112,9 +112,32 @@
     min-inline-size: 2.75rem;
 }
 
-.playlist-batch-toggle {
-    min-block-size: 2.75rem;
-    min-inline-size: 2.75rem;
+.list-header-action {
+    min-block-size: 2rem;
+    min-inline-size: 2rem;
+    padding-inline: 0.5rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.5rem;
+    transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.list-header-action:focus-visible {
+    outline: 2px solid var(--c-500, #10b981);
+    outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+    .list-header-action {
+        min-block-size: 2.25rem;
+        min-inline-size: 2.25rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .list-header-action {
+        transition: none;
+    }
 }
 
 @media (max-width: 767px) {
@@ -1083,4 +1106,3 @@ aside {
     border-color: #f87171 !important;
     box-shadow: 0 0 0 2px rgba(248, 113, 113, 0.4) !important;
 }
-

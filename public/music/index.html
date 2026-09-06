@@ -332,7 +332,7 @@
                         </div>
                         <!-- Header -->
                         <div id="search-results-header"
-                            class="grid grid-cols-12 gap-2 md:gap-4 p-3 md:p-4 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium">
+                            class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-2 md:px-4 md:py-2.5 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium">
                             <div
                                 class="col-span-1 sm:col-span-1 text-center font-mono flex items-center justify-center gap-1 sm:gap-2">
                                 <button id="search-back-btn" onclick="goBackToSearch()"
@@ -343,11 +343,14 @@
                                 <span>#</span>
                                 <div class="flex items-center gap-1">
                                     <button onclick="toggleBatchMode()"
-                                        class="text-[10px] text-emerald-600 hover:text-emerald-700" title="批量操作">
+                                        class="list-header-action inline-flex gap-1 bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
+                                        title="多选操作" aria-label="多选操作">
                                         <i class="fas fa-tasks"></i>
+                                        <span class="hidden sm:inline text-xs font-bold">多选</span>
                                     </button>
                                     <button onclick="window.ListSearch.toggleBar()"
-                                        class="text-[10px] text-emerald-600 hover:text-emerald-700" title="内搜索 (/)">
+                                        class="list-header-action inline-flex bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
+                                        title="搜索当前列表" aria-label="搜索当前列表">
                                         <i class="fas fa-search"></i>
                                     </button>
                                 </div>
@@ -642,19 +645,77 @@
                                 </div>
                             </div>
 
+                            <!-- Song List Local Search Bar (Hidden by default) -->
+                            <div id="sl-local-search-bar"
+                                class="hidden p-3 t-bg-main border-b t-border-main animate-fade-in">
+                                <div class="flex items-center gap-2 sm:gap-3">
+                                    <div class="relative flex-1 min-w-[24px]">
+                                        <input type="text" id="sl-local-search-input"
+                                            class="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border t-border-main rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 t-text-main transition-all"
+                                            placeholder="搜索当前歌单 (歌曲、歌手)..." oninput="window.ListSearch.handleSearch()"
+                                            onkeydown="window.ListSearch.handleKeydown(event)">
+                                        <i
+                                            class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                                    </div>
+
+                                    <div id="sl-local-search-nav"
+                                        class="flex flex-col sm:flex-row items-center gap-0.5 sm:gap-2 opacity-0 pointer-events-none transition-opacity">
+                                        <div
+                                            class="flex border t-border-main rounded-lg overflow-hidden order-1 sm:order-2">
+                                            <button onclick="window.ListSearch.navigate(-1)"
+                                                class="p-1 sm:p-1.5 hover:t-bg-track t-text-main transition-colors border-r t-border-main"
+                                                title="上一个">
+                                                <i class="fas fa-chevron-left text-[10px]"></i>
+                                            </button>
+                                            <button onclick="window.ListSearch.navigate(1)"
+                                                class="p-1 sm:p-1.5 hover:t-bg-track t-text-main transition-colors"
+                                                title="下一个">
+                                                <i class="fas fa-chevron-right text-[10px]"></i>
+                                            </button>
+                                        </div>
+                                        <span id="sl-local-search-count"
+                                            class="text-[9px] sm:text-xs font-mono t-text-muted order-2 sm:order-1 leading-none">0/0</span>
+                                    </div>
+
+                                    <div class="flex items-center gap-3 ml-auto">
+                                        <label class="flex items-center cursor-pointer group">
+                                            <span
+                                                class="text-xs t-text-muted mr-2 group-hover:t-text-main transition-colors hidden sm:block">仅显示匹配项</span>
+                                            <div class="relative inline-flex items-center">
+                                                <input type="checkbox" id="sl-local-search-filter" class="sr-only peer"
+                                                    onchange="window.ListSearch.toggleFilter()">
+                                                <div
+                                                    class="w-10 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500 transition-all">
+                                                </div>
+                                            </div>
+                                        </label>
+                                        <button onclick="window.ListSearch.toggleBar(false)"
+                                            class="p-2 t-text-muted hover:text-red-500 transition-colors" title="关闭搜索"
+                                            aria-label="关闭搜索">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- List Section -->
                             <div class="flex-1 flex flex-col overflow-hidden">
                                 <div
-                                    class="grid grid-cols-12 gap-2 md:gap-4 p-4 border-b t-border-main t-bg-main text-gray-500 text-xs font-bold uppercase tracking-wider">
+                                    class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-2 md:px-4 md:py-2.5 border-b t-border-main t-bg-main text-gray-500 text-xs font-bold uppercase tracking-wider">
                                     <div
                                         class="col-span-1 sm:col-span-1 text-center font-mono flex items-center justify-center gap-1 sm:gap-2">
                                         <span>#</span>
                                         <div class="flex items-center gap-1">
                                             <button onclick="toggleBatchMode()"
-                                                class="playlist-batch-toggle inline-flex min-w-11 min-h-11 items-center justify-center gap-1 rounded-lg bg-emerald-50 px-2.5 text-xs font-bold text-emerald-700 shadow-sm ring-1 ring-emerald-200 transition-all hover:bg-emerald-500 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 active:scale-95"
+                                                class="list-header-action inline-flex gap-1 bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
                                                 title="多选操作" aria-label="多选操作">
                                                 <i class="fas fa-tasks text-sm"></i>
-                                                <span class="hidden sm:inline">多选</span>
+                                                <span class="hidden sm:inline text-xs font-bold">多选</span>
+                                            </button>
+                                            <button onclick="window.ListSearch.toggleBar()"
+                                                class="list-header-action inline-flex bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
+                                                title="搜索当前歌单" aria-label="搜索当前歌单">
+                                                <i class="fas fa-search text-sm"></i>
                                             </button>
                                         </div>
                                     </div>
@@ -3236,13 +3297,13 @@
 
     <!-- Player Bar -->
     <footer id="player-footer"
-        class="fixed bottom-0 left-0 w-full h-auto md:min-h-[6rem] py-2 md:py-3 t-bg-panel/90 backdrop-blur-lg border-t t-border-main shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] flex flex-col md:flex-row items-center px-4 md:px-6 z-[60] transition-all duration-300">
+        class="fixed bottom-0 left-0 w-full h-auto md:min-h-[5rem] py-1 md:py-2 t-bg-panel/90 backdrop-blur-lg border-t t-border-main shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] flex flex-col md:flex-row items-center px-3 md:px-5 z-[60] transition-all duration-300">
 
         <!-- Song Info -->
         <div id="player-song-info"
-            class="w-full md:w-1/4 flex items-start md:items-center gap-2 md:gap-4 mb-2 md:mb-0 pr-8 md:pr-0 transition-all duration-300">
+            class="w-full md:w-1/4 flex items-start md:items-center gap-1.5 md:gap-3 mb-0 md:mb-0 pr-6 md:pr-0 transition-all duration-300">
             <div
-                class="w-12 h-12 md:w-14 md:h-14 bg-gray-200 rounded-md overflow-hidden shadow-sm relative group flex-shrink-0">
+                class="w-10 h-10 md:w-12 md:h-12 bg-gray-200 rounded-md overflow-hidden shadow-sm relative group flex-shrink-0">
                 <img id="player-cover" src="/music/assets/logo.svg" loading="lazy" fetchpriority="low"
                     onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');"
                     class="w-full h-full object-cover dynamic-logo is-placeholder" alt="专辑封面">
@@ -3267,36 +3328,36 @@
             </div>
             <!-- Action Buttons (Mobile Compact) -->
             <div
-                class="flex flex-wrap items-center justify-end max-[440px]:justify-center gap-1.5 ml-auto flex-shrink-0 max-[440px]:max-w-[80px] max-w-[200px] md:max-w-none">
+                class="flex flex-wrap items-center justify-end max-[440px]:justify-center gap-1 ml-auto flex-shrink-0 max-[440px]:max-w-[80px] max-w-[180px] md:max-w-none">
                 <!-- Like button -->
-                <button id="player-like-btn" class="text-gray-300 hover:text-red-500 transition-colors">
+                <button id="player-like-btn" class="min-w-6 min-h-6 text-gray-300 hover:text-red-500 transition-colors">
                     <i class="fas fa-heart text-base md:text-lg"></i>
                 </button>
                 <!-- Download Button (Mobile) -->
                 <button
-                    class="md:hidden text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
+                    class="md:hidden min-w-6 min-h-6 text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
                     onclick="handleDownloadClick(event)" title="下载/缓存">
                     <i class="fas fa-download text-[10px]"></i>
                 </button>
                 <!-- Sound Effects Button (Mobile) -->
                 <button
-                    class="md:hidden text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
+                    class="md:hidden min-w-6 min-h-6 text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
                     onclick="window.soundEffects && window.soundEffects.toggle()" title="均衡器 & 音效">
                     <i class="fas fa-sliders-h text-[10px]"></i>
                 </button>
                 <!-- Comment button (Mobile) -->
                 <button
-                    class="md:hidden text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
+                    class="md:hidden min-w-6 min-h-6 text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
                     onclick="toggleCommentModal()">评</button>
                 <!-- Share Card button (Mobile) -->
                 <button
-                    class="md:hidden text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
+                    class="md:hidden min-w-6 min-h-6 text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
                     onclick="window.lyricCard && window.lyricCard.open()" title="分享歌词卡片">
                     <i class="fas fa-image text-[10px]"></i>
                 </button>
                 <!-- Queue Button (Mobile) -->
                 <button
-                    class="md:hidden text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
+                    class="md:hidden min-w-6 min-h-6 text-gray-500 hover:text-emerald-600 text-[10px] font-bold border border-gray-300 rounded px-1 py-0"
                     onclick="toggleQueueDrawer()" title="播放队列">
                     <i class="fas fa-list text-[10px]"></i>
                 </button>
@@ -3305,13 +3366,13 @@
 
         <!-- Controls & Progress -->
         <div
-            class="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full px-0 md:px-4 order-last md:order-none">
+            class="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full px-0 md:px-3 order-last md:order-none">
 
             <!-- Progress Bar (Moved up for better mobile layout) -->
             <div
-                class="w-full flex items-center gap-2 md:gap-3 text-xs t-text-muted font-mono mb-2 md:mb-0 relative py-1">
+                class="w-full flex items-center gap-2 md:gap-3 text-xs t-text-muted font-mono mb-1 md:mb-0 relative py-0.5 md:py-0">
                 <span id="time-current">00:00</span>
-                <div class="flex-1 h-8 flex items-center relative group">
+                <div class="flex-1 h-5 md:h-6 flex items-center relative group">
                     <!-- Footer Info/Visualizer Canvas (Moved to match progress bar width) -->
                     <div id="visualizer-container"
                         class="absolute bottom-6 left-0 w-full h-12 pointer-events-none overflow-hidden flex justify-center items-end transition-all duration-300">
@@ -3330,7 +3391,7 @@
                 <span id="time-total">00:00</span>
             </div>
 
-            <div class="flex items-center gap-6 md:gap-6 w-full justify-center md:mb-2 relative">
+            <div class="flex items-center gap-4 md:gap-4 w-full justify-center md:mb-1 relative">
                 <!-- Play Mode Button with Dropdown -->
                 <div class="relative group">
                     <button id="play-mode-btn" onclick="togglePlayModeMenu(event)"
@@ -3371,7 +3432,7 @@
                 <button class="t-text-muted hover:text-emerald-600 text-lg transition-colors p-2"
                     onclick="playPrev()"><i class="fas fa-step-backward"></i></button>
                 <button id="btn-play"
-                    class="w-10 h-10 md:w-12 md:h-12 rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-200 hover:bg-emerald-600 hover:scale-105 transition-all flex items-center justify-center"
+                    class="w-10 h-10 md:w-10 md:h-10 rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-200 hover:bg-emerald-600 hover:scale-105 transition-all flex items-center justify-center"
                     onclick="togglePlay()">
                     <i class="fas fa-play ml-1 text-lg"></i>
                 </button>

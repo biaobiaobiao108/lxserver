@@ -224,11 +224,14 @@ var O="/api/music",V=1;window.currentPage=1;var Ds={name:"",source:"kw"},L=[],T=
                 <span>#</span>
                 <div class="flex items-center gap-1">
                     <button onclick="toggleBatchMode()"
-                        class="text-[10px] text-emerald-600 hover:text-emerald-700" title="批量操作">
+                        class="list-header-action inline-flex gap-1 bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
+                        title="多选操作" aria-label="多选操作">
                         <i class="fas fa-tasks"></i>
+                        <span class="hidden sm:inline text-xs font-bold">多选</span>
                     </button>
                     <button onclick="window.ListSearch.toggleBar()"
-                        class="text-[10px] text-emerald-600 hover:text-emerald-700" title="内搜索 (/)">
+                        class="list-header-action inline-flex bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
+                        title="搜索当前列表" aria-label="搜索当前列表">
                         <i class="fas fa-search"></i>
                     </button>
                 </div>

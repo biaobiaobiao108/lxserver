@@ -587,6 +587,9 @@ window.SongListManager = (function () {
             loadDetail(id, source);
         },
         closeDetail: function () {
+            if (window.ListSearch && window.ListSearch.state.id === 'songlist') {
+                window.ListSearch.resetState();
+            }
             const detailView = document.getElementById('songlist-detail-view');
             detailView.classList.add('translate-x-full');
             setTimeout(() => detailView.classList.add('hidden'), 300);

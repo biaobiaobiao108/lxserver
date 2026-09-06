@@ -148,14 +148,14 @@ const musicVisualizer = (function () {
 
             // 增加容器高度和 Footer 高度
             const isShortWindow = window.innerHeight <= 845;
-            visualizerContainer.style.height = isShortWindow ? '40px' : '100px';
+            visualizerContainer.style.height = isShortWindow ? '32px' : '48px';
             visualizerContainer.style.zIndex = '1';
             visualizerContainer.style.display = 'flex'; // 确保可见
             if (playerFooter) {
                 playerFooter.style.transition = 'height 0.3s ease';
                 if (window.innerWidth >= 768) {
-                    // 再次压缩：超矮窗口下，Footer 高度仅设为 90px
-                    playerFooter.style.height = isShortWindow ? '90px' : '150px';
+                    // 保持播放栏紧凑，并让实际高度继续由 ResizeObserver 同步给抽屉布局
+                    playerFooter.style.height = isShortWindow ? '82px' : '88px';
                     playerFooter.style.justifyContent = 'center'; // [Fix] 增加高度后内容保持垂直居中
                 } else {
                     // 手机端保持自适应高度，避免 flex-center 导致内容溢出屏幕外
@@ -172,7 +172,10 @@ const musicVisualizer = (function () {
             // 调整内容区域的间距以防被遮挡
             const mainViews = document.querySelectorAll('#view-search, #view-favorites, #view-settings, #view-about, #view-player-detail, #view-songlist, #songlist-detail-view, #view-leaderboard');
             const isMobile = window.innerWidth < 768;
-            let targetPb = footerIsHidden ? '' : (isShortWindow ? '120px' : '180px');
+            const measuredFooterHeight = playerFooter && !footerIsHidden
+                ? Math.ceil(playerFooter.getBoundingClientRect().height)
+                : 0;
+            let targetPb = footerIsHidden ? '' : `${measuredFooterHeight}px`;
 
             mainViews.forEach(view => {
                 view.style.transition = 'padding-bottom 0.3s ease, padding-top 0.3s ease';

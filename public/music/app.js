@@ -219,26 +219,24 @@ var Zs={"search-input":"搜索歌曲、歌手","search-type":"搜索类型","sea
             <i class="fas fa-spinner fa-spin text-2xl text-emerald-500 mr-3"></i>
             <span class="text-sm font-medium">正在加载歌曲...</span>
         </div>
-    `}function Pt(e,t){let n=document.getElementById("artist-detail-content");if(!n)return;if(window.viewingPlaylist=e,!e||e.length===0){n.innerHTML='<div class="text-center py-10 t-text-muted">暂无歌曲</div>';return}let a=e.length,s=g&&g.itemsPerPage==="all"?a:parseInt(g&&g.itemsPerPage||20);if(!s||s<=0)s=20;let i=Math.ceil(a/s);if(t!==void 0)window.artistSongsPage=t;if(!window.artistSongsPage||window.artistSongsPage<1)window.artistSongsPage=1;if(window.artistSongsPage>i)window.artistSongsPage=i;let o=window.artistSongsPage,r=(o-1)*s,l=Math.min(r+s,a),u=`
+    `}function Pt(e,t){let n=document.getElementById("artist-detail-content");if(!n)return;if(window.viewingPlaylist=e,!e||e.length===0){n.innerHTML='<div class="text-center py-10 t-text-muted">暂无歌曲</div>';return}let a=e.length,s=g&&g.itemsPerPage==="all"?a:parseInt(g&&g.itemsPerPage||20);if(!s||s<=0)s=20;let i=Math.ceil(a/s);if(t!==void 0)window.artistSongsPage=t;if(!window.artistSongsPage||window.artistSongsPage<1)window.artistSongsPage=1;if(window.artistSongsPage>i)window.artistSongsPage=i;let o=window.artistSongsPage,r=(o-1)*s,l=Math.min(r+s,a),d=(window.ListSearch?window.ListSearch.getDisplayList(e):e.map((f,p)=>({item:f,originalIndex:p}))).slice(r,l),u=`
         <!-- 表头 -->
-        <div class="grid grid-cols-12 gap-2 md:gap-4 p-3 md:p-4 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm">
-            <div class="col-span-3 sm:col-span-1 text-center flex items-center justify-center gap-1 sm:gap-2">
-                <span>#</span>
-                <div class="flex items-center gap-1">
-                    <button onclick="toggleBatchMode()"
-                        class="list-header-action inline-flex gap-1 bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
-                        title="多选操作" aria-label="多选操作">
-                        <i class="fas fa-tasks"></i>
-                        <span class="hidden sm:inline text-xs font-bold">多选</span>
+        <div class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm list-results-header">
+            <div class="col-span-2 sm:col-span-1 list-header-leading">
+                <div class="list-header-actions" role="group" aria-label="列表操作">
+                    <button onclick="toggleBatchMode()" data-list-action="batch"
+                        class="list-header-action"
+                        title="多选操作" aria-label="多选操作" aria-pressed="${window.batchMode?"true":"false"}">
+                        <i class="fas fa-tasks" aria-hidden="true"></i>
                     </button>
-                    <button onclick="window.ListSearch.toggleBar()"
-                        class="list-header-action inline-flex bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
+                    <button onclick="window.ListSearch.toggleBar()" data-list-action="search"
+                        class="list-header-action"
                         title="搜索当前列表" aria-label="搜索当前列表">
-                        <i class="fas fa-search"></i>
+                        <i class="fas fa-search" aria-hidden="true"></i>
                     </button>
                 </div>
             </div>
-            <div class="col-span-7 sm:col-span-7 md:col-span-6 lg:col-span-4">歌曲标题</div>
+            <div class="col-span-8 sm:col-span-7 md:col-span-6 lg:col-span-4">歌曲标题</div>
             <div class="hidden sm:block sm:col-span-3 md:col-span-3 lg:col-span-3 text-right md:text-left">歌手</div>
             <div class="hidden lg:block lg:col-span-2">专辑</div>
             <div class="hidden md:block md:col-span-1 text-center md:text-left">时长</div>
@@ -247,13 +245,13 @@ var Zs={"search-input":"搜索歌曲、歌手","search-type":"搜索类型","sea
         </div>
         
         <div class="space-y-1 mt-2">
-            ${(window.ListSearch?window.ListSearch.getDisplayList(e):e.map((f,p)=>({item:f,originalIndex:p}))).slice(r,l).map((f,p)=>{let{item:m,originalIndex:y}=f,h=window.selectedItems.has(String(m.id)),L=window.ListSearch&&window.ListSearch.isMatched(y),x=window.ListSearch&&window.ListSearch.isCurrentMatch(y),A="grid grid-cols-12 gap-2 md:gap-4 p-3 rounded-xl hover:t-bg-panel transition-all group cursor-pointer border border-transparent ";if(x)A+="search-current ";else if(L)A+="search-match ";if(h)A+="row-selected ring-1 ring-emerald-500/30 ";if(p>12)A+="deferred-list-item ";return`
+            ${d.map((f,p)=>{let{item:m,originalIndex:y}=f,h=window.selectedItems.has(String(m.id)),L=window.ListSearch&&window.ListSearch.isMatched(y),x=window.ListSearch&&window.ListSearch.isCurrentMatch(y),A="grid grid-cols-12 gap-2 md:gap-4 p-3 rounded-xl hover:t-bg-panel transition-all group cursor-pointer border border-transparent ";if(x)A+="search-current ";else if(L)A+="search-match ";if(h)A+="row-selected ring-1 ring-emerald-500/30 ";if(p>12)A+="deferred-list-item ";return`
                 <div role="button" tabindex="0" aria-label="${window.batchMode?"选择":"播放"} ${O(m.name||"未命名歌曲")}"
                      class="${A}" data-song-id="${m.id}"
                      onclick="window.batchMode ? handleBatchSelect('${m.id}', !window.selectedItems.has('${m.id}')) : playFromView(${y})"
                      onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.batchMode ? handleBatchSelect('${m.id}', !window.selectedItems.has('${m.id}')) : playFromView(${y}); }">
                     <!-- Index -->
-                    <div class="col-span-1 sm:col-span-1 text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
+                    <div class="col-span-2 sm:col-span-1 text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
                         ${window.batchMode?`
                             <input type="checkbox" 
                                    class="batch-checkbox w-4 h-4 text-emerald-600 rounded" 
@@ -264,7 +262,7 @@ var Zs={"search-input":"搜索歌曲、歌手","search-type":"搜索类型","sea
                     </div>
 
                     <!-- Title -->
-                    <div class="col-span-9 sm:col-span-7 md:col-span-6 lg:col-span-4 flex items-center gap-3 min-w-0">
+                    <div class="col-span-8 sm:col-span-7 md:col-span-6 lg:col-span-4 flex items-center gap-3 min-w-0">
                         <div class="w-10 h-10 md:w-12 md:h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-sm relative">
                             <img src="${m.img||"/music/assets/logo.svg"}" alt="${O(m.name||"歌曲")}专辑封面" width="48" height="48" loading="lazy" decoding="async"
                                  onerror="this.src='/music/assets/logo.svg'" 
@@ -354,7 +352,7 @@ var Zs={"search-input":"搜索歌曲、歌手","search-type":"搜索类型","sea
         </div>
     `;t.innerHTML=a,t.querySelectorAll(".artist-album-card").forEach((s)=>{s.addEventListener("click",()=>{let i=e[Number(s.dataset.albumIndex)];if(i)tn(i.id??i.mid,i.source||window.currentArtistSource||"wy")})}),t.querySelectorAll(".artist-album-download-btn").forEach((s)=>{s.addEventListener("click",async(i)=>{i.stopPropagation();let o=e[Number(s.dataset.albumIndex)];if(o)await na(o,s)})}),t.querySelectorAll(".artist-album-favorite-btn").forEach((s)=>{s.addEventListener("click",async(i)=>{i.stopPropagation();let o=e[Number(s.dataset.albumIndex)];if(!o)return;let r=o.id??o.mid,l=o.source||window.currentArtistSource||"wy",c=await $s(r,l,o.name||"未知专辑",$e(o),o.artistName||o.singer||n);s.className="artist-album-favorite-btn w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm "+(c?"bg-rose-500 text-white opacity-100":"bg-black/45 hover:bg-rose-500 text-white opacity-100 sm:opacity-0 group-hover:opacity-100"),s.title=c?"取消收藏":"收藏专辑"})})}window.renderArtistAlbumsUI=Rn;async function na(e,t){if(typeof window.batchDownloadSongs!=="function"){v("批量下载功能未就绪");return}let n=e.id??e.mid,a=e.source||window.currentArtistSource||"wy",s=e.name||"未知专辑";if(n===void 0||n===null||n===""){v(`专辑「${s}」缺少有效 ID，无法下载`);return}let i=t?.querySelector("i");if(t)t.disabled=!0;if(i)i.className="fas fa-spinner fa-spin text-xs";try{let o=new URLSearchParams({id:String(n),source:a}),r=await fetch(F+"/albumSongs?"+o.toString());if(!r.ok)throw Error("HTTP "+r.status);let l=await r.json(),c=Array.isArray(l.list)?l.list:Array.isArray(l)?l:[];if(c.length===0){v(`专辑「${s}」没有可下载的歌曲`);return}let d=c.map((u)=>({...u,source:u.source||a,albumName:u.albumName||s,meta:{...u.meta||{},albumId:u.meta?.albumId||u.albumId||n,albumName:u.meta?.albumName||s}}));await window.batchDownloadSongs(d,{clearSelection:!1,selectionLabel:`专辑「${s}」共 ${d.length} 首歌曲`})}catch(o){console.error("[ArtistAlbums] 读取专辑歌曲失败:",s,o),v(`读取专辑「${s}」失败: ${o.message}`)}finally{if(t)t.disabled=!1;if(i)i.className="fas fa-download text-xs"}}window.downloadArtistAlbumSongs=na;async function tn(e,t="wy"){let n=document.getElementById("artist-detail-header");if(n)window.tempArtistContext={id:window.currentArtistId,source:window.currentArtistSource,tab:window.currentArtistTab||"albums",order:window.currentArtistOrder||"hot"},n.remove();else window.tempArtistContext=null;let a=document.getElementById("search-type");if(!n)ft=a?a.value:"album",ue=[...window.viewingPlaylist||[]];window.history.pushState({page:"search-detail"},"");let s=document.getElementById("search-results");s.innerHTML='<div class="flex items-center justify-center h-full"><i class="fas fa-spinner fa-spin text-4xl text-emerald-500"></i></div>';try{let i=await fetch(`${F}/albumSongs?id=${e}&source=${t}`);if(!i.ok)throw Error("Failed to fetch album songs");let o=await i.json(),r=o.list||(Array.isArray(o)?o:[]);ke(r);let l=document.getElementById("page-info");if(l)l.innerText="专辑歌曲列表";if(Nt(e,t))ra(e,t,o);let c=document.getElementById("search-back-btn");if(c)c.classList.remove("hidden")}catch(i){v(`获取专辑歌曲失败: ${i.message}`),vt()}}function vt(e=!1){if(!e){if(window.history.state&&window.history.state.page==="search-detail"){window.history.back();return}}if(window.tempArtistContext){let o=window.tempArtistContext;window.tempArtistContext=null,Ct(o.id,o.source,o.order,o.tab,!0);return}if(!ue)return;let t=document.getElementById("search-results"),n=document.getElementById("search-results-header"),a=document.getElementById("artist-detail-header");if(a)a.remove();if(n)n.classList.remove("hidden");if(currentSearchScope==="lib_artists")Me(ue);else if(currentSearchScope==="lib_albums")he(ue);else if(ft==="singer")Dn(ue);else if(ft==="album")On(ue);else ke(ue);let s=document.getElementById("search-back-btn");if(s)s.classList.add("hidden");let i=document.getElementById("page-info");if(i)if(currentSearchScope==="lib_artists")i.innerText="收藏歌手";else if(currentSearchScope==="lib_albums")i.innerText="收藏专辑";else i.innerText="搜索结果";ue=null,ft=null,Nn=null}window.goBackToSearch=vt;window.enterArtist=Ct;function $e(e){if(!e)return"/music/assets/logo.svg";let t=e;if(t.meta&&t.meta.picUrl)return t.meta.picUrl;return t.img||t.pic||t.picUrl||t.picture||t.album&&(t.album.picUrl||t.album.img||t.album.pic)||t.al&&(t.al.picUrl||t.al.img)||t.meta&&(t.meta.img||t.meta.pic)||"/music/assets/logo.svg"}function ke(e){let t=document.getElementById("search-results"),n=document.getElementById("search-results-header");if(n)n.classList.remove("hidden");let a=document.getElementById("search-pagination-bar");if(a)a.classList.remove("hidden");window.artistSongsPage=1;let s=document.getElementById("header-title"),i=document.getElementById("header-album"),o=currentSearchScope==="network";if(n)n.classList.remove("hidden");if(s)if(o)s.classList.remove("lg:col-span-6"),s.classList.add("lg:col-span-4");else s.classList.remove("lg:col-span-4"),s.classList.add("lg:col-span-6");if(i)if(o)i.classList.add("hidden"),i.classList.add("lg:block");else i.classList.add("hidden"),i.classList.remove("lg:block");if(t.innerHTML="",e&&e.length>0)e.forEach((m,y)=>{if(!m.id||m.id==="undefined")m.id=m.songmid||m.songId||m.hash||m.copyrightId||m.mid||m.mediaMid||`temp_${Date.now()}_${y}`});if(window.viewingPlaylist=e,!e||e.length===0){t.innerHTML='<div class="text-center t-text-muted p-8">未找到相关结果</div>',updatePaginationInfo(0,0,0,1,1);return}let r=window.ListSearch.getDisplayList(e),l=r.length,c=g.itemsPerPage==="all"?l:parseInt(g.itemsPerPage);if(c<=0)c=20;let d=Math.ceil(l/(c||1));if(W>d)W=d||1;if(W<1)W=1;let u=(W-1)*c,f=Math.min(u+c,l);if(r.slice(u,f).forEach((m,y)=>{let{item:h,originalIndex:L}=m,x=document.createElement("div");x.id=`gl-row-${L}`,x.dataset.songId=String(h.id);let A=window.ListSearch.isMatched(L),xe=window.ListSearch.isCurrentMatch(L),ot=window.selectedItems.has(String(h.id)),ve="grid grid-cols-12 gap-4 p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer ";if(xe)ve+="search-current ";else if(A)ve+="search-match ";if(ot)ve+="row-selected ring-1 ring-emerald-500/30 ";x.className=ve,x.onclick=(kn)=>{if(window.batchMode){let va=String(h.id),Xs=!window.selectedItems.has(va);window.handleBatchSelect(va,Xs)}else bs(L)};let jt=$e(h),zt=o?"lg:col-span-4":"lg:col-span-6";x.innerHTML=`
             <!-- Index -->
-            <div class="col-span-1 sm:col-span-1 text-center font-mono t-text-muted text-xs md:text-sm flex items-center justify-center">
+            <div class="col-span-2 sm:col-span-1 text-center font-mono t-text-muted text-xs md:text-sm flex items-center justify-center">
                 ${window.batchMode?`
                     <input type="checkbox" 
                            class="batch-checkbox w-4 h-4 text-emerald-600 rounded" 
@@ -365,7 +363,7 @@ var Zs={"search-input":"搜索歌曲、歌手","search-type":"搜索类型","sea
             </div>
 
             <!-- Title (Image + Text) -->
-            <div class="col-span-9 sm:col-span-7 md:col-span-6 ${zt} flex items-center overflow-hidden pr-2">
+            <div class="col-span-8 sm:col-span-7 md:col-span-6 ${zt} flex items-center overflow-hidden pr-2">
                 <div class="relative w-10 h-10 md:w-12 md:h-12 mr-3 md:mr-4 flex-shrink-0 group cursor-pointer">
                      <img data-src="${jt}" src="/music/assets/logo.svg" alt="${O(h.name||"歌曲")}专辑封面" width="48" height="48"
                           loading="lazy" decoding="async"

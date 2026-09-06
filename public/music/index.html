@@ -336,30 +336,28 @@
                         </div>
                         <!-- Header -->
                         <div id="search-results-header"
-                            class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-2 md:px-4 md:py-2.5 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium">
+                            class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
                             <div
-                                class="col-span-1 sm:col-span-1 text-center font-mono flex items-center justify-center gap-1 sm:gap-2">
+                                class="col-span-2 sm:col-span-1 list-header-leading">
                                 <button id="search-back-btn" onclick="goBackToSearch()"
-                                    class="hidden px-1.5 py-1 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                    title="返回列表">
-                                    <i class="fas fa-arrow-left text-xs"></i>
+                                    class="hidden list-header-back text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                    title="返回列表" aria-label="返回列表">
+                                    <i class="fas fa-arrow-left text-xs" aria-hidden="true"></i>
                                 </button>
-                                <span>#</span>
-                                <div class="flex items-center gap-1">
-                                    <button onclick="toggleBatchMode()"
-                                        class="list-header-action inline-flex gap-1 bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
-                                        title="多选操作" aria-label="多选操作">
-                                        <i class="fas fa-tasks"></i>
-                                        <span class="hidden sm:inline text-xs font-bold">多选</span>
+                                <div class="list-header-actions" role="group" aria-label="列表操作">
+                                    <button onclick="toggleBatchMode()" data-list-action="batch"
+                                        class="list-header-action"
+                                        title="多选操作" aria-label="多选操作" aria-pressed="false">
+                                        <i class="fas fa-tasks" aria-hidden="true"></i>
                                     </button>
-                                    <button onclick="window.ListSearch.toggleBar()"
-                                        class="list-header-action inline-flex bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
+                                    <button onclick="window.ListSearch.toggleBar()" data-list-action="search"
+                                        class="list-header-action"
                                         title="搜索当前列表" aria-label="搜索当前列表">
-                                        <i class="fas fa-search"></i>
+                                        <i class="fas fa-search" aria-hidden="true"></i>
                                     </button>
                                 </div>
                             </div>
-                            <div class="col-span-9 sm:col-span-7 md:col-span-6 lg:col-span-4" id="header-title">歌曲标题
+                            <div class="col-span-8 sm:col-span-7 md:col-span-6 lg:col-span-4" id="header-title">歌曲标题
                             </div>
                             <div
                                 class="hidden sm:block sm:col-span-3 md:col-span-3 lg:col-span-3 text-right md:text-left">
@@ -711,25 +709,23 @@
                             <!-- List Section -->
                             <div class="flex-1 flex flex-col overflow-hidden">
                                 <div
-                                    class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-2 md:px-4 md:py-2.5 border-b t-border-main t-bg-main text-gray-500 text-xs font-bold uppercase tracking-wider">
+                                    class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-xs font-bold uppercase tracking-wider list-results-header">
                                     <div
-                                        class="col-span-1 sm:col-span-1 text-center font-mono flex items-center justify-center gap-1 sm:gap-2">
-                                        <span>#</span>
-                                        <div class="flex items-center gap-1">
-                                            <button onclick="toggleBatchMode()"
-                                                class="list-header-action inline-flex gap-1 bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
-                                                title="多选操作" aria-label="多选操作">
-                                                <i class="fas fa-tasks text-sm"></i>
-                                                <span class="hidden sm:inline text-xs font-bold">多选</span>
+                                        class="col-span-2 sm:col-span-1 list-header-leading">
+                                        <div class="list-header-actions" role="group" aria-label="列表操作">
+                                            <button onclick="toggleBatchMode()" data-list-action="batch"
+                                                class="list-header-action"
+                                                title="多选操作" aria-label="多选操作" aria-pressed="false">
+                                                <i class="fas fa-tasks" aria-hidden="true"></i>
                                             </button>
-                                            <button onclick="window.ListSearch.toggleBar()"
-                                                class="list-header-action inline-flex bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
+                                            <button onclick="window.ListSearch.toggleBar()" data-list-action="search"
+                                                class="list-header-action"
                                                 title="搜索当前歌单" aria-label="搜索当前歌单">
-                                                <i class="fas fa-search text-sm"></i>
+                                                <i class="fas fa-search" aria-hidden="true"></i>
                                             </button>
                                         </div>
                                     </div>
-                                    <div class="col-span-9 sm:col-span-9 md:col-span-5 lg:col-span-4">歌曲</div>
+                                    <div class="col-span-8 sm:col-span-9 md:col-span-5 lg:col-span-4">歌曲</div>
                                     <div class="hidden md:block md:col-span-3">歌手</div>
                                     <div class="hidden lg:block lg:col-span-2">专辑</div>
                                     <div class="hidden md:block md:col-span-2 lg:col-span-1 text-right">时长</div>

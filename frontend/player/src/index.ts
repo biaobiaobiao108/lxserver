@@ -2535,24 +2535,22 @@ function renderArtistSongsUI(list, page) {
 
     let html = `
         <!-- 表头 -->
-        <div class="grid grid-cols-12 gap-2 md:gap-4 p-3 md:p-4 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm">
-            <div class="col-span-3 sm:col-span-1 text-center flex items-center justify-center gap-1 sm:gap-2">
-                <span>#</span>
-                <div class="flex items-center gap-1">
-                    <button onclick="toggleBatchMode()"
-                        class="list-header-action inline-flex gap-1 bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
-                        title="多选操作" aria-label="多选操作">
-                        <i class="fas fa-tasks"></i>
-                        <span class="hidden sm:inline text-xs font-bold">多选</span>
+        <div class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm list-results-header">
+            <div class="col-span-2 sm:col-span-1 list-header-leading">
+                <div class="list-header-actions" role="group" aria-label="列表操作">
+                    <button onclick="toggleBatchMode()" data-list-action="batch"
+                        class="list-header-action"
+                        title="多选操作" aria-label="多选操作" aria-pressed="${window.batchMode ? 'true' : 'false'}">
+                        <i class="fas fa-tasks" aria-hidden="true"></i>
                     </button>
-                    <button onclick="window.ListSearch.toggleBar()"
-                        class="list-header-action inline-flex bg-emerald-50 text-emerald-700 shadow-sm ring-1 ring-emerald-200 hover:bg-emerald-500 hover:text-white active:scale-95"
+                    <button onclick="window.ListSearch.toggleBar()" data-list-action="search"
+                        class="list-header-action"
                         title="搜索当前列表" aria-label="搜索当前列表">
-                        <i class="fas fa-search"></i>
+                        <i class="fas fa-search" aria-hidden="true"></i>
                     </button>
                 </div>
             </div>
-            <div class="col-span-7 sm:col-span-7 md:col-span-6 lg:col-span-4">歌曲标题</div>
+            <div class="col-span-8 sm:col-span-7 md:col-span-6 lg:col-span-4">歌曲标题</div>
             <div class="hidden sm:block sm:col-span-3 md:col-span-3 lg:col-span-3 text-right md:text-left">歌手</div>
             <div class="hidden lg:block lg:col-span-2">专辑</div>
             <div class="hidden md:block md:col-span-1 text-center md:text-left">时长</div>
@@ -2579,7 +2577,7 @@ function renderArtistSongsUI(list, page) {
                      onclick="window.batchMode ? handleBatchSelect('${item.id}', !window.selectedItems.has('${item.id}')) : playFromView(${index})"
                      onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.batchMode ? handleBatchSelect('${item.id}', !window.selectedItems.has('${item.id}')) : playFromView(${index}); }">
                     <!-- Index -->
-                    <div class="col-span-1 sm:col-span-1 text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
+                    <div class="col-span-2 sm:col-span-1 text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
                         ${window.batchMode ? `
                             <input type="checkbox" 
                                    class="batch-checkbox w-4 h-4 text-emerald-600 rounded" 
@@ -2590,7 +2588,7 @@ function renderArtistSongsUI(list, page) {
                     </div>
 
                     <!-- Title -->
-                    <div class="col-span-9 sm:col-span-7 md:col-span-6 lg:col-span-4 flex items-center gap-3 min-w-0">
+                    <div class="col-span-8 sm:col-span-7 md:col-span-6 lg:col-span-4 flex items-center gap-3 min-w-0">
                         <div class="w-10 h-10 md:w-12 md:h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-sm relative">
                             <img src="${item.img || '/music/assets/logo.svg'}" alt="${escapeHtmlText(item.name || '歌曲')}专辑封面" width="48" height="48" loading="lazy" decoding="async"
                                  onerror="this.src='/music/assets/logo.svg'" 
@@ -3135,7 +3133,7 @@ function renderResults(list) {
 
         row.innerHTML = `
             <!-- Index -->
-            <div class="col-span-1 sm:col-span-1 text-center font-mono t-text-muted text-xs md:text-sm flex items-center justify-center">
+            <div class="col-span-2 sm:col-span-1 text-center font-mono t-text-muted text-xs md:text-sm flex items-center justify-center">
                 ${window.batchMode ? `
                     <input type="checkbox" 
                            class="batch-checkbox w-4 h-4 text-emerald-600 rounded" 
@@ -3146,7 +3144,7 @@ function renderResults(list) {
             </div>
 
             <!-- Title (Image + Text) -->
-            <div class="col-span-9 sm:col-span-7 md:col-span-6 ${titleLgSpan} flex items-center overflow-hidden pr-2">
+            <div class="col-span-8 sm:col-span-7 md:col-span-6 ${titleLgSpan} flex items-center overflow-hidden pr-2">
                 <div class="relative w-10 h-10 md:w-12 md:h-12 mr-3 md:mr-4 flex-shrink-0 group cursor-pointer">
                      <img data-src="${imgUrl}" src="/music/assets/logo.svg" alt="${escapeHtmlText(item.name || '歌曲')}专辑封面" width="48" height="48"
                           loading="lazy" decoding="async"

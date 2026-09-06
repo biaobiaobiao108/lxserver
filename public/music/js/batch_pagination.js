@@ -56,6 +56,14 @@ function refreshBatchUI() {
     }
 }
 
+function syncListHeaderBatchState() {
+    const isPressed = window.batchMode === true;
+    document.querySelectorAll('[data-list-action="batch"]').forEach(button => {
+        button.setAttribute('aria-pressed', String(isPressed));
+        button.classList.toggle('is-active', isPressed);
+    });
+}
+
 function toggleBatchMode() {
     window.batchMode = !window.batchMode;
     window.selectedItems.clear();
@@ -74,6 +82,8 @@ function toggleBatchMode() {
     if (slToolbar) {
         slToolbar.classList.toggle('hidden', !window.batchMode);
     }
+
+    syncListHeaderBatchState();
 }
 
 function selectAllVisible() {
@@ -129,6 +139,8 @@ function exitBatchMode() {
     // 恢复被隐藏的分页控件 (在排行榜中)
     const lbPagination = document.getElementById('lb-pagination');
     if (lbPagination) lbPagination.classList.remove('hidden');
+
+    syncListHeaderBatchState();
 }
 
 function deselectAll() {

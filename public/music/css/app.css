@@ -258,14 +258,74 @@ body.overlay-open > *:not(.skip-link) {
     min-inline-size: 2.75rem;
 }
 
-.list-header-action {
-    min-block-size: 2rem;
-    min-inline-size: 2rem;
-    padding-inline: 0.5rem;
+.list-results-header {
+    align-items: center;
+    line-height: 1.2;
+}
+
+.list-header-leading {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.25rem;
+    min-inline-size: 0;
+}
+
+.list-header-back {
+    display: inline-flex;
     align-items: center;
     justify-content: center;
+    min-block-size: 1.875rem;
+    min-inline-size: 1.875rem;
     border-radius: 0.5rem;
-    transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.list-header-back.hidden {
+    display: none;
+}
+
+.list-header-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px;
+    flex-shrink: 0;
+    border: 1px solid var(--border-main);
+    border-radius: 0.625rem;
+    background: color-mix(in srgb, var(--bg-panel) 82%, var(--bg-main));
+    box-shadow: 0 1px 2px rgb(15 23 42 / 0.05);
+}
+
+.list-header-action {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-block-size: 1.875rem;
+    min-inline-size: 1.875rem;
+    inline-size: 1.875rem;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--text-muted);
+    line-height: 1;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.list-header-action i {
+    font-size: 0.7rem;
+}
+
+.list-header-action:hover:not(:disabled),
+.list-header-action:focus-visible,
+.list-header-action[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--c-500, #10b981) 30%, transparent);
+    background: color-mix(in srgb, var(--c-500, #10b981) 12%, transparent);
+    color: var(--c-600, #059669);
+}
+
+.list-header-action:active:not(:disabled) {
+    transform: scale(0.94);
 }
 
 .list-header-action:focus-visible {
@@ -273,10 +333,23 @@ body.overlay-open > *:not(.skip-link) {
     outline-offset: 2px;
 }
 
+.list-header-action:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+}
+
 @media (pointer: coarse) {
-    .list-header-action {
-        min-block-size: 2.25rem;
-        min-inline-size: 2.25rem;
+    .list-header-action,
+    .list-header-back {
+        min-block-size: 2.125rem;
+        min-inline-size: 2.125rem;
+        inline-size: 2.125rem;
+    }
+}
+
+@media (max-width: 639px) {
+    .list-results-header .list-header-leading:has(.list-header-back:not(.hidden)) {
+        grid-column: span 3 / span 3;
     }
 }
 

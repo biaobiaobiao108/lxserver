@@ -245,6 +245,21 @@ class CacheIndexManager {
         }
     }
 
+    clear(username: string, folder: 'cache' | 'music', location?: string): number {
+        const loc = location || currentCacheLocation
+        try {
+            const db = getDb()
+            const result = db.run(
+                'DELETE FROM cache_index WHERE location = ? AND user_name = ? AND folder = ?',
+                [loc, username, folder],
+            )
+            return result.changes ?? 0
+        } catch (e) {
+            console.error(`[CacheIndex] Failed to clear cache index for ${username}:${folder}:`, e)
+            return 0
+        }
+    }
+
     getAll(username: string, folder: 'cache' | 'music', location?: string): CacheItem[] {
         const loc = location || currentCacheLocation
         try {
@@ -787,7 +802,6 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
     for (const folder of roots) {
         const index = indexManager.load(normalizedUsername, folder)
 
-        let updated = false
         const existingKeysInIndex = new Set(index.keys())
         const foundKeysOnDisk = new Set<string>()
 
@@ -904,12 +918,9 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
             const qualityCorrectionNeeded = !!existing && needsQualityCorrection(existing.quality, currentAudioContainer)
 
             // Update or add to index if anything changed (size, mtime, lyric status, or cover status)
-            if (!existing || existing.size !== stats.size || existing.hasLyric !== hasLyricOnDisk || existing.lyricFilename !== lrcFile || needsCoverCheck || !existing.interval || existing.quality === 'unknown' || !existing.bitrate || qualityCorrectionNeeded) {
+            if (!existing || existing.size !== stats.size || existing.hasLyric !== hasLyricOnDisk || existing.lyricFilename !== lrcFile || existing.subPath !== subPath || needsCoverCheck || !existing.interval || existing.quality === 'unknown' || !existing.bitrate || qualityCorrectionNeeded) {
                 itemChanged = true
                 if (existing) {
-                    const lyricStateChanged = existing.hasLyric !== hasLyricOnDisk || existing.lyricFilename !== lrcFile
-                    const fileStateChanged = existing.size !== stats.size || existing.mtime !== stats.mtimeMs
-                    if (lyricStateChanged || fileStateChanged) updated = true
                     existing.size = stats.size
                     existing.mtime = stats.mtimeMs
                     existing.hasLyric = hasLyricOnDisk
@@ -917,7 +928,6 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
 
                     if (existing.subPath !== subPath) {
                         existing.subPath = subPath
-                        updated = true
                     }
 
                     if (needsCoverCheck) {
@@ -931,7 +941,6 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
                                     ? 'remote'
                                     : 'none'
                         const actualHasCover = coverType !== 'none'
-                        if (existing.hasCover !== actualHasCover || existing.coverType !== coverType) updated = true
                         existing.hasCover = actualHasCover
                         existing.coverType = coverType
                         existing.coverCheckedVersion = COVER_CHECK_VERSION
@@ -970,7 +979,6 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
                         } finally {
                             try { if (tagger) tagger.dispose() } catch (e) { }
                         }
-                        updated = true
                     }
                     finalQuality = existing.quality
                 } else {
@@ -1052,7 +1060,6 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
                     }
                     existing = item
                 }
-                updated = true
             }
 
             const compositeKey = `${normalizedId}_${finalQuality || 'unknown'}`
@@ -1061,7 +1068,6 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
             if (oldKey && oldKey !== compositeKey) {
                 index.delete(oldKey)
                 index.set(compositeKey, existing!)
-                updated = true
             } else if (!oldKey) {
                 index.set(compositeKey, existing!)
             }
@@ -1083,13 +1089,12 @@ export const syncCacheIndex = async (username?: string, roots: Array<'cache' | '
         // Remove deleted files from index
         for (const key of existingKeysInIndex) {
             if (!foundKeysOnDisk.has(key)) {
+                const staleItem = index.get(key)
+                if (staleItem) {
+                    indexManager.remove(normalizedUsername, staleItem.id, folder, staleItem.quality)
+                }
                 index.delete(key)
-                updated = true
             }
-        }
-
-        if (updated) {
-            indexManager.save(normalizedUsername, folder)
         }
     }
 
@@ -1107,15 +1112,11 @@ export const getCacheList = async (username?: string) => {
 
     // Keep indexed metadata aligned with disk. This also repairs stale hasCover values
     // from older indexes where the cover endpoint may already return 404.
-    const cacheDir = getCacheDir(normalizedUsername, false)
-    const musicDir = getCacheDir(normalizedUsername, true)
-    const hasCacheIndex = fs.existsSync(path.join(cacheDir, 'cache_index.json'))
-    const hasMusicIndex = fs.existsSync(path.join(musicDir, 'music_index.json'))
-
     const syncKey = `${currentCacheLocation}:${normalizedUsername}`
     const syncState = cacheListSyncState.get(syncKey) || { lastSync: 0 }
-    const mustSync = !hasCacheIndex || !hasMusicIndex
-    const shouldSync = mustSync || Date.now() - syncState.lastSync > CACHE_LIST_SYNC_TTL
+    // SQLite is the source of truth for metadata. Legacy JSON index files must
+    // not suppress a disk reconciliation after a migration or manual edit.
+    const shouldSync = Date.now() - syncState.lastSync > CACHE_LIST_SYNC_TTL
 
     if (shouldSync) {
         if (!syncState.pending) {
@@ -1163,9 +1164,7 @@ export const batchRenameCacheFiles = async (username: string | undefined) => {
     let skipCount = 0
 
     for (const folder of folders) {
-        const index = indexManager.load(normalizedUsername, folder)
-        const items = Array.from(index.values())
-        let folderUpdated = false
+        const items = indexManager.getAll(normalizedUsername, folder)
 
         for (const item of items) {
             const songInfo = {
@@ -1220,8 +1219,8 @@ export const batchRenameCacheFiles = async (username: string | undefined) => {
                             item.coverType = 'cached'
                             item.hasCover = true
                         }
+                        indexManager.update(normalizedUsername, item, folder)
                         successCount++
-                        folderUpdated = true
                     } else {
                         failCount++
                     }
@@ -1234,9 +1233,6 @@ export const batchRenameCacheFiles = async (username: string | undefined) => {
             }
         }
 
-        if (folderUpdated) {
-            indexManager.save(normalizedUsername, folder)
-        }
     }
 
     return { success: true, successCount, failCount, skipCount }
@@ -1482,7 +1478,7 @@ const setIndexCoverState = (filename: string, username: string, coverType: Cache
             item.coverCheckedMtime = stats.mtimeMs
             item.coverCheckedSize = stats.size
         }
-        indexManager.save(username, folder, location)
+        indexManager.update(username, item, folder, location)
         return item
     }
     return null
@@ -1992,7 +1988,7 @@ const ensureCachedLyrics = async (
             item.metadataWritable = metadataWritable
             item.metadataError = metadataError
             item.embedLyricError = embedLyricError
-            indexManager.save(normalizedUsername, folder)
+            indexManager.update(normalizedUsername, item, folder)
         }
         return
     }
@@ -2037,7 +2033,7 @@ const ensureCachedLyrics = async (
                 finalItem.metadataError = metadataError
                 finalItem.embedLyricError = embedLyricError
             }
-            indexManager.save(normalizedUsername, folder)
+            indexManager.update(normalizedUsername, finalItem, folder)
         }
     } catch (err: any) {
         console.warn(`[FileCache] Failed to ensure lyrics for ${path.basename(audioPath)}: ${err?.message || err}`)
@@ -2378,7 +2374,7 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                         taggedItem.coverCheckedSize = taggedStats.size
                         taggedItem.mtime = taggedStats.mtimeMs
                         taggedItem.size = taggedStats.size
-                        indexManager.save(normalizedUsername, folderType)
+                        indexManager.update(normalizedUsername, taggedItem, folderType)
                     }
 
                     await ensureCachedLyrics(songInfo, actualQuality, username, isOnlyDownload, finalPath, folderType, shouldCacheLyric, shouldEmbedLyric)
@@ -2693,7 +2689,7 @@ export const setIndexEmbedLyric = (
         if (found) {
             (found as any).hasEmbedLyric = value
             if (metadata) Object.assign(found, metadata)
-            indexManager.save(normalizedUsername, folder)
+            indexManager.update(normalizedUsername, found, folder)
             return true
         }
     }
@@ -2768,25 +2764,45 @@ export const getCacheStats = (username?: string) => {
     return result
 }
 
+const getCacheFilesRecursively = (root: string): string[] => {
+    const files: string[] = []
+    const visit = (dir: string) => {
+        if (!fs.existsSync(dir)) return
+        let entries: fs.Dirent[]
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true })
+        } catch {
+            return
+        }
+        for (const entry of entries) {
+            if (entry.isSymbolicLink()) continue
+            const filePath = path.join(dir, entry.name)
+            if (entry.isDirectory()) visit(filePath)
+            else if (entry.isFile()) files.push(filePath)
+        }
+    }
+    visit(root)
+    return files
+}
+
 export const clearAllCache = (username?: string) => {
-    const roots = ['cache', 'music']
+    const roots: CacheFolder[] = ['cache', 'music']
     let deletedCount = 0
     let freedSize = 0
     const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
     for (const folder of roots) {
         const dir = getCacheDir(normalizedUsername, folder === 'music')
         if (!fs.existsSync(dir)) continue
-        const files = fs.readdirSync(dir)
-        for (const file of files) {
+        for (const filePath of getCacheFilesRecursively(dir)) {
             try {
-                const stats = fs.statSync(path.join(dir, file))
-                fs.unlinkSync(path.join(dir, file))
+                const stats = fs.statSync(filePath)
+                fs.unlinkSync(filePath)
                 deletedCount++; freedSize += stats.size
             } catch (e) { }
         }
-        indexManager.load(normalizedUsername, folder as any).clear()
-        indexManager.save(normalizedUsername, folder as any)
+        indexManager.clear(normalizedUsername, folder)
     }
+    invalidateCacheListSync(normalizedUsername)
     return { deletedCount, freedSize }
 }
 
@@ -2798,20 +2814,24 @@ export const clearLyricCache = (username?: string) => {
     for (const folder of roots) {
         const dir = getCacheDir(normalizedUsername, folder === 'music')
         if (!fs.existsSync(dir)) continue
-        const files = fs.readdirSync(dir)
-        for (const file of files) {
-            if (file.endsWith('.lrc')) {
+        for (const filePath of getCacheFilesRecursively(dir)) {
+            if (path.extname(filePath).toLowerCase() === '.lrc') {
                 try {
-                    const stats = fs.statSync(path.join(dir, file))
-                    fs.unlinkSync(path.join(dir, file))
+                    const stats = fs.statSync(filePath)
+                    fs.unlinkSync(filePath)
                     deletedCount++; freedSize += stats.size
                 } catch (e) { }
             }
         }
         const items = indexManager.getAll(normalizedUsername, folder)
-        items.forEach(item => { if (item.hasLyric) { item.hasLyric = false; item.lyricFilename = undefined } })
-        indexManager.save(normalizedUsername, folder)
+        items.forEach(item => {
+            if (!item.hasLyric && !item.lyricFilename) return
+            item.hasLyric = false
+            item.lyricFilename = undefined
+            indexManager.update(normalizedUsername, item, folder)
+        })
     }
+    invalidateCacheListSync(normalizedUsername)
     return { deletedCount, freedSize }
 }
 
@@ -3161,6 +3181,7 @@ export const categorizeFiles = async (filenames: string[], targetSubPath: string
                     const lrcExt = path.extname(item.lyricFilename) || '.lrc'
                     item.lyricFilename = newFilename.substring(0, newFilename.length - musicExt.length) + lrcExt
                 }
+                indexManager.update(normalizedUsername, item, folder)
             } else {
                 failCount++
                 continue
@@ -3173,6 +3194,5 @@ export const categorizeFiles = async (filenames: string[], targetSubPath: string
         }
     }
 
-    indexManager.save(normalizedUsername, folder)
     return { successCount, failCount }
 }

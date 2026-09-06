@@ -110,4 +110,110 @@ describe('File Cache Path Traversal Defense', () => {
       fs.rmSync(root, { recursive: true, force: true })
     }
   })
+
+  it('should remove SQLite index rows when cached files are deleted from disk', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-cache-index-delete-'))
+    const previousLx = (global as any).lx
+    const dataPath = path.join(root, 'data')
+    const dbPath = path.join(root, 'lxserver.db')
+    try {
+      closeDb()
+      ;(global as any).lx = { dataPath, config: {} }
+      initDatabase(dbPath)
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.DATA)
+
+      const musicDir = fileCache.getCacheDir('test-user', true)
+      const audioFilename = 'album/song.flac'
+      const audioPath = path.join(musicDir, audioFilename)
+      fs.mkdirSync(path.dirname(audioPath), { recursive: true })
+      fs.writeFileSync(audioPath, Buffer.from('audio'))
+      const stats = fs.statSync(audioPath)
+      const item = {
+        id: 'wy_deleted-song',
+        songmid: 'wy_deleted-song',
+        name: 'Deleted Song',
+        singer: 'Test Singer',
+        album: 'Test Album',
+        source: 'wy',
+        quality: 'flac',
+        filename: audioFilename,
+        folder: 'music',
+        mtime: stats.mtimeMs,
+        size: stats.size,
+        ext: 'flac',
+        hasCover: false,
+        coverType: 'none' as const,
+        hasLyric: false,
+        hasEmbedLyric: true,
+        metadataWritable: true,
+        audioContainer: 'flac',
+        coverCheckedVersion: 5,
+        coverCheckedMtime: stats.mtimeMs,
+        coverCheckedSize: stats.size,
+        interval: '00:01',
+        bitrate: 1000,
+      }
+      fileCache.indexManager.update('test-user', item, 'music')
+
+      await fileCache.syncCacheIndex('test-user', ['music'])
+      expect(fileCache.indexManager.get('test-user', item.id, 'music', item.quality, true)).toBeDefined()
+
+      fs.unlinkSync(audioPath)
+      await fileCache.syncCacheIndex('test-user', ['music'])
+      expect(fileCache.indexManager.get('test-user', item.id, 'music', item.quality, true)).toBeUndefined()
+    } finally {
+      closeDb()
+      ;(global as any).lx = previousLx
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.ROOT)
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('should clear nested cache files and their SQLite index rows together', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-cache-clear-'))
+    const previousLx = (global as any).lx
+    const dataPath = path.join(root, 'data')
+    const dbPath = path.join(root, 'lxserver.db')
+    try {
+      closeDb()
+      ;(global as any).lx = { dataPath, config: {} }
+      initDatabase(dbPath)
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.DATA)
+
+      const musicDir = fileCache.getCacheDir('test-user', true)
+      const audioFilename = 'nested/song.mp3'
+      const audioPath = path.join(musicDir, audioFilename)
+      fs.mkdirSync(path.dirname(audioPath), { recursive: true })
+      fs.writeFileSync(audioPath, Buffer.from('audio'))
+      fs.writeFileSync(path.join(musicDir, 'nested/song.lrc'), '[00:00.00]lyrics')
+      fileCache.indexManager.update('test-user', {
+        id: 'wy_clear-song',
+        songmid: 'wy_clear-song',
+        name: 'Clear Song',
+        singer: 'Test Singer',
+        album: 'Test Album',
+        source: 'wy',
+        quality: 'mp3',
+        filename: audioFilename,
+        folder: 'music',
+        mtime: Date.now(),
+        size: 5,
+        ext: 'mp3',
+        hasCover: false,
+        coverType: 'none',
+        hasLyric: true,
+        lyricFilename: 'nested/song.lrc',
+      }, 'music')
+
+      const result = fileCache.clearAllCache('test-user')
+      expect(result.deletedCount).toBe(2)
+      expect(fs.existsSync(audioPath)).toBe(false)
+      expect(fileCache.indexManager.getAll('test-user', 'music')).toEqual([])
+    } finally {
+      closeDb()
+      ;(global as any).lx = previousLx
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.ROOT)
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
 })

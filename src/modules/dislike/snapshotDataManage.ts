@@ -1,142 +1,178 @@
-import { throttle } from '@/utils/common'
-import fs from 'node:fs'
-import path from 'node:path'
 import { syncLog } from '@/utils/log4js'
-import { checkAndCreateDirSync } from '@/utils'
 import { getUserConfig, type UserDataManage } from '@/user/data'
-import { File } from '@/constants'
+import { getDb } from '@/database'
 
-interface SnapshotInfo {
+export interface SnapshotInfo {
   latest: string | null
   time: number
   list: string[]
   clients: Record<string, LX.Sync.Dislike.ListInfo>
 }
+
 export class SnapshotDataManage {
   userDataManage: UserDataManage
-  dislikeDir: string
-  snapshotDir: string
-  snapshotInfoFilePath: string
-  snapshotInfo: SnapshotInfo
-  clientSnapshotKeys: string[]
-  private readonly saveSnapshotInfoThrottle: () => void
+  readonly module: string = 'dislike'
 
-  isIncluedsDevice = (key: string) => {
-    return this.clientSnapshotKeys.includes(key)
-  }
-
-  clearOldSnapshot = async() => {
-    if (!this.snapshotInfo) return
-    const snapshotList = this.snapshotInfo.list.filter(key => !this.isIncluedsDevice(key))
-    // console.log(snapshotList.length, lx.config.maxSnapshotNum)
+  clearOldSnapshot = async (): Promise<void> => {
+    const db = getDb()
     const userMaxSnapshotNum = getUserConfig(this.userDataManage.userName).maxSnapshotNum
-    let requiredSave = snapshotList.length > userMaxSnapshotNum
-    while (snapshotList.length > userMaxSnapshotNum) {
-      const name = snapshotList.pop()
-      if (name) {
-        await this.removeSnapshot(name)
-        this.snapshotInfo.list.splice(this.snapshotInfo.list.indexOf(name), 1)
-      } else break
-    }
-    if (requiredSave) this.saveSnapshotInfo(this.snapshotInfo)
-  }
 
-  updateDeviceSnapshotKey = async(clientId: string, key: string) => {
-    // console.log('updateDeviceSnapshotKey', key)
-    let client = this.snapshotInfo.clients[clientId]
-    if (!client) client = this.snapshotInfo.clients[clientId] = { snapshotKey: '', lastSyncDate: 0 }
-    if (client.snapshotKey) this.clientSnapshotKeys.splice(this.clientSnapshotKeys.indexOf(client.snapshotKey), 1)
-    client.snapshotKey = key
-    client.lastSyncDate = Date.now()
-    this.clientSnapshotKeys.push(key)
-    this.saveSnapshotInfoThrottle()
-  }
+    // 查询设备正在使用的 snapshot_key 集合
+    const deviceStates = db.query<{ snapshot_key: string }, [string, string]>(
+      'SELECT snapshot_key FROM device_snapshot_state WHERE client_id IN (SELECT client_id FROM devices WHERE user_name = ?) AND module = ?'
+    ).all(this.userDataManage.userName, this.module)
+    const activeKeys = new Set(deviceStates.map(d => d.snapshot_key).filter(Boolean))
 
-  getDeviceCurrentSnapshotKey = async(clientId: string) => {
-    // console.log('updateDeviceSnapshotKey', key)
-    const client = this.snapshotInfo.clients[clientId]
-    return client?.snapshotKey
-  }
+    // 获取所有快照按照创建时间倒序
+    const allSnaps = db.query<{ id: string }, [string, string]>(
+      'SELECT id FROM snapshots WHERE user_name = ? AND module = ? ORDER BY created_at DESC'
+    ).all(this.userDataManage.userName, this.module)
 
-  getSnapshotInfo = async(): Promise<SnapshotInfo> => {
-    return this.snapshotInfo
-  }
-
-  saveSnapshotInfo = (info: SnapshotInfo) => {
-    this.snapshotInfo = info
-    this.saveSnapshotInfoThrottle()
-  }
-
-  removeSnapshotInfo = (clientId: string) => {
-    let client = this.snapshotInfo.clients[clientId]
-    if (!client) return
-    if (client.snapshotKey) this.clientSnapshotKeys.splice(this.clientSnapshotKeys.indexOf(client.snapshotKey), 1)
-    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-    delete this.snapshotInfo.clients[clientId]
-    this.saveSnapshotInfoThrottle()
-  }
-
-  getSnapshot = async(name: string) => {
-    const filePath = path.join(this.snapshotDir, `snapshot_${name}`)
-    let listData: LX.Dislike.DislikeRules
-    try {
-      listData = (await fs.promises.readFile(filePath)).toString('utf-8')
-    } catch (err) {
-      syncLog.warn(err)
-      return null
-    }
-    return listData
-  }
-
-  saveSnapshot = async(name: string, data: string) => {
-    syncLog.info('saveSnapshot', this.userDataManage.userName, name)
-    const filePath = path.join(this.snapshotDir, `snapshot_${name}`)
-    try {
-      fs.writeFileSync(filePath, data)
-    } catch (err) {
-      syncLog.error(err)
-      throw err
+    const unpinnedSnaps = allSnaps.filter(s => !activeKeys.has(s.id))
+    if (unpinnedSnaps.length > userMaxSnapshotNum) {
+      const toDelete = unpinnedSnaps.slice(userMaxSnapshotNum)
+      const deleteStmt = db.prepare('DELETE FROM snapshots WHERE user_name = ? AND module = ? AND id = ?')
+      for (const s of toDelete) {
+        deleteStmt.run(this.userDataManage.userName, this.module, s.id)
+      }
     }
   }
 
-  removeSnapshot = async(name: string) => {
-    syncLog.info('removeSnapshot', this.userDataManage.userName, name)
-    const filePath = path.join(this.snapshotDir, `snapshot_${name}`)
-    try {
-      fs.unlinkSync(filePath)
-    } catch (err) {
-      syncLog.error(err)
+  updateDeviceSnapshotKey = async (clientId: string, key: string): Promise<void> => {
+    const db = getDb()
+    db.run(
+      'INSERT OR REPLACE INTO device_snapshot_state (client_id, module, snapshot_key, last_sync_date) VALUES (?, ?, ?, ?)',
+      [clientId, this.module, key, Date.now()]
+    )
+  }
+
+  getDeviceCurrentSnapshotKey = async (clientId: string): Promise<string | undefined> => {
+    const db = getDb()
+    const row = db.query<{ snapshot_key: string }, [string, string]>(
+      'SELECT snapshot_key FROM device_snapshot_state WHERE client_id = ? AND module = ?'
+    ).get(clientId, this.module)
+    return row?.snapshot_key
+  }
+
+  getSnapshotInfo = async (): Promise<SnapshotInfo> => {
+    const db = getDb()
+
+    // 1. 最新快照
+    const metaRow = db.query<{ latest_id: string; updated_at: number }, [string, string]>(
+      'SELECT latest_id, updated_at FROM snapshot_meta WHERE user_name = ? AND module = ?'
+    ).get(this.userDataManage.userName, this.module)
+
+    // 2. 快照 ID 列表 (倒序)
+    const snapRows = db.query<{ id: string }, [string, string]>(
+      'SELECT id FROM snapshots WHERE user_name = ? AND module = ? ORDER BY created_at DESC'
+    ).all(this.userDataManage.userName, this.module)
+
+    // 3. 各客户端状态
+    const devRows = db.query<{ client_id: string; snapshot_key: string; last_sync_date: number }, [string, string]>(
+      `SELECT dss.client_id, dss.snapshot_key, dss.last_sync_date
+       FROM device_snapshot_state dss
+       JOIN devices d ON d.client_id = dss.client_id
+       WHERE d.user_name = ? AND dss.module = ?`
+    ).all(this.userDataManage.userName, this.module)
+
+    const clients: Record<string, LX.Sync.Dislike.ListInfo> = {}
+    for (const d of devRows) {
+      clients[d.client_id] = {
+        snapshotKey: d.snapshot_key,
+        lastSyncDate: d.last_sync_date,
+      }
+    }
+
+    return {
+      latest: metaRow?.latest_id ?? null,
+      time: metaRow?.updated_at ?? 0,
+      list: snapRows.map(r => r.id),
+      clients,
     }
   }
 
+  saveSnapshotInfo = (info: SnapshotInfo): void => {
+    const db = getDb()
+    if (info.latest) {
+      db.run(
+        'INSERT OR REPLACE INTO snapshot_meta (user_name, module, latest_id, updated_at) VALUES (?, ?, ?, ?)',
+        [this.userDataManage.userName, this.module, info.latest, info.time || Date.now()]
+      )
+    }
+    void this.clearOldSnapshot()
+  }
+
+  removeSnapshotInfo = (clientId: string): void => {
+    const db = getDb()
+    db.run('DELETE FROM device_snapshot_state WHERE client_id = ? AND module = ?', [clientId, this.module])
+  }
+
+  getSnapshot = async (name: string): Promise<LX.Dislike.DislikeRules | null> => {
+    const db = getDb()
+    const row = db.query<{ data: string }, [string, string, string]>(
+      'SELECT data FROM snapshots WHERE user_name = ? AND module = ? AND id = ?'
+    ).get(this.userDataManage.userName, this.module, name)
+
+    if (!row) return null
+    return row.data as LX.Dislike.DislikeRules
+  }
+
+  saveSnapshot = async (name: string, data: string): Promise<void> => {
+    const db = getDb()
+    const size = Buffer.byteLength(data, 'utf8')
+    db.run(
+      'INSERT OR REPLACE INTO snapshots (id, user_name, module, data, size, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, this.userDataManage.userName, this.module, data, size, Date.now()]
+    )
+  }
+
+  saveSnapshotWithTime = async (name: string, data: string, time: number): Promise<void> => {
+    const db = getDb()
+    const size = Buffer.byteLength(data, 'utf8')
+    db.run(
+      'INSERT OR REPLACE INTO snapshots (id, user_name, module, data, size, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, this.userDataManage.userName, this.module, data, size, time || Date.now()]
+    )
+  }
+
+  removeSnapshot = async (name: string): Promise<void> => {
+    const db = getDb()
+    db.run(
+      'DELETE FROM snapshots WHERE user_name = ? AND module = ? AND id = ?',
+      [this.userDataManage.userName, this.module, name]
+    )
+  }
+
+  getSnapshotListWithMeta = async (): Promise<Array<{ id: string; time: number; size: number }>> => {
+    const db = getDb()
+    const rows = db.query<{ id: string; created_at: number; size: number }, [string, string]>(
+      'SELECT id, created_at, size FROM snapshots WHERE user_name = ? AND module = ? ORDER BY created_at DESC'
+    ).all(this.userDataManage.userName, this.module)
+
+    return rows.map(r => ({
+      id: r.id,
+      time: r.created_at,
+      size: r.size,
+    }))
+  }
+
+  clearClients = (): void => {
+    const db = getDb()
+    db.run(
+      'DELETE FROM device_snapshot_state WHERE module = ? AND client_id IN (SELECT client_id FROM devices WHERE user_name = ?)',
+      [this.module, this.userDataManage.userName]
+    )
+  }
+
+  setLatest = (name: string): void => {
+    const db = getDb()
+    db.run(
+      'INSERT OR REPLACE INTO snapshot_meta (user_name, module, latest_id, updated_at) VALUES (?, ?, ?, ?)',
+      [this.userDataManage.userName, this.module, name, Date.now()]
+    )
+  }
 
   constructor(userDataManage: UserDataManage) {
     this.userDataManage = userDataManage
-
-    this.dislikeDir = path.join(userDataManage.userDir, File.dislikeDir)
-    checkAndCreateDirSync(this.dislikeDir)
-
-    this.snapshotDir = path.join(this.dislikeDir, File.dislikeSnapshotDir)
-    checkAndCreateDirSync(this.snapshotDir)
-
-    this.snapshotInfoFilePath = path.join(this.dislikeDir, File.dislikeSnapshotInfoJSON)
-    this.snapshotInfo = fs.existsSync(this.snapshotInfoFilePath)
-      ? JSON.parse(fs.readFileSync(this.snapshotInfoFilePath).toString())
-      : { latest: null, time: 0, list: [], clients: {} }
-
-    this.saveSnapshotInfoThrottle = throttle(() => {
-      fs.writeFile(this.snapshotInfoFilePath, JSON.stringify(this.snapshotInfo), 'utf8', (err) => {
-        if (err) console.error(err)
-        void this.clearOldSnapshot()
-      })
-    })
-
-    this.clientSnapshotKeys = Object.values(this.snapshotInfo.clients).map(device => device.snapshotKey).filter(k => k)
   }
 }
-// type UserDataManages = Map<string, UserDataManage>
-
-// export const createUserDataManage = (user: LX.UserConfig) => {
-//   const manage = Object.create(userDataManage) as typeof userDataManage
-//   manage.userDir = user.dataPath
-// }

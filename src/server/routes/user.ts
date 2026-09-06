@@ -12,6 +12,7 @@ import {
 } from '@/user'
 import { File, SYNC_CLOSE_CODE } from '@/constants'
 import { startupLog } from '@/utils/log4js'
+import { getDb } from '@/database'
 
 /** 辅助获取请求的目标用户空间名称 */
 const resolveTargetUsername = (ctx: HttpContext, requireAuth = true): string | null => {
@@ -35,6 +36,36 @@ const resolveTargetUsername = (ctx: HttpContext, requireAuth = true): string | n
 }
 
 const saveUsers = () => {
+  try {
+    const db = getDb()
+    const now = Date.now()
+    const insertStmt = db.prepare(`
+      INSERT OR REPLACE INTO users (name, password, max_snapshot_num, add_music_location_type, created_at, updated_at)
+      VALUES (?, ?, ?, ?, COALESCE((SELECT created_at FROM users WHERE name = ?), ?), ?)
+    `)
+    const currentNames = new Set(global.lx.config.users.map((u: any) => u.name))
+    // Remove users not in current list
+    const existingUsers = db.query<{ name: string }, []>('SELECT name FROM users').all()
+    for (const u of existingUsers) {
+      if (!currentNames.has(u.name)) {
+        db.run('DELETE FROM users WHERE name = ?', [u.name])
+      }
+    }
+    for (const u of global.lx.config.users) {
+      insertStmt.run(
+        u.name,
+        u.password,
+        u.maxSnapshotNum ?? 10,
+        u['list.addMusicLocationType'] ?? 'bottom',
+        u.name,
+        now,
+        now
+      )
+    }
+  } catch (err) {
+    console.error('Failed to sync users to SQLite:', err)
+  }
+
   const usersJsonPath = path.join(global.lx.dataPath, 'users.json')
   try {
     fs.writeFileSync(usersJsonPath, JSON.stringify(global.lx.config.users.map((u: any) => ({
@@ -246,12 +277,16 @@ export const createUserRouter = (): Router => {
     const username = resolveTargetUsername(ctx, false)
     if (!username) return ctx.text('Unauthorized', 401)
 
-    const userDirname = getUserDirname(username)
-    const filePath = path.join(global.lx.userPath, userDirname, 'library', 'artists.json')
-    if (!fs.existsSync(filePath)) return ctx.json([])
     try {
-      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-      return ctx.json(data)
+      const db = getDb()
+      const row = db.query<{ value: string }, [string, string]>(
+        'SELECT value FROM user_settings WHERE user_name = ? AND key = ?'
+      ).get(username, 'library_artists')
+
+      if (row) {
+        return ctx.json(JSON.parse(row.value))
+      }
+      return ctx.json([])
     } catch (e: any) {
       return ctx.text(e.message, 500)
     }
@@ -263,10 +298,11 @@ export const createUserRouter = (): Router => {
     try {
       const parsed = await ctx.bodyJson()
       if (!Array.isArray(parsed)) throw new Error('Expected an array')
-      const userDirname = getUserDirname(username)
-      const libDir = path.join(global.lx.userPath, userDirname, 'library')
-      if (!fs.existsSync(libDir)) fs.mkdirSync(libDir, { recursive: true })
-      fs.writeFileSync(path.join(libDir, 'artists.json'), JSON.stringify(parsed, null, 2), 'utf-8')
+      const db = getDb()
+      db.run(
+        'INSERT OR REPLACE INTO user_settings (user_name, key, value, updated_at) VALUES (?, ?, ?, ?)',
+        [username, 'library_artists', JSON.stringify(parsed), Date.now()]
+      )
       return ctx.json({ success: true })
     } catch (e: any) {
       return ctx.text(e.message, 400)
@@ -277,12 +313,16 @@ export const createUserRouter = (): Router => {
     const username = resolveTargetUsername(ctx, false)
     if (!username) return ctx.text('Unauthorized', 401)
 
-    const userDirname = getUserDirname(username)
-    const filePath = path.join(global.lx.userPath, userDirname, 'library', 'albums.json')
-    if (!fs.existsSync(filePath)) return ctx.json([])
     try {
-      const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-      return ctx.json(data)
+      const db = getDb()
+      const row = db.query<{ value: string }, [string, string]>(
+        'SELECT value FROM user_settings WHERE user_name = ? AND key = ?'
+      ).get(username, 'library_albums')
+
+      if (row) {
+        return ctx.json(JSON.parse(row.value))
+      }
+      return ctx.json([])
     } catch (e: any) {
       return ctx.text(e.message, 500)
     }
@@ -294,10 +334,11 @@ export const createUserRouter = (): Router => {
     try {
       const parsed = await ctx.bodyJson()
       if (!Array.isArray(parsed)) throw new Error('Expected an array')
-      const userDirname = getUserDirname(username)
-      const libDir = path.join(global.lx.userPath, userDirname, 'library')
-      if (!fs.existsSync(libDir)) fs.mkdirSync(libDir, { recursive: true })
-      fs.writeFileSync(path.join(libDir, 'albums.json'), JSON.stringify(parsed, null, 2), 'utf-8')
+      const db = getDb()
+      db.run(
+        'INSERT OR REPLACE INTO user_settings (user_name, key, value, updated_at) VALUES (?, ?, ?, ?)',
+        [username, 'library_albums', JSON.stringify(parsed), Date.now()]
+      )
       return ctx.json({ success: true })
     } catch (e: any) {
       return ctx.text(e.message, 400)
@@ -320,14 +361,20 @@ export const createUserRouter = (): Router => {
       }
     }
 
-    const userSpace = getUserSpace(resolvedUsername)
-    const settingsPath = path.join(userSpace.dataManage.userDir, File.userSettingsJSON)
-    if (fs.existsSync(settingsPath)) {
-      const settingsData = fs.readFileSync(settingsPath, 'utf8')
-      return new Response(settingsData, {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
+    try {
+      const db = getDb()
+      const row = db.query<{ value: string }, [string, string]>(
+        'SELECT value FROM user_settings WHERE user_name = ? AND key = ?'
+      ).get(resolvedUsername, 'settings')
+
+      if (row) {
+        return new Response(row.value, {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    } catch (e) {
+      console.error('Failed to get user settings from DB:', e)
     }
     return ctx.json({})
   })
@@ -354,8 +401,6 @@ export const createUserRouter = (): Router => {
     }
 
     try {
-      const userSpace = getUserSpace(resolvedUsername)
-      const settingsPath = path.join(userSpace.dataManage.userDir, File.userSettingsJSON)
       let settings = await ctx.bodyJson()
 
       if (resolvedUsername === '_open' && config['user.enablePublicRestriction']) {
@@ -372,7 +417,11 @@ export const createUserRouter = (): Router => {
         settings = restrictedSettings
       }
 
-      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8')
+      const db = getDb()
+      db.run(
+        'INSERT OR REPLACE INTO user_settings (user_name, key, value, updated_at) VALUES (?, ?, ?, ?)',
+        [resolvedUsername, 'settings', JSON.stringify(settings), Date.now()]
+      )
       return ctx.json({ success: true })
     } catch {
       return ctx.text('Invalid JSON data', 400)
@@ -383,14 +432,20 @@ export const createUserRouter = (): Router => {
   router.get('/api/user/sound-effects', (ctx) => {
     const username = resolveTargetUsername(ctx, false)
     if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-    const userSpace = getUserSpace(username)
-    const soundEffectsPath = path.join(userSpace.dataManage.userDir, File.userSoundEffectsJSON)
-    if (fs.existsSync(soundEffectsPath)) {
-      const data = fs.readFileSync(soundEffectsPath, 'utf8')
-      return new Response(data, {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      })
+    try {
+      const db = getDb()
+      const row = db.query<{ value: string }, [string, string]>(
+        'SELECT value FROM user_settings WHERE user_name = ? AND key = ?'
+      ).get(username, 'sound_effects')
+
+      if (row) {
+        return new Response(row.value, {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    } catch (e) {
+      console.error('Failed to get sound-effects from DB:', e)
     }
     return ctx.json({})
   })
@@ -400,9 +455,11 @@ export const createUserRouter = (): Router => {
     if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
     try {
       const body = await ctx.bodyJson()
-      const userSpace = getUserSpace(username)
-      const soundEffectsPath = path.join(userSpace.dataManage.userDir, File.userSoundEffectsJSON)
-      fs.writeFileSync(soundEffectsPath, JSON.stringify(body, null, 2), 'utf8')
+      const db = getDb()
+      db.run(
+        'INSERT OR REPLACE INTO user_settings (user_name, key, value, updated_at) VALUES (?, ?, ?, ?)',
+        [username, 'sound_effects', JSON.stringify(body), Date.now()]
+      )
       return ctx.json({ success: true })
     } catch {
       return ctx.text('Invalid JSON data', 400)

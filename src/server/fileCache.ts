@@ -10,6 +10,7 @@ import { PassThrough } from 'stream'
 const { MusicTagger, MetaPicture } = require('music-tag-native')
 import { buildLyrics, parseLyrics } from '../utils/lrcTool'
 import { formatPlayTime } from '../common/utils/common'
+import { getDb } from '@/database'
 
 // --- Cache Naming Patterns ---
 export const CACHE_NAMING_PATTERNS = {
@@ -135,117 +136,120 @@ export interface DownloadProvenance {
 }
 
 class CacheIndexManager {
-    private indexes: Map<string, Map<string, CacheItem>> = new Map() // "location:username:folder" -> (songId -> CacheItem)
-
-    private getIndexFile(username: string, folder: 'cache' | 'music', location?: string) {
+    load(username: string, folder: 'cache' | 'music', location?: string): Map<string, CacheItem> {
         const loc = location || currentCacheLocation
-        const folderName = folder === 'music' ? 'music' : 'cache'
-        let baseDir = ''
-        if (loc === CACHE_ROOTS.DATA) {
-            baseDir = path.join(global.lx.dataPath, folderName)
-        } else {
-            baseDir = path.join(process.cwd(), folderName)
-        }
+        const map = new Map<string, CacheItem>()
+        try {
+            const db = getDb()
+            const rows = db.query<{ song_id: string; quality: string; data: string }, [string, string, string]>(
+                'SELECT song_id, quality, data FROM cache_index WHERE location = ? AND user_name = ? AND folder = ?'
+            ).all(loc, username, folder)
 
-        const userDirName = (username && username !== '_open' && username !== 'default') ? username : '_open'
-        const userDir = path.join(baseDir, userDirName)
-
-        if (!fs.existsSync(userDir)) {
-            fs.mkdirSync(userDir, { recursive: true })
-        }
-        const fileName = folder === 'music' ? 'music_index.json' : 'cache_index.json'
-        return path.join(userDir, fileName)
-    }
-
-    private getKey(username: string, folder: 'cache' | 'music', location?: string) {
-        return `${location || currentCacheLocation}:${username}:${folder}`
-    }
-
-    load(username: string, folder: 'cache' | 'music', location?: string) {
-        const key = this.getKey(username, folder, location)
-        const file = this.getIndexFile(username, folder, location)
-        if (fs.existsSync(file)) {
-            try {
-                const data = JSON.parse(fs.readFileSync(file, 'utf-8'))
-                this.indexes.set(key, new Map(Object.entries(data)))
-            } catch (e) {
-                this.indexes.set(key, new Map())
+            for (const row of rows) {
+                try {
+                    const item = JSON.parse(row.data) as CacheItem
+                    map.set(`${row.song_id}_${row.quality}`, item)
+                } catch {
+                    // skip corrupted json
+                }
             }
-        } else {
-            this.indexes.set(key, new Map())
+        } catch (e) {
+            console.error(`[CacheIndex] Failed to load from SQLite for ${username}:${folder}:`, e)
         }
-        return this.indexes.get(key)!
+        return map
     }
 
     save(username: string, folder: 'cache' | 'music', location?: string) {
-        const loc = location || currentCacheLocation
-        const key = this.getKey(username, folder, loc)
-        const index = this.indexes.get(key)
-        if (!index) return
-
-        const file = this.getIndexFile(username, folder, loc)
-        try {
-            const data = Object.fromEntries(index)
-            fs.writeFileSync(file, JSON.stringify(data, null, 2))
-        } catch (e) {
-            console.error(`[CacheIndex] Failed to save index for ${key}:`, e)
-        }
+        // In SQLite mode, update() directly persists records, so save() is a no-op kept for API compatibility.
     }
 
-    get(username: string, songId: string, folder: 'cache' | 'music', quality?: string, exact: boolean = false, location?: string) {
-        const key = this.getKey(username, folder, location)
-        const index = this.indexes.get(key) || this.load(username, folder, location)
-        if (quality) {
-            const item = index.get(`${songId}_${quality}`)
-            if (item) return item
-            // exact 模式：精确匹配失败则不 fallback，直接返回 undefined
-            if (exact) return undefined
-        }
-        // Fallback: 非精确模式下扫描同 ID 的任意质量
-        const prefix = `${songId}_`
-        for (const [k, item] of index.entries()) {
-            if (k === songId || k.startsWith(prefix)) return item
+    get(username: string, songId: string, folder: 'cache' | 'music', quality?: string, exact: boolean = false, location?: string): CacheItem | undefined {
+        const loc = location || currentCacheLocation
+        try {
+            const db = getDb()
+
+            if (quality) {
+                const row = db.query<{ data: string }, [string, string, string, string, string]>(
+                    'SELECT data FROM cache_index WHERE location = ? AND user_name = ? AND folder = ? AND song_id = ? AND quality = ?'
+                ).get(loc, username, folder, songId, quality)
+                if (row) {
+                    try { return JSON.parse(row.data) as CacheItem } catch {}
+                }
+                if (exact) return undefined
+            }
+
+            // Fallback: 非精确模式下获取同 ID 的任意质量
+            const row = db.query<{ data: string }, [string, string, string, string]>(
+                'SELECT data FROM cache_index WHERE location = ? AND user_name = ? AND folder = ? AND song_id = ? LIMIT 1'
+            ).get(loc, username, folder, songId)
+            if (row) {
+                try { return JSON.parse(row.data) as CacheItem } catch {}
+            }
+        } catch (e) {
+            console.error(`[CacheIndex] Failed to get cache item for ${username}:${songId}:`, e)
         }
         return undefined
     }
 
     update(username: string, item: CacheItem, folder: 'cache' | 'music', location?: string) {
-        const key = this.getKey(username, folder, location)
-        const index = this.indexes.get(key) || this.load(username, folder, location)
-        // Use composite key id_quality
-        const itemKey = `${item.id}_${item.quality || 'unknown'}`
-        index.set(itemKey, item)
-        this.save(username, folder, location)
+        const loc = location || currentCacheLocation
+        const quality = item.quality || 'unknown'
+        try {
+            const db = getDb()
+            db.run(
+                'INSERT OR REPLACE INTO cache_index (location, user_name, folder, song_id, quality, data, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [loc, username, folder, item.id, quality, JSON.stringify(item), Date.now()]
+            )
+        } catch (e) {
+            console.error(`[CacheIndex] Failed to update cache item for ${username}:${item.id}:`, e)
+        }
     }
 
-    remove(username: string, songId: string, folder: 'cache' | 'music', quality?: string, location?: string) {
-        const key = this.getKey(username, folder, location)
-        const index = this.indexes.get(key) || this.load(username, folder, location)
-        if (quality) {
-            if (index.delete(`${songId}_${quality}`)) {
-                this.save(username, folder, location)
-                return true
+    remove(username: string, songId: string, folder: 'cache' | 'music', quality?: string, location?: string): boolean {
+        const loc = location || currentCacheLocation
+        try {
+            const db = getDb()
+            if (quality) {
+                const res = db.run(
+                    'DELETE FROM cache_index WHERE location = ? AND user_name = ? AND folder = ? AND song_id = ? AND quality = ?',
+                    [loc, username, folder, songId, quality]
+                )
+                return (res.changes ?? 0) > 0
             }
+            const res = db.run(
+                'DELETE FROM cache_index WHERE location = ? AND user_name = ? AND folder = ? AND song_id = ?',
+                [loc, username, folder, songId]
+            )
+            return (res.changes ?? 0) > 0
+        } catch (e) {
+            console.error(`[CacheIndex] Failed to remove cache item for ${username}:${songId}:`, e)
+            return false
         }
-        // Legacy or bulk remove by ID
-        let deleted = false
-        const prefix = `${songId}_`
-        for (const k of Array.from(index.keys())) {
-            if (k === songId || k.startsWith(prefix)) {
-                index.delete(k)
-                deleted = true
-            }
-        }
-        if (deleted) this.save(username, folder, location)
-        return deleted
     }
 
-    getAll(username: string, folder: 'cache' | 'music', location?: string) {
-        return Array.from((this.indexes.get(this.getKey(username, folder, location)) || this.load(username, folder, location)).values())
+    getAll(username: string, folder: 'cache' | 'music', location?: string): CacheItem[] {
+        const loc = location || currentCacheLocation
+        try {
+            const db = getDb()
+            const rows = db.query<{ data: string }, [string, string, string]>(
+                'SELECT data FROM cache_index WHERE location = ? AND user_name = ? AND folder = ?'
+            ).all(loc, username, folder)
+
+            const list: CacheItem[] = []
+            for (const r of rows) {
+                try {
+                    list.push(JSON.parse(r.data) as CacheItem)
+                } catch {}
+            }
+            return list
+        } catch (e) {
+            console.error(`[CacheIndex] Failed to getAll cache items for ${username}:${folder}:`, e)
+            return []
+        }
     }
 
     discard(username: string, folder: 'cache' | 'music', location?: string) {
-        this.indexes.delete(this.getKey(username, folder, location))
+        // No-op for SQLite since queries are directly executed against the database
     }
 }
 

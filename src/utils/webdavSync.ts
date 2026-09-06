@@ -353,6 +353,14 @@ class WebDAVSync extends EventEmitter {
 
     async createBackup(): Promise<string | null> {
         try {
+            try {
+                const { getDb } = require('@/database')
+                const db = getDb()
+                db.run('PRAGMA wal_checkpoint(TRUNCATE);')
+            } catch (e) {
+                // database might not be initialized or required
+            }
+
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
             const zipName = `lx-sync-backup-${timestamp}.zip`
             const zipPath = path.join(this.dataPath, zipName)

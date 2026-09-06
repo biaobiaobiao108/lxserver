@@ -13,6 +13,7 @@ import {
 import { File } from '@/constants'
 import { getUserDirname } from '@/user'
 import { tokenLog, loginLog } from '@/utils/log4js'
+import { getDb } from '@/database'
 
 // ===== User Token Store Interfaces =====
 export interface UserToken {
@@ -64,38 +65,45 @@ const scheduleSaveTokenConfig = (username: string) => {
     const existingNonActive = existing.tokens.filter(t => !persistentTokenMeta.has(t.token))
     const merged = [...existingNonActive, ...tokens]
     const config = { ...existing, tokens: merged }
-    const userDirname = getUserDirname(username)
-    const userPath = path.join(global.lx.userPath, userDirname)
-    const tokenPath = path.join(userPath, File.userTokensJSON)
-    if (!fs.existsSync(userPath)) fs.mkdirSync(userPath, { recursive: true })
-    fs.writeFile(tokenPath, JSON.stringify(config, null, 2), 'utf8', (err) => {
-      if (err) console.error('[Token] 写盘失败:', err)
-    })
+    try {
+      const db = getDb()
+      db.run(
+        'INSERT OR REPLACE INTO user_settings (user_name, key, value, updated_at) VALUES (?, ?, ?, ?)',
+        [username, 'tokens', JSON.stringify(config), Date.now()]
+      )
+    } catch (err) {
+      console.error('[Token] 写数据库失败:', err)
+    }
   }, 10_000)
   persistentTokenSaveQueue.set(username, timer)
 }
 
 export const getUserTokenConfig = (username: string): UserTokenConfig => {
-  const userDirname = getUserDirname(username)
-  const userPath = path.join(global.lx.userPath, userDirname)
-  const tokenPath = path.join(userPath, File.userTokensJSON)
+  try {
+    const db = getDb()
+    const row = db.query<{ value: string }, [string, string]>(
+      'SELECT value FROM user_settings WHERE user_name = ? AND key = ?'
+    ).get(username, 'tokens')
 
-  if (fs.existsSync(tokenPath)) {
-    try {
-      return JSON.parse(fs.readFileSync(tokenPath, 'utf8'))
-    } catch {
-      return { enabled: false, tokens: [] }
+    if (row) {
+      return JSON.parse(row.value)
     }
+  } catch (err) {
+    console.error('[Token] 从数据库读取失败:', err)
   }
   return { enabled: false, tokens: [] }
 }
 
 export const saveUserTokenConfig = (username: string, config: UserTokenConfig) => {
-  const userDirname = getUserDirname(username)
-  const userPath = path.join(global.lx.userPath, userDirname)
-  const tokenPath = path.join(userPath, File.userTokensJSON)
-  if (!fs.existsSync(userPath)) fs.mkdirSync(userPath, { recursive: true })
-  fs.writeFileSync(tokenPath, JSON.stringify(config, null, 2), 'utf8')
+  try {
+    const db = getDb()
+    db.run(
+      'INSERT OR REPLACE INTO user_settings (user_name, key, value, updated_at) VALUES (?, ?, ?, ?)',
+      [username, 'tokens', JSON.stringify(config), Date.now()]
+    )
+  } catch (err) {
+    console.error('[Token] 保存到数据库失败:', err)
+  }
 
   // 更新内存缓存（清理该用户旧条目）
   for (const [tk, name] of persistentTokens.entries()) {

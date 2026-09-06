@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>LX Music Web</title>
     <!-- Config MUST be loaded before PostHog -->
     <script>
@@ -28,7 +28,7 @@
     <link rel="stylesheet" href="css/app.css">
 </head>
 
-<body class="t-bg-main h-screen flex flex-col overflow-hidden t-text-main font-sans">
+<body class="t-bg-main h-screen h-dvh flex flex-col overflow-hidden t-text-main font-sans">
     <a href="#player-main-content" class="skip-link">跳转到主要内容</a>
 
     <!-- Main Container -->
@@ -41,7 +41,7 @@
 
         <!-- Sidebar -->
         <aside id="main-sidebar" aria-label="主导航"
-            class="w-64 t-bg-panel shadow-lg flex flex-col z-[60] fixed inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 md:z-30 h-full pb-28 transition-all duration-300">
+            class="w-64 t-bg-panel shadow-2xl flex flex-col z-[60] fixed inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 md:z-30 h-full pb-28 pt-[env(safe-area-inset-top,0px)] transition-all duration-300">
             <div class="h-16 flex items-center justify-center border-b t-border-main relative">
                     <svg aria-hidden="true" viewBox="0 0 447.942 447.943" class="w-8 h-8 mr-2 rounded-lg shadow-sm"
                     xmlns="http://www.w3.org/2000/svg">
@@ -159,8 +159,8 @@
             <!-- Header / Search Bar Helper (Top strip) -->
             <header class="h-16 t-bg-panel glass shadow-sm flex items-center justify-between px-3 md:px-6 z-10">
                 <div class="flex items-center gap-1.5 md:gap-3 min-w-0">
-                    <button onclick="toggleSidebar()" aria-label="打开导航菜单"
-                        class="md:hidden t-text-muted p-2 hover:t-bg-track rounded-lg shrink-0">
+                    <button id="mobile-menu-btn" onclick="toggleSidebar()" aria-label="打开导航菜单" aria-expanded="false" aria-controls="main-sidebar"
+                        class="md:hidden t-text-muted p-2 hover:t-bg-track rounded-lg shrink-0 touch-manipulation min-w-[44px] min-h-[44px] flex items-center justify-center">
                         <i class="fas fa-bars text-xl"></i>
                     </button>
                     <!-- Page Title: Hide on mobile to save space -->
@@ -3199,8 +3199,8 @@
     </div>
 
     <!-- Player Detail View (Overlay) -->
-    <div id="view-player-detail" data-a11y-overlay="modal" aria-label="正在播放" ondblclick="toggleDetailCover()"
-        class="fixed inset-0 z-30 t-bg-panel hidden flex flex-col transform translate-y-[100%] opacity-0 pb-24">
+    <div id="view-player-detail" data-a11y-overlay="modal" aria-label="正在播放"
+        class="fixed inset-0 z-30 t-bg-panel hidden flex flex-col transform translate-y-[100%] opacity-0 pb-24 h-screen h-dvh pt-[env(safe-area-inset-top,0px)]">
         <!-- Blurry Background -->
         <div class="absolute inset-0 overflow-hidden">
             <img id="detail-bg-cover" src="" alt="" aria-hidden="true" width="1600" height="1600"
@@ -3213,7 +3213,7 @@
 
         <!-- Navbar / Controls -->
         <div onclick="event.stopPropagation()"
-            class="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-6 h-20 pointer-events-none transition-all duration-300 [@media(max-height:500px)]:opacity-0 [@media(max-height:500px)]:pointer-events-none">
+            class="absolute top-0 inset-x-0 z-20 flex items-center justify-between px-6 h-20 pointer-events-none transition-all duration-300 pt-[env(safe-area-inset-top,0px)] [@media(max-height:500px)]:opacity-0 [@media(max-height:500px)]:pointer-events-none">
             <button onclick="toggleLyrics()" id="btn-toggle-lyrics" data-overlay-close aria-label="关闭正在播放详情"
                 class="pointer-events-auto t-text-muted hover:text-emerald-600 t-bg-panel/40 hover:t-bg-panel/80 rounded-full w-10 h-10 flex items-center justify-center transition-all shadow-sm backdrop-blur-md">
                 <i class="fas fa-chevron-down text-lg"></i>
@@ -3229,7 +3229,7 @@
             class="relative z-10 flex-1 flex flex-col md:flex-row items-center justify-start md:justify-center gap-4 md:gap-20 pt-8 mt-4 md:mt-0 md:pt-0 pb-6 overflow-hidden transition-all duration-300 ease-out [@media(max-height:500px)]:pt-0 [@media(max-height:500px)]:justify-center">
 
             <!-- Left: Image -->
-            <div id="mobile-player-cover-container" ondblclick="toggleDetailCover()"
+            <div id="mobile-player-cover-container" ondblclick="toggleDetailCover()" onclick="if(window.innerWidth <= 1024) toggleDetailCover();"
                 class="w-auto h-auto max-w-[48vw] max-h-[32vh] [@media(max-height:500px)]:max-h-[40vh] aspect-square md:w-[60vh] md:h-[60vh] md:max-w-[35rem] md:max-h-[35rem] md:min-w-[20rem] md:min-h-[20rem] flex-shrink-0 shadow-2xl rounded-3xl overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] border-4 border-white/20 origin-top t-bg-track cursor-pointer">
                 <img id="detail-cover" src="/music/assets/logo.svg" loading="lazy" decoding="async" alt="正在播放歌曲封面"
                     onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');"
@@ -3441,6 +3441,12 @@
                 </button>
                 <button aria-label="下一首" class="t-text-muted hover:text-emerald-600 text-lg transition-colors p-2"
                     onclick="playNext()"><i class="fas fa-step-forward" aria-hidden="true"></i></button>
+
+                <!-- Mobile Queue Button -->
+                <button id="player-queue-btn-mobile" aria-label="播放队列" aria-controls="queue-drawer" aria-expanded="false" onclick="toggleQueueDrawer()"
+                    class="md:hidden t-text-muted hover:text-emerald-600 text-base transition-colors p-2" title="播放队列">
+                    <i class="fas fa-list" aria-hidden="true"></i>
+                </button>
 
                 <!-- Playback Rate Button -->
                 <div class="relative group">

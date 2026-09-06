@@ -544,3 +544,4 @@ function toggleLbSidebar(force) {
         }, 300);
     }
 }
+window.toggleLbSidebar = toggleLbSidebar;

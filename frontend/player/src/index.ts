@@ -3297,7 +3297,7 @@ function renderResults(list) {
         const isCurrentMatch = window.ListSearch.isCurrentMatch(actualIndexInOriginal);
         const isSelected = window.selectedItems.has(itemIdValue);
 
-        let rowClass = 'grid grid-cols-12 gap-4 p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer ';
+        let rowClass = 'grid grid-cols-12 gap-2 sm:gap-4 p-2.5 sm:p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer min-h-[50px] items-center touch-manipulation ';
         if (isCurrentMatch) rowClass += 'search-current ';
         else if (isMatched) rowClass += 'search-match ';
         if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
@@ -3394,22 +3394,25 @@ function renderResults(list) {
             </div>
 
             <!-- Actions -->
-            <div class="col-span-2 sm:col-span-1 flex items-center justify-end gap-0.5 sm:gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                <button class="p-1 sm:p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors" 
+            <div class="col-span-2 sm:col-span-1 flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                <button class="p-2 sm:p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg text-emerald-600 transition-colors touch-manipulation min-w-[36px] min-h-[36px] hidden sm:flex items-center justify-center" 
                         title="播放" 
+                        aria-label="播放 ${itemName}"
                         onclick="event.stopPropagation(); playFromView(${actualIndexInOriginal})">
-                    <i class="fas fa-play w-3 h-3 sm:w-4 sm:h-4"></i>
+                    <i class="fas fa-play text-xs sm:text-sm"></i>
                 </button>
-                <button class="p-1 sm:p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors" 
+                <button class="p-2 sm:p-1.5 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg text-blue-600 transition-colors touch-manipulation min-w-[36px] min-h-[36px] flex items-center justify-center" 
                         title="下载" 
+                        aria-label="下载 ${itemName}"
                         onclick="event.stopPropagation(); downloadSong(${safeInlineJson(item)})">
-                    <i class="fas fa-download w-3 h-3 sm:w-4 sm:h-4"></i>
+                    <i class="fas fa-download text-xs sm:text-sm"></i>
                 </button>
                 ${currentSearchScope !== 'network' ? `
-                <button class="p-1 sm:p-1.5 hover:bg-red-50 rounded-lg text-red-600 transition-colors" 
+                <button class="p-2 sm:p-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg text-red-600 transition-colors touch-manipulation min-w-[36px] min-h-[36px] flex items-center justify-center" 
                         title="删除" 
+                        aria-label="删除 ${itemName}"
                         onclick="event.stopPropagation(); deleteSingleSong(${itemIdArg})">
-                    <i class="fas fa-trash w-3 h-3 sm:w-4 sm:h-4"></i>
+                    <i class="fas fa-trash text-xs sm:text-sm"></i>
                 </button>
                 ` : ''}
             </div>
@@ -12940,22 +12943,32 @@ window.getCurrentActiveListId = function () {
 // ========================================
 
 // Mobile Sidebar Toggle
-function toggleSidebar() {
+function toggleSidebar(forceState?: boolean) {
     const sidebar = document.getElementById('main-sidebar');
     const backdrop = document.getElementById('mobile-sidebar-backdrop');
+    const menuBtn = document.getElementById('mobile-menu-btn');
+    if (!sidebar) return;
 
-    if (sidebar.classList.contains('-translate-x-full')) {
+    const isCurrentlyClosed = sidebar.classList.contains('-translate-x-full');
+    const shouldOpen = typeof forceState === 'boolean' ? forceState : isCurrentlyClosed;
+
+    if (shouldOpen) {
         // Open
         sidebar.classList.remove('-translate-x-full');
         sidebar.classList.add('translate-x-0');
-        backdrop.classList.remove('hidden');
+        if (backdrop) backdrop.classList.remove('hidden');
+        if (menuBtn) menuBtn.setAttribute('aria-expanded', 'true');
+        document.body.classList.add('sidebar-open');
     } else {
         // Close
         sidebar.classList.remove('translate-x-0');
         sidebar.classList.add('-translate-x-full');
-        backdrop.classList.add('hidden');
+        if (backdrop) backdrop.classList.add('hidden');
+        if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('sidebar-open');
     }
 }
+(window as any).toggleSidebar = toggleSidebar;
 
 // Auto-adjust layout on resize
 window.addEventListener('resize', () => {
@@ -13060,6 +13073,100 @@ function toggleDetailCover() {
             detailTitle.classList.add('md:mx-0');
         }
     }
+}
+(window as any).toggleDetailCover = toggleDetailCover;
+
+// Initialize mobile gestures & touch interactions
+function initMobileGestures() {
+    // 1. Sidebar Touch Gestures (Swipe left to close)
+    const sidebar = document.getElementById('main-sidebar');
+    if (sidebar) {
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let isSwiping = false;
+
+        sidebar.addEventListener('touchstart', (e: TouchEvent) => {
+            if (e.touches.length !== 1) return;
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            isSwiping = true;
+        }, { passive: true });
+
+        sidebar.addEventListener('touchmove', (e: TouchEvent) => {
+            if (!isSwiping || e.touches.length !== 1) return;
+            const currentX = e.touches[0].clientX;
+            const currentY = e.touches[0].clientY;
+            const diffX = currentX - touchStartX;
+            const diffY = currentY - touchStartY;
+            if (diffX < -45 && Math.abs(diffX) > Math.abs(diffY)) {
+                isSwiping = false;
+                toggleSidebar(false);
+            }
+        }, { passive: true });
+
+        sidebar.addEventListener('touchend', () => {
+            isSwiping = false;
+        }, { passive: true });
+    }
+
+    // 2. Fullscreen Player Detail swipe-down-to-dismiss
+    const detailView = document.getElementById('view-player-detail');
+    if (detailView) {
+        let detailTouchStartY = 0;
+        let detailTouchStartX = 0;
+        let canSwipeDown = false;
+
+        detailView.addEventListener('touchstart', (e: TouchEvent) => {
+            if (e.touches.length !== 1) return;
+            detailTouchStartY = e.touches[0].clientY;
+            detailTouchStartX = e.touches[0].clientX;
+            const lyricContainer = document.getElementById('lyric-container');
+            const isAtTop = !lyricContainer || lyricContainer.scrollTop <= 5;
+            canSwipeDown = isAtTop || detailTouchStartY < 120;
+        }, { passive: true });
+
+        detailView.addEventListener('touchmove', (e: TouchEvent) => {
+            if (!canSwipeDown || e.touches.length !== 1) return;
+            const diffY = e.touches[0].clientY - detailTouchStartY;
+            const diffX = e.touches[0].clientX - detailTouchStartX;
+            if (diffY > 75 && Math.abs(diffY) > Math.abs(diffX) * 1.4) {
+                canSwipeDown = false;
+                toggleLyrics();
+            }
+        }, { passive: true });
+
+        detailView.addEventListener('touchend', () => {
+            canSwipeDown = false;
+        }, { passive: true });
+    }
+
+    // 3. Mobile Player Bar: Tapping song info opens full-screen lyrics/player
+    const playerSongInfo = document.getElementById('player-song-info');
+    if (playerSongInfo) {
+        playerSongInfo.addEventListener('click', (e: MouseEvent) => {
+            if (window.innerWidth < 768) {
+                const target = e.target as HTMLElement | null;
+                if (target && target.closest('button, a, input, select')) return;
+                toggleLyrics();
+            }
+        });
+    }
+
+    // 4. Escape key closes mobile sidebar
+    document.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+            const sidebar = document.getElementById('main-sidebar');
+            if (sidebar && !sidebar.classList.contains('-translate-x-full') && window.innerWidth < 1025) {
+                toggleSidebar(false);
+            }
+        }
+    });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initMobileGestures);
+} else {
+    initMobileGestures();
 }
 
 // 启动展开按钮淡化计时器

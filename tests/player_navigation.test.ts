@@ -30,6 +30,24 @@ describe('Player Navigation and State Restoration Safety', () => {
             expect(fallbackSnippetMatch[0].includes("window.currentViewingListId = 'default'")).toBe(false);
         }
     });
+
+    it('frontend player exposes toggleSidebar and toggleDetailCover to window', () => {
+        const srcContent = fs.readFileSync(playerSrcPath, 'utf8');
+        expect(srcContent.includes('(window as any).toggleSidebar = toggleSidebar')).toBe(true);
+        expect(srcContent.includes('(window as any).toggleDetailCover = toggleDetailCover')).toBe(true);
+
+        const distContent = fs.readFileSync(playerDistPath, 'utf8');
+        expect(distContent.includes('toggleSidebar')).toBe(true);
+        expect(distContent.includes('toggleDetailCover')).toBe(true);
+    });
+
+    it('music index.html has viewport-fit=cover and mobile menu button', () => {
+        const playerHtmlPath = path.join(import.meta.dir, '../public/music/index.html');
+        const html = fs.readFileSync(playerHtmlPath, 'utf8');
+        expect(html.includes('viewport-fit=cover')).toBe(true);
+        expect(html.includes('id="mobile-menu-btn"')).toBe(true);
+        expect(html.includes('toggleSidebar()')).toBe(true);
+    });
 });
 
 describe('Update Notification Engine & PostHog Removal', () => {

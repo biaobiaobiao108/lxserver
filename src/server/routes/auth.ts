@@ -206,12 +206,67 @@ export const createAuthRouter = (): Router => {
     })
   })
 
-  // 1. 管理后台密码校验
+  // 1. 管理后台密码校验与老版管理员登录
   router.post('/api/admin/verify', (ctx) => {
     if (verifyAdminAuth(ctx.request)) {
       return ctx.json({ success: true })
     }
     return ctx.json({ success: false, error: '管理员密码验证失败' }, 401)
+  })
+
+  router.post('/api/login', async (ctx) => {
+    try {
+      const { password } = await ctx.bodyJson<{ password?: string }>()
+      if (password === global.lx?.config?.['frontend.password']) {
+        loginLog.info(`Admin login success from ${ctx.remoteAddress}`)
+        return ctx.json({ success: true })
+      }
+      loginLog.warn(`Admin login failed from ${ctx.remoteAddress}`)
+      return ctx.json({ success: false }, 401)
+    } catch {
+      return ctx.text('Bad Request', 400)
+    }
+  })
+
+  // 1.1 用户登录验证与 Session 颁发
+  router.post('/api/user/verify', async (ctx) => {
+    try {
+      const { username, password } = await ctx.bodyJson<{ username?: string; password?: string }>()
+      if (!username || !password) return ctx.text('Missing username or password', 400)
+      const user = (global.lx?.config?.users || []).find((u: any) => u.name === username && u.password === password)
+      if (user) {
+        loginLog.info(`User login success: ${username} from ${ctx.remoteAddress}`)
+        return ctx.json({ success: true })
+      }
+      loginLog.warn(`User login failed: ${username} from ${ctx.remoteAddress}`)
+      return ctx.json({ success: false, message: 'Invalid credentials' }, 401)
+    } catch {
+      return ctx.text('Bad Request', 400)
+    }
+  })
+
+  router.post('/api/user/login', async (ctx) => {
+    try {
+      const { username, password } = await ctx.bodyJson<{ username?: string; password?: string }>()
+      if (!username || !password) return ctx.json({ success: false, message: 'Missing username or password' }, 400)
+      const user = (global.lx?.config?.users || []).find((u: any) => u.name === username && u.password === password)
+      if (user) {
+        const token = crypto.randomBytes(32).toString('hex')
+        userSessions.set(token, { username, createdAt: Date.now() })
+        loginLog.info(`User token issued: ${username} from ${ctx.remoteAddress}`)
+        return ctx.json({ success: true, token, username })
+      }
+      loginLog.warn(`User login failed: ${username} from ${ctx.remoteAddress}`)
+      return ctx.json({ success: false, message: 'Invalid credentials' }, 401)
+    } catch {
+      return ctx.json({ success: false, message: 'Bad Request' }, 400)
+    }
+  })
+
+  router.post('/api/user/logout', (ctx) => {
+    const token = ctx.headers.get('x-user-token')
+    if (token) userSessions.delete(token)
+    return ctx.json({ success: true })
   })
 
   // 2. Web 播放器登录（颁发 HttpOnly Cookie Session）

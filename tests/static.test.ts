@@ -100,7 +100,7 @@ describe('Static Routing & Frontend Serving (routes/static.ts)', () => {
     const { createRootRouter } = await import('@/server/routes')
     const rootRouter = createRootRouter().setNotFound(() => null)
 
-    const req = new Request('http://localhost:9527/api/music/search?name=test')
+    const req = new Request('http://localhost:9527/api/unhandled-custom-non-existent')
     const res = await rootRouter.handle(req)
     // Should return null (fallback to legacy server handler) without throwing TypeError
     expect(res).toBeNull()

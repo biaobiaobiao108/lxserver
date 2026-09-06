@@ -205,7 +205,7 @@ export const createStaticRouter = (): Router => {
     const res = await serveStaticFile(ctx, generalFilePath)
     if (res) return res
 
-    return null
+    return ctx.text('Not Found', 404)
   })
 
   return router

@@ -76,3 +76,77 @@ export const dispatchWebResponse = async (res: any, webRes: Response): Promise<v
   res.end()
 }
 
+/** 将旧版 IncomingMessage/ServerResponse 处理器适配为现代 Web Response */
+export const adaptNodeHandler = (
+  ctx: any,
+  handler: (req: any, res: any, ...args: any[]) => any,
+  ...extraArgs: any[]
+): Promise<Response> => {
+  return new Promise((resolve) => {
+    let responseStatus = 200
+    const responseHeaders: Record<string, string> = {}
+    let responseBody = ''
+    const binaryChunks: Buffer[] = []
+    let isBinary = false
+
+    const mockReq: any = {
+      method: ctx.method,
+      url: ctx.request.url,
+      headers: Object.fromEntries(ctx.headers.entries()),
+      on(event: string, callback: (arg?: any) => void) {
+        if (event === 'data') {
+          void ctx.request.arrayBuffer().then((buf: ArrayBuffer) => callback(Buffer.from(buf)))
+        } else if (event === 'end') {
+          setTimeout(() => callback(), 5)
+        }
+        return mockReq
+      },
+    }
+
+    const mockRes: any = {
+      writeHead(status: number, headers?: any) {
+        responseStatus = status
+        if (headers) Object.assign(responseHeaders, headers)
+      },
+      setHeader(k: string, v: string) {
+        responseHeaders[k.toLowerCase()] = v
+      },
+      write(chunk: any) {
+        if (Buffer.isBuffer(chunk)) {
+          isBinary = true
+          binaryChunks.push(chunk)
+        } else {
+          responseBody += chunk
+        }
+      },
+      end(data?: any) {
+        if (data) {
+          if (Buffer.isBuffer(data)) {
+            isBinary = true
+            binaryChunks.push(data)
+          } else {
+            responseBody += data
+          }
+        }
+        if (isBinary) {
+          resolve(new Response(new Uint8Array(Buffer.concat(binaryChunks)), {
+            status: responseStatus,
+            headers: responseHeaders,
+          }))
+        } else {
+          resolve(new Response(responseBody, {
+            status: responseStatus,
+            headers: responseHeaders,
+          }))
+        }
+      },
+    }
+
+    try {
+      void handler(mockReq, mockRes, ...extraArgs)
+    } catch (e: any) {
+      resolve(ctx.json({ success: false, error: e.message }, 500))
+    }
+  })
+}
+

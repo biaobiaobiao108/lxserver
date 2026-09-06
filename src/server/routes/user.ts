@@ -3,8 +3,15 @@ import path from 'node:path'
 import { Router, type HttpContext } from '../core'
 import { verifyAdminAuth } from '../auth'
 import { verifyUserAuth } from './auth'
-import { getUserSpace, getUserDirname } from '@/user'
-import { File } from '@/constants'
+import {
+  getUserSpace,
+  getUserDirname,
+  renameUserSpace,
+  migrateUserData,
+  finishRenameUserSpace,
+} from '@/user'
+import { File, SYNC_CLOSE_CODE } from '@/constants'
+import { startupLog } from '@/utils/log4js'
 
 /** 辅助获取请求的目标用户空间名称 */
 const resolveTargetUsername = (ctx: HttpContext, requireAuth = true): string | null => {
@@ -27,9 +34,150 @@ const resolveTargetUsername = (ctx: HttpContext, requireAuth = true): string | n
   return null
 }
 
-/** 注册用户歌单、偏好与曲库数据管理路由 */
+const saveUsers = () => {
+  const usersJsonPath = path.join(global.lx.dataPath, 'users.json')
+  try {
+    fs.writeFileSync(usersJsonPath, JSON.stringify(global.lx.config.users.map((u: any) => ({
+      name: u.name,
+      password: u.password,
+      maxSnapshotNum: u.maxSnapshotNum,
+      'list.addMusicLocationType': u['list.addMusicLocationType'],
+    })), null, 2))
+    return true
+  } catch (err) {
+    console.error('Failed to save users.json', err)
+    return false
+  }
+}
+
+/** 注册用户歌单、账户管理、偏好与曲库数据管理路由 */
 export const createUserRouter = (): Router => {
   const router = new Router()
+
+  // 0. 用户账户管理 (GET / POST / PUT / DELETE /api/users)
+  router.get('/api/users', (ctx) => {
+    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    const users = (global.lx.config.users || []).map((u: any) => ({ name: u.name, password: u.password }))
+    if (global.lx.config['user.enablePublicFavorites']) {
+      users.unshift({ name: '_open', password: '' })
+    }
+    return new Response(JSON.stringify(users), {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+      },
+    })
+  })
+
+  router.post('/api/users', async (ctx) => {
+    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    try {
+      const { name, password } = await ctx.bodyJson<{ name?: string; password?: string }>()
+      if (!name || !password) return ctx.text('Missing name or password', 400)
+      if (global.lx.config.users.some((u: any) => u.name === name)) {
+        return ctx.text('User already exists', 409)
+      }
+
+      const dataPath = path.join(global.lx.userPath, getUserDirname(name))
+      if (!fs.existsSync(dataPath)) fs.mkdirSync(dataPath, { recursive: true })
+
+      global.lx.config.users.push({
+        name,
+        password,
+        dataPath,
+      })
+      saveUsers()
+      return ctx.json({ success: true })
+    } catch {
+      return ctx.text('Server Error', 500)
+    }
+  })
+
+  router.put('/api/users', async (ctx) => {
+    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    try {
+      const { name, newName, password } = await ctx.bodyJson<{ name?: string; newName?: string; password?: string }>()
+      if (!name || (!password && !newName)) {
+        return ctx.text('Missing required fields', 400)
+      }
+      const userIdx = global.lx.config.users.findIndex((u: any) => u.name === name)
+      if (userIdx === -1) {
+        return ctx.text('User not found', 404)
+      }
+
+      const user = global.lx.config.users[userIdx]
+
+      if (newName && newName !== name) {
+        if (global.lx.config.users.some((u: any) => u.name === newName)) {
+          return ctx.text('New username already exists', 409)
+        }
+
+        renameUserSpace(name)
+        await new Promise(r => setTimeout(r, 500))
+        try {
+          migrateUserData(name, newName)
+          user.name = newName
+          if (password) user.password = password
+          saveUsers()
+          return ctx.json({ success: true })
+        } catch (err: any) {
+          return ctx.text(err.message || 'Data Migration Failed', 500)
+        } finally {
+          finishRenameUserSpace(name)
+        }
+      } else {
+        if (password) user.password = password
+        saveUsers()
+        return ctx.json({ success: true })
+      }
+    } catch {
+      return ctx.text('Server Error', 500)
+    }
+  })
+
+  router.delete('/api/users', async (ctx) => {
+    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    try {
+      const body = await ctx.bodyJson<{ name?: string; names?: string[]; deleteData?: boolean }>()
+      const targets = body.names || (body.name ? [body.name] : [])
+      if (targets.length === 0) return ctx.text('Missing name or names', 400)
+
+      let deletedCount = 0
+      const deletedUsers: { name: string; dataPath: string }[] = []
+
+      for (const targetName of targets) {
+        const idx = global.lx.config.users.findIndex((u: any) => u.name === targetName)
+        if (idx !== -1) {
+          const user = global.lx.config.users[idx]
+          if (body.deleteData && user.dataPath) {
+            deletedUsers.push({ name: targetName, dataPath: user.dataPath })
+          }
+          global.lx.config.users.splice(idx, 1)
+          deletedCount++
+        }
+      }
+
+      if (deletedCount > 0) {
+        saveUsers()
+        if (body.deleteData && deletedUsers.length > 0) {
+          for (const user of deletedUsers) {
+            try {
+              if (fs.existsSync(user.dataPath)) {
+                fs.rmSync(user.dataPath, { recursive: true, force: true })
+              }
+            } catch (err) {
+              console.error(`Failed to delete user data folder for ${user.name}:`, err)
+            }
+          }
+        }
+        return ctx.json({ success: true, deletedCount })
+      }
+      return ctx.text('User not found', 404)
+    } catch {
+      return ctx.text('Server Error', 500)
+    }
+  })
 
   // 1. 读取用户歌单数据 (GET /api/user/list)
   router.get('/api/user/list', async (ctx) => {
@@ -231,7 +379,251 @@ export const createUserRouter = (): Router => {
     }
   })
 
-  // 5. 歌单与歌曲精准修改 (POST /api/data/*)
+  // 5. 音效配置 (GET & POST /api/user/sound-effects)
+  router.get('/api/user/sound-effects', (ctx) => {
+    const username = resolveTargetUsername(ctx, false)
+    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    const userSpace = getUserSpace(username)
+    const soundEffectsPath = path.join(userSpace.dataManage.userDir, File.userSoundEffectsJSON)
+    if (fs.existsSync(soundEffectsPath)) {
+      const data = fs.readFileSync(soundEffectsPath, 'utf8')
+      return new Response(data, {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    return ctx.json({})
+  })
+
+  router.post('/api/user/sound-effects', async (ctx) => {
+    const username = resolveTargetUsername(ctx, false)
+    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    try {
+      const body = await ctx.bodyJson()
+      const userSpace = getUserSpace(username)
+      const soundEffectsPath = path.join(userSpace.dataManage.userDir, File.userSoundEffectsJSON)
+      fs.writeFileSync(soundEffectsPath, JSON.stringify(body, null, 2), 'utf8')
+      return ctx.json({ success: true })
+    } catch {
+      return ctx.text('Invalid JSON data', 400)
+    }
+  })
+
+  // 6. 歌单与歌曲批量修改 (POST /api/music/user/list/*)
+  router.post('/api/music/user/list/remove', async (ctx) => {
+    const username = verifyUserAuth(ctx)
+    if (!username) return ctx.json({ success: false, message: '需要用户认证' }, 401)
+    try {
+      const { listId, songIds } = await ctx.bodyJson<{ listId?: string; songIds?: string[] }>()
+      if (!listId || !Array.isArray(songIds)) return ctx.text('参数错误:需要listId和songIds数组', 400)
+      const userSpace = getUserSpace(username)
+      await userSpace.listManage.listDataManage.listMusicRemove(listId, songIds)
+      await userSpace.listManage.createSnapshot()
+      return ctx.text('删除成功', 200)
+    } catch (err: any) {
+      return ctx.text(err.message || '删除失败', 500)
+    }
+  })
+
+  router.post('/api/music/user/list/add', async (ctx) => {
+    const username = verifyUserAuth(ctx)
+    if (!username) return ctx.json({ success: false, message: '需要用户认证' }, 401)
+    try {
+      const { listId, musicInfos, location = 'bottom' } = await ctx.bodyJson<{ listId?: string; musicInfos?: any[]; location?: any }>()
+      if (!listId || !Array.isArray(musicInfos)) return ctx.text('参数错误:需要listId和musicInfos数组', 400)
+      const userSpace = getUserSpace(username)
+      await userSpace.listManage.listDataManage.listMusicAdd(listId, musicInfos, location)
+      await userSpace.listManage.createSnapshot()
+      return ctx.text('添加成功', 200)
+    } catch (err: any) {
+      return ctx.text(err.message || '添加失败', 500)
+    }
+  })
+
+  // 7. 快照管理 (GET & POST /api/data/*)
+  router.get('/api/data', async (ctx) => {
+    const isAdmin = verifyAdminAuth(ctx.request)
+    const userParam = ctx.query.get('user')
+    if (!userParam) return ctx.text('Missing user param', 400)
+
+    let verifiedUser: string | null = null
+    if (isAdmin) {
+      verifiedUser = userParam
+    } else if (userParam === 'default' || userParam === '_open') {
+      verifiedUser = '_open'
+    } else {
+      verifiedUser = verifyUserAuth(ctx)
+      if (!verifiedUser || verifiedUser !== userParam) {
+        return ctx.text('Forbidden: User mismatch or unauthorized', 403)
+      }
+    }
+
+    try {
+      const userSpace = getUserSpace(verifiedUser)
+      const data = await userSpace.listManage.getListData()
+      return ctx.json(data)
+    } catch (err: any) {
+      return ctx.text(err.message, 500)
+    }
+  })
+
+  router.get('/api/data/snapshots', async (ctx) => {
+    const isAdmin = verifyAdminAuth(ctx.request)
+    const userParam = ctx.query.get('user')
+    if (!userParam) return ctx.text('Missing user param', 400)
+
+    let verifiedUser: string | null = null
+    if (isAdmin) {
+      verifiedUser = userParam
+    } else if (userParam === 'default' || userParam === '_open') {
+      verifiedUser = '_open'
+    } else {
+      verifiedUser = verifyUserAuth(ctx)
+      if (!verifiedUser || verifiedUser !== userParam) {
+        return ctx.text('Forbidden', 403)
+      }
+    }
+
+    try {
+      const userSpace = getUserSpace(verifiedUser)
+      const list = await userSpace.listManage.getSnapshotList()
+      return ctx.json(list)
+    } catch (err: any) {
+      return ctx.text(err.message, 500)
+    }
+  })
+
+  router.get('/api/data/snapshot', async (ctx) => {
+    const isAdmin = verifyAdminAuth(ctx.request)
+    const userParam = ctx.query.get('user')
+    const id = ctx.query.get('id')
+    if (!userParam || !id) return ctx.text('Missing parameters', 400)
+
+    let verifiedUser: string | null = null
+    if (isAdmin) {
+      verifiedUser = userParam
+    } else if (userParam === 'default' || userParam === '_open') {
+      verifiedUser = '_open'
+    } else {
+      verifiedUser = verifyUserAuth(ctx)
+      if (!verifiedUser || verifiedUser !== userParam) {
+        return ctx.text('Forbidden', 403)
+      }
+    }
+
+    try {
+      const userSpace = getUserSpace(verifiedUser)
+      const data = await userSpace.listManage.getSnapshot(id)
+      if (!data) return ctx.text('Not Found', 404)
+      return ctx.json(data)
+    } catch (err: any) {
+      return ctx.text(err.message, 500)
+    }
+  })
+
+  router.post('/api/data/restore-snapshot', async (ctx) => {
+    const isAdmin = verifyAdminAuth(ctx.request)
+    const userParam = ctx.query.get('user')
+    if (!userParam) return ctx.text('Missing user param', 400)
+
+    let verifiedUser: string | null = null
+    if (isAdmin) {
+      verifiedUser = userParam
+    } else if (userParam === 'default' || userParam === '_open') {
+      verifiedUser = '_open'
+    } else {
+      verifiedUser = verifyUserAuth(ctx)
+      if (!verifiedUser || verifiedUser !== userParam) {
+        return ctx.text('Forbidden', 403)
+      }
+    }
+
+    try {
+      const { id } = await ctx.bodyJson<{ id?: string }>()
+      if (!id) return ctx.text('Missing id', 400)
+      const userSpace = getUserSpace(verifiedUser)
+      await userSpace.listManage.restoreSnapshot(id)
+      return ctx.json({ success: true })
+    } catch (err: any) {
+      return ctx.text(err.message, 500)
+    }
+  })
+
+  router.post('/api/data/delete-snapshot', async (ctx) => {
+    const isAdmin = verifyAdminAuth(ctx.request)
+    const userParam = ctx.query.get('user')
+    if (!userParam) return ctx.text('Missing user param', 400)
+
+    let verifiedUser: string | null = null
+    if (isAdmin) {
+      verifiedUser = userParam
+    } else if (userParam === 'default' || userParam === '_open') {
+      verifiedUser = '_open'
+    } else {
+      verifiedUser = verifyUserAuth(ctx)
+      if (!verifiedUser || verifiedUser !== userParam) {
+        return ctx.text('Forbidden', 403)
+      }
+    }
+
+    try {
+      const { id } = await ctx.bodyJson<{ id?: string }>()
+      if (!id) return ctx.text('Missing id', 400)
+      const userSpace = getUserSpace(verifiedUser)
+      await userSpace.listManage.removeSnapshot(id)
+      return ctx.json({ success: true })
+    } catch (err: any) {
+      return ctx.text(err.message, 500)
+    }
+  })
+
+  router.post('/api/data/upload-snapshot', async (ctx) => {
+    const isAdmin = verifyAdminAuth(ctx.request)
+    const userParam = ctx.query.get('user')
+    const time = parseInt(ctx.query.get('time') || '0')
+    const filename = ctx.query.get('filename')
+
+    if (!userParam || !filename) return ctx.text('Missing parameters', 400)
+
+    let verifiedUser: string | null = null
+    if (isAdmin) {
+      verifiedUser = userParam
+    } else if (userParam === 'default' || userParam === '_open') {
+      verifiedUser = '_open'
+    } else {
+      verifiedUser = verifyUserAuth(ctx)
+      if (!verifiedUser || verifiedUser !== userParam) {
+        return ctx.text('Forbidden', 403)
+      }
+    }
+
+    try {
+      const body = await ctx.bodyText()
+      let finalData = body
+
+      try {
+        const jsonData = JSON.parse(body)
+        if (jsonData && jsonData.type === 'playList_v2' && Array.isArray(jsonData.data)) {
+          startupLog.info(`[Snapshot] Detected LX Music backup format for user ${verifiedUser}, converting...`)
+          const defaultList = jsonData.data.find((l: any) => l.id === 'default')?.list || []
+          const loveList = jsonData.data.find((l: any) => l.id === 'love')?.list || []
+          const userList = jsonData.data.filter((l: any) => l.id !== 'default' && l.id !== 'love')
+          finalData = JSON.stringify({ defaultList, loveList, userList })
+        }
+      } catch { }
+
+      let name = filename
+      if (name.startsWith('snapshot_')) name = name.substring(9)
+
+      const userSpace = getUserSpace(verifiedUser)
+      await userSpace.listManage.saveSnapshotWithTime(name, finalData, time)
+      return ctx.json({ success: true })
+    } catch (err: any) {
+      return ctx.text(err.message, 500)
+    }
+  })
+
+  // 8. 歌单与歌曲精准修改 (POST /api/data/*)
   router.post('/api/data/delete-playlist', async (ctx) => {
     if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
     try {

@@ -41,8 +41,11 @@
 执行以下指令启动容器：
 
 ```bash
+export FRONTEND_PASSWORD='请替换为强随机密码'
+
 docker run -d \
   -p 9527:9527 \
+  -e FRONTEND_PASSWORD="$FRONTEND_PASSWORD" \
   -v $(pwd)/data:/server/data \
   -v $(pwd)/logs:/server/logs \
   -v $(pwd)/cache:/server/cache \
@@ -78,7 +81,7 @@ services:
       - ./music:/server/music
     environment:
       - NODE_ENV=production
-      # - FRONTEND_PASSWORD=123456
+      - FRONTEND_PASSWORD=${FRONTEND_PASSWORD:?请先在 .env 中设置 FRONTEND_PASSWORD}
       # - ENABLE_WEBPLAYER_AUTH=true
       # - WEBPLAYER_PASSWORD=yourpassword
 ```

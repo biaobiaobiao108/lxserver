@@ -188,9 +188,13 @@
 - **GitHub Packages**: `ghcr.io/biaobiaobiao108/lxserver:latest`
 
 #### 1. Docker Run 方式
+首次启动必须显式设置一个管理员密码：
 ```bash
+export FRONTEND_PASSWORD='请替换为强随机密码'
+
 docker run -d \
   -p 9527:9527 \
+  -e FRONTEND_PASSWORD="$FRONTEND_PASSWORD" \
   -v $(pwd)/data:/server/data \
   -v $(pwd)/logs:/server/logs \
   -v $(pwd)/cache:/server/cache \
@@ -218,7 +222,7 @@ services:
       - ./music:/server/music
     environment:
       - NODE_ENV=production
-      # - FRONTEND_PASSWORD=your_admin_password
+      - FRONTEND_PASSWORD=${FRONTEND_PASSWORD:?请先在 .env 中设置 FRONTEND_PASSWORD}
       # - ENABLE_WEBPLAYER_AUTH=true
       # - WEBPLAYER_PASSWORD=your_player_password
       # - ADMIN_PATH=
@@ -255,7 +259,7 @@ bun start
 
 ### 访问说明
 - **Web 网页播放器**: `http://你的IP:9527/music` (默认路径，可通过 `PLAYER_PATH` 自定义)
-- **同步管理后台**: `http://你的IP:9527/` (默认根路径，默认密码: `123456`)
+- **同步管理后台**: `http://你的IP:9527/` (默认根路径，密码必须在启动时显式设置)
 
 ---
 
@@ -269,7 +273,7 @@ bun start
 | `BIND_IP` | `bindIP` | 监听 IP (`0.0.0.0` 监听所有网卡) | `0.0.0.0` |
 | `ADMIN_PATH` | `admin.path` | 后台管理访问路径（默认为空，即根路径 `/`） | `""` |
 | `PLAYER_PATH` | `player.path` | Web 播放器访问路径 | `"/music"` |
-| `FRONTEND_PASSWORD` | `frontend.password` | 管理后台登录密码 | `"123456"` |
+| `FRONTEND_PASSWORD` | `frontend.password` | 管理后台登录密码（必填，不接受默认示例密码） | 无，必须显式设置 |
 | `ENABLE_WEBPLAYER_AUTH` | `player.enableAuth` | 是否启用 Web 播放器访问认证 | `false` |
 | `WEBPLAYER_PASSWORD` | `player.password` | Web 播放器访问密码 | `"123456"` |
 | `SUBSONIC_ENABLE` | `subsonic.enable` | 是否启用 Subsonic 协议接口 | `true` |

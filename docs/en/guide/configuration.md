@@ -42,7 +42,7 @@ This module involves monitoring the status of connected clients and isolation sp
 
 | Environment Variable Mapping Key (ENV) | System Default Value | Data Type | Scope and Applicable Scenarios |
 | :-------------------- | :--------- | :------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `FRONTEND_PASSWORD` | `123456` | String | **Control Panel Root-level encrypted access credential**. Used to verify credentials entering `\` (the global scope of the control panel). To prevent unauthorized external network access, it is recommended to re-authorize and change it immediately upon the first setup. |
+| `FRONTEND_PASSWORD` | None; required | String | **Control Panel Root-level encrypted access credential**. Used to verify credentials entering `\` (the global scope of the control panel). Empty or example passwords are rejected; production deployments must provide a strong random password explicitly. |
 | `MAX_SNAPSHOT_NUM` | `10` | Integer | **Time snapshot retention threshold setting**. The maximum allowed length of the historical archive snapshot queue retained by the system. Early histories exceeding this queue limit will be cyclically discarded by the underlying timed GC task. |
 | `DATA_PATH` | `./data` | String | **Data directory path**. Specifies where persistence data (users.json, snapshots) are stored. |
 | `LOG_PATH` | `./logs` | String | **Log directory path**. Specifies where system logs are stored. |

@@ -97,6 +97,7 @@ jobs:
             --name "$container_name" \
             --platform linux/amd64 \
             --publish 127.0.0.1:9527:9527 \
+            --env "FRONTEND_PASSWORD=smoke-${GITHUB_RUN_ID}-${GITHUB_SHA:0:12}" \
             "${{ steps.image.outputs.name }}@${{ steps.push.outputs.digest }}" >/dev/null
 
           for attempt in {1..30}; do
@@ -134,6 +135,7 @@ jobs:
               --name lxserver \
               --restart unless-stopped \
               -p 9527:9527 \
+              -e FRONTEND_PASSWORD=replace-with-a-strong-random-password \
               -v $(pwd)/data:/server/data \
               ${{ steps.image.outputs.name }}:${{ github.ref_name }}
             ```

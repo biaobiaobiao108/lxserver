@@ -41,8 +41,11 @@ This project supports pulling images from Docker Hub or GitHub Packages:
 Execute the following command to start the container:
 
 ```bash
+export FRONTEND_PASSWORD='replace-with-a-strong-random-password'
+
 docker run -d \
   -p 9527:9527 \
+  -e FRONTEND_PASSWORD="$FRONTEND_PASSWORD" \
   -v $(pwd)/data:/server/data \
   -v $(pwd)/logs:/server/logs \
   -v $(pwd)/cache:/server/cache \
@@ -78,7 +81,7 @@ services:
       - ./music:/server/music
     environment:
       - NODE_ENV=production
-      # - FRONTEND_PASSWORD=123456
+      - FRONTEND_PASSWORD=${FRONTEND_PASSWORD:?Set FRONTEND_PASSWORD in .env}
       # - ENABLE_WEBPLAYER_AUTH=true
       # - WEBPLAYER_PASSWORD=yourpassword
 ```

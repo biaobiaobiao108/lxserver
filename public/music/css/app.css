@@ -89,6 +89,7 @@ body.overlay-open > *:not(.skip-link) {
         padding-top: 0.25rem;
         padding-bottom: max(0.25rem, env(safe-area-inset-bottom, 0px));
         padding-inline: 0.5rem;
+        gap: 0.1rem;
     }
 
     #player-footer .player-secondary-action {
@@ -105,13 +106,35 @@ body.overlay-open > *:not(.skip-link) {
         height: 2.25rem;
     }
 
-    #player-footer > .flex-1 > div:last-child {
-        gap: 0.5rem;
-        margin-bottom: 0;
+    #player-footer > .flex-1 {
+        display: grid;
+        grid-template-columns: minmax(7.5rem, 0.9fr) minmax(0, 1.5fr);
+        align-items: center;
+        gap: 0.35rem;
+        padding-inline: 0;
     }
 
     #player-footer > .flex-1 > div:first-child {
+        min-width: 0;
+        gap: 0.25rem;
         margin-bottom: 0;
+        font-size: 0.625rem;
+    }
+
+    #player-footer > .flex-1 > div:last-child {
+        min-width: 0;
+        gap: 0.25rem;
+        margin-bottom: 0;
+        justify-content: flex-end;
+    }
+
+    #player-footer > .flex-1 > div:last-child .p-2 {
+        padding: 0.45rem;
+    }
+
+    #player-footer > .flex-1 > div:last-child #btn-play {
+        width: 2.5rem;
+        height: 2.5rem;
     }
 }
 
@@ -897,6 +920,14 @@ aside {
 .row-selected {
     background-color: color-mix(in srgb, var(--c-500) 15%, transparent) !important;
     border-radius: 0.75rem;
+}
+
+/* Apply layout skipping only to long, repeated song lists. The intrinsic size
+   keeps scroll position stable, while focus navigation still brings skipped
+   rows into view when keyboard users reach them. */
+.deferred-list-item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 4.5rem;
 }
 
 /* Dark mode refinements: Use deeper theme mix instead of plain white */

@@ -80,15 +80,17 @@ function syncAdminOverlays(): void {
 function initAdminAccessibility(): void {
     document.querySelectorAll<HTMLElement>('input, select, textarea').forEach(control => {
         const field = control as HTMLInputElement;
+        if (field.type === 'hidden') return;
         if (field.getAttribute('aria-label') || field.getAttribute('aria-labelledby') || field.labels?.length) return;
         const nearbyLabel = control.parentElement?.querySelector('label')?.textContent?.trim();
-        const fallback = nearbyLabel || field.placeholder || field.name;
+        const fallback = nearbyLabel || field.placeholder || field.name || field.id || field.type;
         if (fallback) field.setAttribute('aria-label', fallback.replace(/\s+/g, ' '));
     });
 
     document.querySelectorAll<HTMLButtonElement>('button').forEach(button => {
         if (button.getAttribute('aria-label') || button.textContent?.trim()) return;
-        if (button.title) button.setAttribute('aria-label', button.title);
+        const fallback = button.title || button.id.replace(/[-_]+/g, ' ').trim() || '操作按钮';
+        button.setAttribute('aria-label', fallback);
     });
 
     document.addEventListener('keydown', event => {
@@ -692,15 +694,20 @@ class App {
     toggleUserDropdown(type) {
         const selector = document.getElementById(`${type}-user-selector`);
         const dropdown = document.getElementById(`${type}-user-dropdown`);
+        const trigger = selector?.querySelector('.selector-trigger');
         const isOpen = !dropdown.classList.contains('hidden');
 
         // 关闭所有其他的
         document.querySelectorAll('.selector-dropdown').forEach(d => d.classList.add('hidden'));
-        document.querySelectorAll('.custom-user-selector').forEach(s => s.classList.remove('open'));
+        document.querySelectorAll('.custom-user-selector').forEach(s => {
+            s.classList.remove('open');
+            s.querySelector('.selector-trigger')?.setAttribute('aria-expanded', 'false');
+        });
 
         if (!isOpen) {
             dropdown.classList.remove('hidden');
             selector.classList.add('open');
+            trigger?.setAttribute('aria-expanded', 'true');
         }
     }
 
@@ -743,7 +750,7 @@ class App {
                     const avatarStyle = isPublic ? 'background: linear-gradient(135deg, #10b981, #059669); font-size: 1.5rem;' : '';
                     const avatarHtml = isPublic ? '🌐' : this.escapeHtml(user.name.charAt(0).toUpperCase());
                     return `
-                    <div class="user-select-card" onclick="app.selectUser('${type}', '${this.escapeHtml(user.name)}')">
+                    <div class="user-select-card" role="button" tabindex="0" aria-label="选择用户 ${displayName}" onclick="app.selectUser('${type}', '${this.escapeHtml(user.name)}')" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.selectUser('${type}', '${this.escapeHtml(user.name)}'); }">
                         <div class="avatar" style="${avatarStyle}">${avatarHtml}</div>
                         <div class="name">${displayName}</div>
                         <div class="role">${roleText}</div>
@@ -1191,19 +1198,19 @@ class App {
             totalSongs += defaultCount + loveCount;
 
             document.getElementById('data-stats').innerHTML = `
-                <div class="data-stat-card clickable" onclick="app.viewAllSongs()">
+                <div class="data-stat-card clickable" role="button" tabindex="0" aria-label="查看总歌曲数" onclick="app.viewAllSongs()" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.viewAllSongs(); }">
                     <h4>总歌曲数</h4>
                     <div class="value">${totalSongs}</div>
                 </div>
-                <div class="data-stat-card clickable" onclick="app.viewSystemList('default')">
+                <div class="data-stat-card clickable" role="button" tabindex="0" aria-label="查看试听列表" onclick="app.viewSystemList('default')" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.viewSystemList('default'); }">
                     <h4>试听列表</h4>
                     <div class="value">${defaultCount}</div>
                 </div>
-                <div class="data-stat-card clickable" onclick="app.viewSystemList('love')">
+                <div class="data-stat-card clickable" role="button" tabindex="0" aria-label="查看我的收藏" onclick="app.viewSystemList('love')" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.viewSystemList('love'); }">
                     <h4>我的收藏</h4>
                     <div class="value">${loveCount}</div>
                 </div>
-                <div class="data-stat-card clickable" onclick="app.renderPlaylists()">
+                <div class="data-stat-card clickable" role="button" tabindex="0" aria-label="查看自定义列表" onclick="app.renderPlaylists()" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.renderPlaylists(); }">
                     <h4>自定义列表</h4>
                     <div class="value">${userListCount}</div>
                 </div>
@@ -2434,7 +2441,7 @@ class App {
 
         container.innerHTML = items.map(item => `
         <div class="file-item">
-            <div class="file-name" onclick="app.${item.isDirectory ? `loadFiles('${item.path}')` : `viewFile('${item.path}')`}">
+            <div class="file-name" role="button" tabindex="0" aria-label="${item.isDirectory ? '打开文件夹' : '查看文件'} ${item.name}" onclick="app.${item.isDirectory ? `loadFiles('${item.path}')` : `viewFile('${item.path}')`}" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.${item.isDirectory ? `loadFiles('${item.path}')` : `viewFile('${item.path}')`}; }">
                 <span class="file-icon">${item.isDirectory ? '📁' : this.getFileIcon(item.name)}</span>
                 <span>${item.name}</span>
             </div>

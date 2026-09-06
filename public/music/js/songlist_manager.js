@@ -812,6 +812,7 @@ function formatPlayCount(count) {
 function toggleSlDetailHeader() {
     const header = document.getElementById('sl-detail-header');
     const icon = document.getElementById('sl-detail-collapse-icon');
+    const trigger = icon?.closest('[aria-controls="sl-detail-header"]');
     if (!header || !icon) return;
 
     const isCollapsed = header.classList.contains('is-collapsed');
@@ -821,10 +822,12 @@ function toggleSlDetailHeader() {
         header.classList.remove('is-collapsed', 'max-h-0', 'opacity-0', 'py-0', 'border-b-0', 'pointer-events-none');
         header.classList.add('max-h-[1000px]', 'p-4', 'md:p-6', 'border-b');
         icon.style.transform = 'rotate(0deg)';
+        trigger?.setAttribute('aria-expanded', 'true');
     } else {
         // Collapse
         header.classList.remove('max-h-[1000px]', 'p-4', 'md:p-6', 'border-b');
         header.classList.add('is-collapsed', 'max-h-0', 'opacity-0', 'py-0', 'border-b-0', 'pointer-events-none');
         icon.style.transform = 'rotate(180deg)';
+        trigger?.setAttribute('aria-expanded', 'false');
     }
 }

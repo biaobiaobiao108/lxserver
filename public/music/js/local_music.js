@@ -29,6 +29,7 @@ window.LocalMusicManager = {
     cacheKey: 'lx_lm_filters',   // [New] localStorage key
     enableReMapping: false,
     listEventsBound: false,
+    initialized: false,
     remasterPollTimer: null,
     remasterResultOffset: 0,
     remasterResults: [],
@@ -718,6 +719,8 @@ window.LocalMusicManager = {
 
     init() {
         // Initialization can run when the tab is clicked, or immediately.
+        if (this.initialized) return;
+        this.initialized = true;
         // Try reading global cache location to sync the selector.
         this.syncLocationSelector();
         this.resetFilters(false);

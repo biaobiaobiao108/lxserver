@@ -31,7 +31,6 @@
     <script src="js/tailwind_setup.js"></script>
     <link rel="stylesheet" href="assets/fontawesome/css/all.min.css">
     <script src="js/crypto-js.min.js"></script>
-    <script src="js/marked.min.js"></script>
     <script src="js/Sortable.min.js"></script>
     <script src="/js/notification-engine.js"></script>
     <link rel="stylesheet" href="css/app.css">
@@ -247,6 +246,7 @@
                     <div class="flex flex-col md:flex-row gap-2 md:gap-4 mb-4 md:mb-6">
                         <!-- Search Input -->
                         <div class="flex-1 relative">
+                            <label for="search-input" class="sr-only">搜索歌曲、歌手或专辑</label>
                             <i class="fas fa-search absolute left-4 top-3.5 t-text-muted"></i>
                             <input type="text" id="search-input" name="lx_music_search_query"
                                 class="w-full pl-10 pr-4 py-3 t-bg-panel border t-border-main rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-all shadow-sm text-sm md:text-base"
@@ -376,6 +376,7 @@
                             <div class="flex items-center gap-2 sm:gap-3">
                                 <!-- Search Input -->
                                 <div class="relative flex-1 min-w-[24px]">
+                                    <label for="gl-local-search-input" class="sr-only">搜索当前页结果</label>
                                     <input type="text" id="gl-local-search-input"
                                         class="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border t-border-main rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 t-text-main transition-all"
                                         placeholder="搜索当前页结果 (歌曲、歌手)..." oninput="window.ListSearch.handleSearch()"
@@ -447,6 +448,7 @@
                                 <div id="page-jump-container"
                                     class="flex items-center gap-1.5 bg-gray-500/5 px-2 py-0.5 rounded-lg border t-border-main">
                                     <input id="jump-page-input" type="number" min="1"
+                                        aria-label="跳转到页码"
                                         class="w-10 h-6 text-xs text-center bg-transparent focus:outline-none t-text-main"
                                         placeholder="页" onkeydown="if(event.key==='Enter') jumpToPage()">
                                     <span class="w-[1px] h-3 bg-gray-300 dark:bg-gray-700"></span>
@@ -475,6 +477,7 @@
                         <!-- Search & Categories -->
                         <div class="flex flex-[2] gap-2 items-center">
                             <div class="relative flex-1 group">
+                                <label for="songlist-search-input" class="sr-only">搜索歌单</label>
                                 <i
                                     class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 t-text-muted group-focus-within:text-emerald-500 transition-colors"></i>
                                 <input type="text" id="songlist-search-input"
@@ -497,6 +500,7 @@
                         <!-- Source & Sort -->
                         <div
                             class="flex items-center gap-2 md:justify-end overflow-x-auto hide-scrollbar w-full md:w-auto pb-1 -mb-1">
+                            <label for="songlist-source" class="sr-only">歌单来源</label>
                             <select id="songlist-source" onchange="changeSongListSource()"
                                 class="flex-shrink-0 px-4 py-3 t-bg-panel border t-border-main rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm t-text-main font-medium text-sm md:text-base">
                                 <option value="wy">网易云</option>
@@ -568,7 +572,8 @@
                                 class="p-2 t-text-muted hover:t-bg-track rounded-lg">
                                 <i class="fas fa-arrow-left text-xl"></i>
                             </button>
-                            <div class="flex-1 min-w-0 cursor-pointer select-none" onclick="toggleSlDetailHeader()"
+                            <div class="flex-1 min-w-0 cursor-pointer select-none" role="button" tabindex="0" aria-expanded="true" aria-controls="sl-detail-header" onclick="toggleSlDetailHeader()"
+                                onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleSlDetailHeader(); }"
                                 title="点击折叠/展开歌单信息">
                                 <div class="flex items-center gap-1.5">
                                     <h1 id="sl-detail-title" class="font-bold truncate text-sm md:text-base">歌单详情</h1>
@@ -654,6 +659,7 @@
                                 class="hidden p-3 t-bg-main border-b t-border-main animate-fade-in">
                                 <div class="flex items-center gap-2 sm:gap-3">
                                     <div class="relative flex-1 min-w-[24px]">
+                                        <label for="sl-local-search-input" class="sr-only">搜索当前歌单</label>
                                         <input type="text" id="sl-local-search-input"
                                             class="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border t-border-main rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 t-text-main transition-all"
                                             placeholder="搜索当前歌单 (歌曲、歌手)..." oninput="window.ListSearch.handleSearch()"
@@ -849,6 +855,7 @@
                                 <div class="flex items-center gap-2 sm:gap-3">
                                     <!-- Search Input -->
                                     <div class="relative flex-1 min-w-[24px]">
+                                        <label for="lb-local-search-input" class="sr-only">搜索排行榜歌曲</label>
                                         <input type="text" id="lb-local-search-input"
                                             class="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border t-border-main rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 t-text-main transition-all"
                                             placeholder="搜索歌曲名、歌手..." oninput="window.ListSearch.handleSearch()"
@@ -3354,7 +3361,7 @@
                             <i class="fas fa-download"></i><span>下载或缓存</span>
                         </button>
                         <button type="button" role="menuitem" aria-label="均衡器与音效"
-                            onclick="window.soundEffects && window.soundEffects.toggle()" class="player-menu-action">
+                            onclick="toggleSoundEffects()" class="player-menu-action">
                             <i class="fas fa-sliders-h"></i><span>均衡器与音效</span>
                         </button>
                         <button type="button" role="menuitem" aria-label="查看评论" onclick="toggleCommentModal()"
@@ -3362,7 +3369,7 @@
                             <i class="fas fa-comment"></i><span>查看评论</span>
                         </button>
                         <button type="button" role="menuitem" aria-label="分享歌词卡片"
-                            onclick="window.lyricCard && window.lyricCard.open()" class="player-menu-action">
+                            onclick="openLyricCard()" class="player-menu-action">
                             <i class="fas fa-image"></i><span>分享歌词卡片</span>
                         </button>
                         <button type="button" role="menuitem" aria-label="播放队列" aria-controls="queue-drawer" onclick="toggleQueueDrawer()"
@@ -3498,13 +3505,13 @@
             <!-- Sound Effects Button -->
             <button id="btn-sound-effects" aria-label="均衡器与音效"
                 class="text-gray-500 hover:text-emerald-600 text-sm font-bold border border-gray-300 rounded px-2 py-0.5 transition-colors"
-                onclick="window.soundEffects && window.soundEffects.toggle()" title="均衡器 & 音效">
+                onclick="toggleSoundEffects()" title="均衡器 & 音效">
                 <i class="fas fa-sliders-h text-sm"></i>
             </button>
             <!-- Share Card button (Desktop) -->
             <button aria-label="分享歌词卡片"
                 class="text-gray-500 hover:text-emerald-600 text-sm font-bold border border-gray-300 rounded px-2 py-0.5 transition-colors"
-                onclick="window.lyricCard && window.lyricCard.open()" title="分享歌词卡片">
+                onclick="openLyricCard()" title="分享歌词卡片">
                 <i class="fas fa-image text-sm"></i>
             </button>
             <button aria-label="查看评论"
@@ -5033,15 +5040,11 @@
     <script src="js/theme_manager.js"></script>
     <script src="js/list_search.js"></script>
     <script src="js/songlist_manager.js"></script>
-    <script src="js/leaderboard_manager.js"></script>
     <script src="js/wave.js"></script>
-    <script src="js/visualizer.js"></script>
     <script src="js/pwa.js"></script>
-    <script src="js/lyric-card.js"></script>
     <script src="js/ios-background-audio.js"></script>
     <script src="js/sound-effects.js"></script>
     <script src="js/download_manager.js"></script>
-    <script src="js/local_music.js"></script>
     <script src="js/common_ui.js"></script>
     <script src="app.js"></script>
 </body>

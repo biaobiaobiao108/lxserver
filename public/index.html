@@ -266,7 +266,7 @@
 
                     <div class="stats-grid">
                         <!-- 用户与设备合并卡片 -->
-                        <div class="stat-card glass stat-clickable stat-card-dual" onclick="app.switchView('users')">
+                        <div class="stat-card glass stat-clickable stat-card-dual" role="button" tabindex="0" aria-label="查看用户和在线设备" onclick="app.switchView('users')" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); app.switchView('users'); }">
                             <div class="stat-dual-section">
                                 <div class="stat-icon users-icon">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -512,7 +512,7 @@
                 <div id="view-data" class="view">
                     <div class="view-header">
                         <div class="custom-user-selector" id="data-user-selector">
-                            <div class="selector-trigger" onclick="app.toggleUserDropdown('data')">
+                            <button type="button" class="selector-trigger" aria-haspopup="listbox" aria-expanded="false" onclick="app.toggleUserDropdown('data')">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                     class="selector-icon">
                                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -523,7 +523,7 @@
                                     class="chevron-icon">
                                     <polyline points="6 9 12 15 18 9"></polyline>
                                 </svg>
-                            </div>
+                            </button>
                             <div class="selector-dropdown hidden" id="data-user-dropdown">
                                 <!-- 用户列表将通过 JS 动态渲染 -->
                             </div>
@@ -1244,7 +1244,7 @@
                         </div>
                         <div class="header-side-actions" style="flex-wrap: wrap;">
                             <div class="custom-user-selector" id="snapshot-user-selector">
-                                <div class="selector-trigger" onclick="app.toggleUserDropdown('snapshot')">
+                                <button type="button" class="selector-trigger" aria-haspopup="listbox" aria-expanded="false" onclick="app.toggleUserDropdown('snapshot')">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                         class="selector-icon">
                                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
@@ -1255,7 +1255,7 @@
                                         class="chevron-icon">
                                         <polyline points="6 9 12 15 18 9"></polyline>
                                     </svg>
-                                </div>
+                                </button>
                                 <div class="selector-dropdown hidden" id="snapshot-user-dropdown">
                                     <!-- 用户列表将通过 JS 动态渲染 -->
                                 </div>

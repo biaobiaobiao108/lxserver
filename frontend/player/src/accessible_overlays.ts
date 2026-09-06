@@ -13,8 +13,10 @@ const controlLabels: Record<string, string> = {
     'songlist-search-input': '搜索歌单',
     'songlist-source': '歌单来源',
     'sl-local-search-input': '搜索当前歌单',
+    'sl-local-search-filter': '仅显示当前歌单匹配项',
     'lb-source-select': '排行榜来源',
     'lb-local-search-input': '搜索排行榜歌曲',
+    'lb-local-search-filter': '仅显示排行榜匹配项',
     'lm-location-select': '本地音乐位置',
     'lm-folder-select': '本地音乐目录',
     'lm-sort-by': '本地音乐排序字段',
@@ -31,6 +33,17 @@ const controlLabels: Record<string, string> = {
     'qq-input-field': 'QQ 号',
     'new-subfolder-input': '新文件夹名称',
     'custom-minutes': '自定义定时分钟数',
+    'setting-default-download-target': '默认下载目标',
+    'setting-default-download-quality': '默认下载音质',
+    'custom-proxy-url-input': '自定义代理地址',
+    'setting-network-list-auto-check-interval': '网络歌单自动检查间隔',
+    'hot-search-limit-input': '热搜展示数量',
+    'setting-visualizer-opacity': '可视化透明度',
+    'lyric-font-size-slider': '歌词字体大小',
+    'external-list-source': '外部歌单来源',
+    'external-list-input': '外部歌单链接或 ID',
+    'manual-index-search-input': '歌曲索引搜索',
+    'manual-index-source-select': '歌曲索引来源',
 };
 
 const iconLabels: Array<[string, string]> = [
@@ -101,12 +114,14 @@ function getHeading(element: HTMLElement): HTMLElement | null {
 
 function enhanceFormLabels(): void {
     document.querySelectorAll<HTMLElement>('input, select, textarea, [contenteditable="true"]').forEach(control => {
+        if (control instanceof HTMLInputElement && control.type === 'hidden') return;
         if (control.getAttribute('aria-label') || control.getAttribute('aria-labelledby') || (control as HTMLInputElement).labels?.length) return;
 
         const idLabel = control.id ? controlLabels[control.id] : undefined;
         const nearbyLabel = control.parentElement?.querySelector('label')?.textContent?.trim();
         const placeholder = control.getAttribute('placeholder')?.trim();
-        const label = idLabel || nearbyLabel || placeholder;
+        const fallback = control.id || control.getAttribute('name') || control.getAttribute('type');
+        const label = idLabel || nearbyLabel || placeholder || fallback;
         if (label) control.setAttribute('aria-label', label.replace(/\s+/g, ' '));
     });
 }

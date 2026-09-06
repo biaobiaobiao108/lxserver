@@ -16,6 +16,14 @@
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
     --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --radius-control: 0.75rem;
+    --radius-panel: 1rem;
+    --elevation-panel: var(--shadow-lg);
+    --control-height: 2.75rem;
 }
 
 * {
@@ -433,6 +441,19 @@ body {
 .stat-card:hover {
     transform: translateY(-4px);
     box-shadow: var(--shadow-xl);
+}
+
+.stat-card[role="button"],
+.user-select-card[role="button"],
+.file-name[role="button"] {
+    outline: none;
+}
+
+.stat-card[role="button"]:active,
+.user-select-card[role="button"]:active,
+.file-name[role="button"]:active,
+.data-stat-card.clickable:active {
+    transform: translateY(0) scale(0.99);
 }
 
 .stat-icon {
@@ -1087,6 +1108,8 @@ select.form-input option:checked {
 }
 
 .selector-trigger {
+    width: 100%;
+    min-height: var(--control-height);
     display: flex;
     align-items: center;
     gap: 0.75rem;
@@ -1097,6 +1120,8 @@ select.form-input option:checked {
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     color: var(--text-primary);
+    font: inherit;
+    text-align: left;
 }
 
 .selector-trigger:hover {
@@ -1214,6 +1239,14 @@ select.form-input option:checked {
     border-color: var(--accent-primary);
     transform: translateY(-8px);
     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+}
+
+.user-select-card:focus-visible,
+.stat-card[role="button"]:focus-visible,
+.file-name[role="button"]:focus-visible,
+.data-stat-card.clickable:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--accent-primary) 72%, white);
+    outline-offset: 3px;
 }
 
 .user-select-card .avatar {
@@ -1818,6 +1851,10 @@ select.form-input option:checked {
     color: var(--accent-primary);
 }
 
+.file-name[role="button"] {
+    min-height: 2.75rem;
+}
+
 .file-icon {
     font-size: 1.25rem;
     flex-shrink: 0;
@@ -2133,6 +2170,10 @@ select.form-input option:checked {
 
 .data-stat-card.clickable:active {
     transform: translateY(0);
+}
+
+.data-stat-card.clickable:focus-visible {
+    outline-offset: 2px;
 }
 
 /* =============== 歌单标题编辑 =============== */

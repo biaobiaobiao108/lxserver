@@ -39,6 +39,67 @@ window.batchCollectSongs = null; // Store songs for batch collection modal
 const audio = document.getElementById('audio-player');
 let currentPlaybackRate = 1.0;
 
+const lazyScriptPromises = new Map<string, Promise<void>>();
+
+function loadLazyScript(src, globalName) {
+    if (globalName && window[globalName]) return Promise.resolve();
+    if (lazyScriptPromises.has(src)) return lazyScriptPromises.get(src);
+
+    const promise = new Promise<void>((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`加载模块失败: ${src}`));
+        document.head.appendChild(script);
+    });
+    lazyScriptPromises.set(src, promise);
+    return promise;
+}
+
+function ensureMarkedLoaded() {
+    return loadLazyScript('js/marked.min.js', 'marked');
+}
+
+function ensureVisualizerLoaded() {
+    return loadLazyScript('js/visualizer.js', 'musicVisualizer');
+}
+
+function ensureLeaderboardLoaded() {
+    return loadLazyScript('js/leaderboard_manager.js', 'LeaderboardManager');
+}
+
+function ensureLocalMusicLoaded() {
+    return loadLazyScript('js/local_music.js', 'LocalMusicManager');
+}
+
+function ensureLyricCardLoaded() {
+    return loadLazyScript('js/lyric-card.js', 'lyricCard');
+}
+
+function ensureSoundEffectsLoaded() {
+    return loadLazyScript('js/sound-effects.js', 'soundEffects');
+}
+
+function openLyricCard() {
+    if (window.lyricCard) {
+        window.lyricCard.open();
+        return;
+    }
+    ensureLyricCardLoaded().then(() => window.lyricCard?.open()).catch(() => showError('歌词卡片模块加载失败，请稍后重试'));
+}
+
+function toggleSoundEffects() {
+    if (window.soundEffects) {
+        window.soundEffects.toggle();
+        return;
+    }
+    ensureSoundEffectsLoaded().then(() => window.soundEffects?.toggle()).catch(() => showError('音效模块加载失败，请稍后重试'));
+}
+
+window.openLyricCard = openLyricCard;
+window.toggleSoundEffects = toggleSoundEffects;
+
 initAccessibleOverlays();
 
 // Initialize Unified Search for Global (Favorites/Search)
@@ -1104,11 +1165,24 @@ function switchTab(tabId) {
         document.getElementById('page-title').innerText = "排行榜";
         if (window.LeaderboardManager && !window.LeaderboardManager.initialized) {
             window.LeaderboardManager.init();
+        } else if (!window.LeaderboardManager) {
+            ensureLeaderboardLoaded().then(() => {
+                if (window.LeaderboardManager && !window.LeaderboardManager.initialized) {
+                    window.LeaderboardManager.init();
+                }
+            }).catch(() => showError('排行榜模块加载失败，请稍后重试'));
         }
     }
 
     if (tabId === 'localmusic') {
         document.getElementById('page-title').innerText = "本地音乐";
+        if (window.LocalMusicManager) {
+            window.LocalMusicManager.init();
+        } else {
+            ensureLocalMusicLoaded().then(() => window.LocalMusicManager?.init()).catch(() => {
+                showError('本地音乐模块加载失败，请稍后重试');
+            });
+        }
     }
 
     // Collapse Favorites if leaving
@@ -1174,15 +1248,14 @@ async function loadAboutContent() {
         if (!response.ok) throw new Error('Failed to load about.md');
         const text = await response.text();
 
-        // Render Markdown
+        // Render Markdown. The parser is only needed when the About tab is opened.
+        await ensureMarkedLoaded().catch(() => undefined);
         if (window.marked) {
             // Replace the build hash placeholder; application version is intentionally not shown in the UI.
             const buildHash = (window.CONFIG && window.CONFIG.buildHash) || 'unknown';
             const content = text.replace(/{{buildHash}}/g, buildHash);
             aboutContainer.innerHTML = window.marked.parse(content);
-        } else {
-            aboutContainer.innerText = text; // Fallback
-        }
+        } else aboutContainer.innerText = text;
         aboutContainer.classList.remove('animate-pulse');
     } catch (e) {
         console.error('Failed to load about content:', e);
@@ -1374,9 +1447,9 @@ function renderQueue() {
         const isActive = index === currentIndex;
         return `
             <div role="button" tabindex="0" aria-label="播放 ${escapeHtmlText(song.name || '未命名歌曲')}"
-                 class="group flex items-center gap-3 p-3 rounded-xl transition-all hover:t-bg-item-hover cursor-pointer relative ${isActive ? 't-bg-item-hover border-l-4 border-emerald-500 pl-2' : ''}"
+                 class="group flex items-center gap-3 p-3 rounded-xl transition-all hover:t-bg-item-hover cursor-pointer relative ${isActive ? 't-bg-item-hover border-l-4 border-emerald-500 pl-2' : ''} ${index > 12 ? 'deferred-list-item' : ''}"
                  onclick="playSongFromQueue(${index})"
-                 onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); playSongFromQueue(${index}); }">
+                 onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); playSongFromQueue(${index}); }">
                 
                 <div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 relative">
                     <img src="${getImgUrl(song)}" alt="${escapeHtmlText(song.name || '歌曲')}专辑封面" width="40" height="40"
@@ -2001,6 +2074,17 @@ function getSourceTag(source) {
 }
 window.getSourceTag = getSourceTag;
 
+function makeKeyboardActivatable(element, label, activate) {
+    element.setAttribute('role', 'button');
+    element.tabIndex = 0;
+    element.setAttribute('aria-label', label);
+    element.addEventListener('keydown', (event) => {
+        if (event.target !== element || (event.key !== 'Enter' && event.key !== ' ')) return;
+        event.preventDefault();
+        activate(event);
+    });
+}
+
 
 
 function renderSingerResults(list) {
@@ -2021,6 +2105,7 @@ function renderSingerResults(list) {
         div.dataset.singerId = singer.id;
         div.dataset.singerSource = singer.source || 'wy';
         div.onclick = () => enterArtist(singer.id, singer.source || 'wy');
+        makeKeyboardActivatable(div, `打开歌手 ${singer.name || '未命名歌手'}`, () => enterArtist(singer.id, singer.source || 'wy'));
         const aliasHtml = singer.alias && singer.alias.length
             ? `<span class="text-[9px] md:text-[10px] t-text-muted text-center truncate w-full mt-0.5 md:mt-1">${singer.alias[0]}</span>`
             : '';
@@ -2066,6 +2151,7 @@ function renderAlbumResults(list) {
         const div = document.createElement('div');
         div.className = 'group flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20';
         div.onclick = () => enterAlbum(item.id, item.source || 'wy');
+        makeKeyboardActivatable(div, `打开专辑 ${item.name || '未命名专辑'}`, () => enterAlbum(item.id, item.source || 'wy'));
         const publishDate = item.publishTime ? new Date(item.publishTime).toLocaleDateString() : '';
         div.innerHTML = `
             <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative">
@@ -2475,7 +2561,7 @@ function renderArtistSongsUI(list, page) {
         </div>
         
         <div class="space-y-1 mt-2">
-            ${indexedDisplayList.map((obj) => {
+            ${indexedDisplayList.map((obj, displayIndex) => {
         const { item, originalIndex: index } = obj;
         const isSelected = window.selectedItems.has(String(item.id));
         const isMatched = window.ListSearch && window.ListSearch.isMatched(index);
@@ -2485,12 +2571,13 @@ function renderArtistSongsUI(list, page) {
         if (isCurrentMatch) rowClass += 'search-current ';
         else if (isMatched) rowClass += 'search-match ';
         if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
+        if (displayIndex > 12) rowClass += 'deferred-list-item ';
 
         return `
                 <div role="button" tabindex="0" aria-label="${window.batchMode ? '选择' : '播放'} ${escapeHtmlText(item.name || '未命名歌曲')}"
                      class="${rowClass}" data-song-id="${item.id}"
                      onclick="window.batchMode ? handleBatchSelect('${item.id}', !window.selectedItems.has('${item.id}')) : playFromView(${index})"
-                     onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.batchMode ? handleBatchSelect('${item.id}', !window.selectedItems.has('${item.id}')) : playFromView(${index}); }">
+                     onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.batchMode ? handleBatchSelect('${item.id}', !window.selectedItems.has('${item.id}')) : playFromView(${index}); }">
                     <!-- Index -->
                     <div class="col-span-1 sm:col-span-1 text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
                         ${window.batchMode ? `
@@ -6074,6 +6161,12 @@ async function updateSetting(key, value) {
                 window.musicVisualizer.init();
             }
             window.musicVisualizer.applySettings();
+        } else {
+            // Visualization is an optional, animation-heavy feature. Load it only
+            // when the user first changes a visualization setting.
+            ensureVisualizerLoaded().then(() => window.musicVisualizer?.applySettings()).catch(() => {
+                console.warn('[Visualizer] 可视化模块加载失败');
+            });
         }
 
         // 更新透明度数值显示
@@ -7751,9 +7844,12 @@ function renderLyric(lines, emptyMsg = '暂无歌词') {
         div.className = `lyric-line relative py-2 px-1 text-center md:text-left transition-all duration-300`;
         div.dataset.time = line.time;
         div.dataset.index = idx;
+        div.setAttribute('role', 'button');
+        div.tabIndex = 0;
+        div.setAttribute('aria-label', `跳转到 ${formatTime(line.time / 1000)} 歌词`);
 
         // Click to seek
-        div.onclick = () => {
+        const seekToLine = () => {
             // line.time 是毫秒，audio.currentTime 需要秒
             audio.currentTime = line.time / 1000;
 
@@ -7779,7 +7875,12 @@ function renderLyric(lines, emptyMsg = '暂无歌词') {
             const allLines = document.querySelectorAll('.lyric-line');
             allLines.forEach(l => l.classList.remove('scroll-target'));
 
-
+        };
+        div.onclick = seekToLine;
+        div.onkeydown = (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault();
+            seekToLine();
         };
 
         // Inner content wrapper
@@ -8286,7 +8387,7 @@ function renderLibraryArtists(list) {
         div.className = 'group relative flex flex-col items-center p-2 md:p-4 rounded-2xl transition-all hover:t-bg-panel hover:shadow-md cursor-pointer border border-transparent hover:border-emerald-500/30';
         div.dataset.libArtistId = singer.id;
         div.dataset.libArtistSource = singer.source;
-        div.onclick = (e) => {
+        const activateArtist = (e) => {
             if (e.target.closest('.lib-batch-check') || e.target.closest('.lib-fav-btn')) return;
             if (window.libraryBatchMode === 'artist') {
                 toggleLibArtistBatchSelect(singer.id);
@@ -8294,6 +8395,8 @@ function renderLibraryArtists(list) {
             }
             enterArtist(singer.id, singer.source || 'wy');
         };
+        div.onclick = activateArtist;
+        makeKeyboardActivatable(div, `打开收藏歌手 ${singer.name || '未命名歌手'}`, activateArtist);
         div.innerHTML = `
             <div class="relative mb-2 md:mb-3">
                 <div class="w-16 h-16 sm:w-24 sm:h-24 md:w-32 md:h-32 rounded-full overflow-hidden shadow-sm">
@@ -8370,7 +8473,7 @@ function renderLibraryAlbums(list) {
         div.className = 'group relative flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20';
         div.dataset.libAlbumId = item.id;
         div.dataset.libAlbumSource = item.source;
-        div.onclick = (e) => {
+        const activateAlbum = (e) => {
             if (e.target.closest('.lib-batch-check') || e.target.closest('.lib-fav-btn') || e.target.closest('.lib-album-download-btn')) return;
             if (window.libraryBatchMode === 'album') {
                 toggleLibAlbumBatchSelect(item.id);
@@ -8378,6 +8481,8 @@ function renderLibraryAlbums(list) {
             }
             enterAlbum(item.id, item.source || 'wy');
         };
+        div.onclick = activateAlbum;
+        makeKeyboardActivatable(div, `打开收藏专辑 ${item.name || '未命名专辑'}`, activateAlbum);
         div.innerHTML = `
             <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative">
                 <img src="${item.picUrl || '/music/assets/logo.svg'}" alt="${escapeHtmlText(item.name || '专辑')}封面" width="320" height="320" loading="lazy" decoding="async"
@@ -9490,7 +9595,9 @@ function renderMyLists(data) {
         div.className = "px-6 py-2 text-sm t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden";
         div.setAttribute('data-sidebar-list-id', id);
         div.setAttribute('data-sidebar-sort-id', id);
-        div.onclick = () => handleListClick(id);
+        const activateList = () => handleListClick(id);
+        div.onclick = activateList;
+        makeKeyboardActivatable(div, `打开歌单 ${displayName}`, activateList);
 
         // Use createMarqueeHtml for list name
         const nameHtml = displayName.length > 8
@@ -9505,12 +9612,12 @@ function renderMyLists(data) {
                 ? `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold mr-2" title="歌单有更新">!</span>`
                 : '';
             opsHtml = `
-                <i class="fas fa-sync-alt refresh-btn text-gray-400 hover:text-emerald-500 hidden group-hover:block flex-shrink-0 text-[10px] mr-2 transition-all active:rotate-180" 
-                   title="更新歌单内容" 
-                   onclick="event.stopPropagation(); handleRefreshList('${id}', event)"></i>
-                <i class="fas fa-external-link-alt jump-btn text-gray-400 hover:text-emerald-500 hidden group-hover:block flex-shrink-0 text-[10px] mr-2 transition-all" 
-                   title="打开原始歌单" 
-                   onclick="event.stopPropagation(); handleJumpToOriginalList('${id}', event)"></i>
+                <button type="button" class="refresh-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 hidden group-hover:block flex-shrink-0 text-[10px] mr-2 transition-all active:rotate-180"
+                   title="更新歌单内容" aria-label="更新歌单内容"
+                   onclick="event.stopPropagation(); handleRefreshList('${id}', event)"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
+                <button type="button" class="jump-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 hidden group-hover:block flex-shrink-0 text-[10px] mr-2 transition-all"
+                   title="打开原始歌单" aria-label="打开原始歌单"
+                   onclick="event.stopPropagation(); handleJumpToOriginalList('${id}', event)"><i class="fas fa-external-link-alt" aria-hidden="true"></i></button>
                 ${updateBadge}
             `;
         }
@@ -9523,8 +9630,8 @@ function renderMyLists(data) {
             <i class="fas ${icon} w-5 t-text-muted group-hover:text-emerald-500 transition-colors flex-shrink-0"></i>
             ${displayName.length > 8 ? `<div class="ml-2 flex-1 overflow-hidden">${nameHtml}</div>` : nameHtml}
             <span class="text-xs text-gray-300 group-hover:t-text-muted mr-2 flex-shrink-0">${count}</span>
-            ${typeof listObj !== 'string' ? `<button type="button" class="text-gray-300 hover:text-emerald-500 flex-shrink-0 mr-2 transition-colors" title="重命名歌单" aria-label="重命名歌单" onclick="handleRenameList('${id}', event)"><i class="fas fa-pen text-[10px]"></i></button>` : ''}
-            ${id !== 'default' && id !== 'love' ? `<i class="fas fa-trash text-gray-300 hover:text-red-500 hidden group-hover:block flex-shrink-0" onclick="handleRemoveList('${id}', event)"></i>` : ''}
+            ${typeof listObj !== 'string' ? `<button type="button" class="text-gray-300 hover:text-emerald-500 flex-shrink-0 mr-2 transition-colors" title="重命名歌单" aria-label="重命名歌单" onclick="event.stopPropagation(); handleRenameList('${id}', event)"><i class="fas fa-pen text-[10px]" aria-hidden="true"></i></button>` : ''}
+            ${id !== 'default' && id !== 'love' ? `<button type="button" class="bg-transparent border-0 p-0 text-gray-300 hover:text-red-500 hidden group-hover:block flex-shrink-0" title="删除歌单" aria-label="删除歌单" onclick="event.stopPropagation(); handleRemoveList('${id}', event)"><i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
         `;
         return div;
     };
@@ -9536,6 +9643,7 @@ function renderMyLists(data) {
         div.setAttribute('data-sidebar-list-id', id);
         div.setAttribute('data-sidebar-sort-id', id);
         div.onclick = clickFn;
+        makeKeyboardActivatable(div, `打开${name}`, clickFn);
         div.innerHTML = `
             <span class="favorite-sidebar-drag-handle cursor-grab t-text-muted/60 hover:text-emerald-500 mr-2 flex-shrink-0 touch-none" title="拖拽排序">
                 <i class="fas fa-grip-vertical text-xs"></i>
@@ -9558,7 +9666,9 @@ function renderMyLists(data) {
         publicFavItem.className = `px-6 py-2 text-sm cursor-pointer flex items-center group transition-colors overflow-hidden ${isPublicActive ? 'text-emerald-500 font-bold bg-emerald-500/10' : 't-text-muted hover:t-bg-main'}`;
         publicFavItem.setAttribute('data-sidebar-list-id', '__public_favorites__');
         publicFavItem.setAttribute('data-sidebar-sort-id', '__public_favorites__');
-        publicFavItem.onclick = () => handleTogglePublicFavorites();
+        const activatePublicFavorites = () => handleTogglePublicFavorites();
+        publicFavItem.onclick = activatePublicFavorites;
+        makeKeyboardActivatable(publicFavItem, '切换公开收藏', activatePublicFavorites);
         publicFavItem.innerHTML = `
             <span class="favorite-sidebar-drag-handle cursor-grab t-text-muted/60 hover:text-emerald-500 mr-2 flex-shrink-0 touch-none" title="拖拽排序">
                 <i class="fas fa-grip-vertical text-xs"></i>
@@ -11709,6 +11819,7 @@ function createCommentItemHTML(comment, isReply = false) {
         <div class="group flex gap-3 md:gap-4 transition-all animate-fade-in-up">
             <img src="${avatar}" 
                  loading="lazy" fetchpriority="low"
+                 width="40" height="40" alt="${escapeHtmlText(comment.userName || '用户')}的头像"
                  class="${avatarClass}" 
                  onerror="if(!this.dataset.tried){this.dataset.tried=1;this.src='/music/assets/logo.svg';this.classList.add('dynamic-logo','is-placeholder','p-1.5','bg-emerald-50');this.style.filter='var(--logo-filter, none)';}">
             <div class="flex-1 min-w-0">
@@ -11723,11 +11834,11 @@ function createCommentItemHTML(comment, isReply = false) {
                 ${comment.images && comment.images.length > 0 ? `
                     <div class="mt-2 flex flex-wrap gap-2">
                         ${comment.images.map(img => `
-                            <img src="${img}" 
-                                 loading="lazy" fetchpriority="low"
-                                 class="max-w-[200px] max-h-[300px] rounded-lg shadow-sm cursor-pointer hover:opacity-90 transition-opacity" 
-                                 onclick="window.open('${img}', '_blank')"
-                                 onerror="this.style.display='none'">
+                            <button type="button" class="border-0 p-0 bg-transparent rounded-lg cursor-pointer hover:opacity-90 transition-opacity" aria-label="打开评论图片" onclick="window.open('${img}', '_blank')">
+                                <img src="${img}" loading="lazy" fetchpriority="low" width="200" height="300" alt="评论图片"
+                                     class="w-[200px] h-[300px] object-contain rounded-lg shadow-sm"
+                                     onerror="this.closest('button').style.display='none'">
+                            </button>
                         `).join('')}
                     </div>
                 ` : ''}
@@ -12867,20 +12978,33 @@ window.updateSetting = updateSetting;
 
 // Initialize Sound Effects on first play/click
 function initAudioEngine() {
-    if (window.soundEffects && !window._audioEngineInited) {
+    const initializeAudioEngine = () => {
+        if (!window.soundEffects || window._audioEngineInited) return;
         window.soundEffects.init();
         window._audioEngineInited = true;
         console.log('[AudioEngine] Sound effects initialized via AudioEngine');
 
         // Ensure Visualizer captures correct source
-        if (window.musicVisualizer && window.musicVisualizer.init) {
-            window.musicVisualizer.init();
-        }
+        const initializeVisualizer = () => {
+            if (window.musicVisualizer?.init) window.musicVisualizer.init();
+        };
+        if (window.musicVisualizer) initializeVisualizer();
+        else ensureVisualizerLoaded().then(initializeVisualizer).catch(() => {
+            console.warn('[Visualizer] 可视化模块加载失败');
+        });
 
         // iOS: 在用户手势上下文中立即启动 anchor audio，建立后台音频会话
         if (window.iOSBackgroundAudio) {
             window.iOSBackgroundAudio.ensureAnchorPlaying();
         }
+    };
+
+    if (window.soundEffects) {
+        initializeAudioEngine();
+    } else {
+        ensureSoundEffectsLoaded().then(initializeAudioEngine).catch(() => {
+            console.warn('[AudioEngine] 音效模块加载失败');
+        });
     }
 }
 
@@ -13012,16 +13136,18 @@ function renderSearchTips(tips) {
     }
 
     tips.forEach((tip, index) => {
-        const div = document.createElement('div');
-        div.className = 'search-tip-item px-4 py-2.5 hover:t-bg-muted cursor-pointer transition-colors text-sm flex items-center gap-3';
-        div.innerHTML = `<i class="fas fa-search t-text-muted text-xs"></i><span class="truncate">${tip}</span>`;
-        div.onclick = (e) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'search-tip-item w-full border-0 bg-transparent px-4 py-2.5 hover:t-bg-muted cursor-pointer transition-colors text-sm flex items-center gap-3 text-left';
+        button.setAttribute('aria-label', `搜索 ${tip}`);
+        button.innerHTML = `<i class="fas fa-search t-text-muted text-xs" aria-hidden="true"></i><span class="truncate">${tip}</span>`;
+        button.onclick = (e) => {
             e.stopPropagation(); // 防止触发 document click
             input.value = tip;
             hideSearchSuggestions();
             doSearch();
         };
-        list.appendChild(div);
+        list.appendChild(button);
     });
 
     container.classList.remove('hidden');

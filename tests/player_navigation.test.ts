@@ -66,6 +66,8 @@ describe('Player Navigation and State Restoration Safety', () => {
         const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
         expect(srcContent.includes('getUserAuthHeaders: getPlayerUserAuthHeaders')).toBe(true);
         expect(srcContent.includes('isUserLoggedIn: isPlayerUserLoggedIn')).toBe(true);
+        expect(srcContent.indexOf('let authToken')).toBeLessThan(srcContent.indexOf('const playlistModalFeature'));
+        expect(srcContent.indexOf('let userToken')).toBeLessThan(srcContent.indexOf('const playlistModalFeature'));
         expect(searchContent.includes("typeof context.isArtistFavorited === 'function'")).toBe(true);
         expect(searchContent.includes("typeof context.isAlbumFavorited === 'function'")).toBe(true);
     });

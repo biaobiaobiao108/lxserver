@@ -78,6 +78,15 @@ function getCredential(key: string): string | null {
     window.localStorage.removeItem(key);
     return legacy;
 }
+
+// 认证状态先于功能模块组装，避免前置模块捕获未初始化的变量。
+let authEnabled = false;
+// authToken 保留用于播放器登录 (player.password) 颁发的 session
+let authToken = sessionStorage.getItem('lx_player_auth');
+// 用户 Token：将明文密码传输改为 Token 验证
+let userToken = getCredential('lx_user_token');
+let userSessionActive = false;
+
 let currentPage = 1;
 window.currentPage = 1;
 let currentPlaylist = [];
@@ -372,7 +381,7 @@ const searchFeature = initSearchFeature({
     },
     getCurrentListData: () => currentListData,
     getAuthToken: () => authToken,
-    getUserAuthHeaders: () => getUserAuthHeaders(),
+    getUserAuthHeaders: getPlayerUserAuthHeaders,
     switchTab: (tabId) => switchTab(tabId),
     setCurrentSearchScope,
     loadLibraryData: (...args) => loadLibraryData(...args),
@@ -627,13 +636,7 @@ window.selectedSongObjects = new Map();
 let expandBtnTimeout = null; // 展开按钮淡化计时器
 let toggleLyricsBtnTimeout = null; // 歌词按钮淡化计时器
 
-// ===== 认证相关状态 (Player Cookie Session + User Token) =====
-let authEnabled = false;
-// authToken 保留用于播放器登录 (player.password) 颁发的 session
-let authToken = sessionStorage.getItem('lx_player_auth');
-// 用户 Token：将明文密码传输改为 Token 验证
-let userToken = getCredential('lx_user_token');
-let userSessionActive = false;
+// ===== 认证功能 =====
 const authFeature = initAuthFeature({
     credentialStorage,
     getCredential,

@@ -590,11 +590,11 @@ async function fetchSongUrl(song, quality, isRetry = false, isSilent = false) {
     }
 }
 
-function getNextIndex() {
+function getNextIndex(isManual = false) {
     if (!currentPlaylist || currentPlaylist.length === 0) return -1;
 
-    // [Random Prefetch Fix] 如果处于随机播放模式，且已有预选内容，优先返回预选
-    if (context.getPlayMode() === 'random' && context.getPreSelectedNextIndex() !== null) {
+    // [Random Prefetch Fix] 如果处于随机播放模式，且已有预选内容，优先返回预选（仅自动播放时采用预选）
+    if (context.getPlayMode() === 'random' && !isManual && context.getPreSelectedNextIndex() !== null) {
         if (context.getPreSelectedNextIndex() >= 0 && context.getPreSelectedNextIndex() < currentPlaylist.length) {
             return context.getPreSelectedNextIndex();
         }
@@ -604,7 +604,13 @@ function getNextIndex() {
     let nextIndex;
     switch (context.getPlayMode()) {
         case 'single':
-            nextIndex = context.getCurrentIndex();
+            if (isManual) {
+                // 手动切歌时按顺序切到下一首
+                nextIndex = context.getCurrentIndex() + 1;
+                if (nextIndex >= currentPlaylist.length) nextIndex = 0;
+            } else {
+                nextIndex = context.getCurrentIndex();
+            }
             break;
         case 'random':
             if (currentPlaylist.length === 1) {

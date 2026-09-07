@@ -135,6 +135,41 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(lyricsContent.includes("if (e.state?.page === 'player-detail') {\n        toggleLyrics(true);\n        return;\n    }")).toBe(true);
         expect(fs.readFileSync(path.join(import.meta.dir, '../frontend/player/src/index.ts'), 'utf8').includes("window.history.replaceState({ page: 'player' }, '')")).toBe(true);
     });
+
+    it('single mode distinguishes manual skipping from automatic ended replay', () => {
+        const songUrlContent = fs.readFileSync(path.join(import.meta.dir, '../frontend/player/src/features/song_url.ts'), 'utf8');
+        const playbackContent = fs.readFileSync(playbackSrcPath, 'utf8');
+        const indexContent = fs.readFileSync(playerSrcPath, 'utf8');
+
+        // getNextIndex accepts isManual flag
+        expect(songUrlContent.includes('function getNextIndex(isManual = false)')).toBe(true);
+        expect(songUrlContent.includes("case 'single':\n            if (isManual) {")).toBe(true);
+
+        // playNext and playPrev forward isManual flag
+        expect(playbackContent.includes('function playNext(depth = 0, isManual = true)')).toBe(true);
+        expect(playbackContent.includes('function playPrev(isManual = true)')).toBe(true);
+
+        // ended event replays seamlessly for single mode
+        expect(indexContent.includes("if (playMode === 'single') {\n        audio.currentTime = 0;")).toBe(true);
+    });
+
+    it('queue clearing resets player state and protects empty togglePlay', () => {
+        const queueContent = fs.readFileSync(path.join(import.meta.dir, '../frontend/player/src/features/queue.ts'), 'utf8');
+        const indexContent = fs.readFileSync(playerSrcPath, 'utf8');
+        const playbackContent = fs.readFileSync(playbackSrcPath, 'utf8');
+
+        expect(queueContent.includes('resetPlayer?: () => void;')).toBe(true);
+        expect(queueContent.includes('context.resetPlayer();')).toBe(true);
+        expect(indexContent.includes('function resetPlayer()')).toBe(true);
+        expect(playbackContent.includes("if (!state.currentPlayingSong && (!state.currentPlaylist || state.currentPlaylist.length === 0))")).toBe(true);
+    });
+
+    it('volume fade and crossfade strictly preserve mute state', () => {
+        const playbackContent = fs.readFileSync(playbackSrcPath, 'utf8');
+        expect(playbackContent.includes('if (state.isMuted || targetVolume <= 0)')).toBe(true);
+        expect(playbackContent.includes('audio.muted = isMuted;')).toBe(true);
+        expect(playbackContent.includes('if (settings.enableCrossfade && !isMuted && effectiveVol > 0)')).toBe(true);
+    });
 });
 
 describe('Update Notification Engine & PostHog Removal', () => {

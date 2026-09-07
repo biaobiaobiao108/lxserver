@@ -25,6 +25,7 @@ export type PlaybackState = {
     scrollLockTimeout: any;
     lyricPlayer: any;
     currentVolume: number;
+    isMuted?: boolean;
     [key: string]: any;
 };
 
@@ -174,7 +175,7 @@ async function runRecoveryFlow(error) {
         );
         setPlayerStatus('播放失败，即将跳过', null, true);
         if (window._autoSkipTimer) clearTimeout(window._autoSkipTimer);
-        window._autoSkipTimer = setTimeout(() => playNext(), isPlatformNotSupported ? 2000 : 3000);
+        window._autoSkipTimer = setTimeout(() => playNext(0, false), isPlatformNotSupported ? 2000 : 3000);
     }
 }
 
@@ -430,12 +431,25 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
         }
 
         try {
-            if (settings.enableCrossfade) audio.volume = 0;
-            else audio.volume = typeof state.currentVolume !== 'undefined' ? state.currentVolume : 1;
+            const isMuted = Boolean(state.isMuted);
+            const targetVol = typeof state.currentVolume !== 'undefined' ? state.currentVolume : 1;
+            const effectiveVol = isMuted ? 0 : targetVol;
+
+            if (settings.enableCrossfade && !isMuted && effectiveVol > 0) {
+                audio.volume = 0;
+            } else {
+                audio.volume = effectiveVol;
+            }
+            audio.muted = isMuted;
 
             await audio.play();
 
-            if (settings.enableCrossfade) fadeVolume(typeof state.currentVolume !== 'undefined' ? state.currentVolume : 1, 1000);
+            if (settings.enableCrossfade && !isMuted && effectiveVol > 0) {
+                fadeVolume(effectiveVol, 1000);
+            } else {
+                audio.volume = effectiveVol;
+                audio.muted = isMuted;
+            }
 
             setPlayerStatus('', true);
             updatePlayButton(true);
@@ -761,8 +775,53 @@ function updatePlayerQualityBadge(quality) {
 }
 
 function updatePlayerInfo(song, actualQuality) {
-    // Bottom Player - 更新标题
     const titleEl = document.getElementById('player-title');
+    const sourceEl = document.getElementById('player-source');
+    const artistEl = document.getElementById('player-artist');
+    const albumEl = document.getElementById('player-album');
+    const albumSeparator = document.getElementById('player-meta-separator');
+
+    if (!song) {
+        if (titleEl) {
+            titleEl.innerText = '暂无播放';
+            titleEl.setAttribute('data-text', '暂无播放');
+            titleEl.onclick = null;
+            titleEl.classList.remove('hover:text-emerald-500', 'cursor-pointer');
+            titleEl.classList.add('truncate');
+        }
+        updatePlayerQualityBadge(null);
+        if (sourceEl) {
+            sourceEl.innerHTML = '';
+            sourceEl.classList.add('hidden');
+        }
+        if (artistEl) {
+            artistEl.innerText = '选择一首歌曲播放';
+            artistEl.setAttribute('data-text', '选择一首歌曲播放');
+            artistEl.onclick = null;
+            artistEl.classList.remove('hover:text-emerald-500', 'cursor-pointer');
+            artistEl.classList.add('truncate');
+        }
+        if (albumEl) {
+            albumEl.innerText = '';
+            albumEl.removeAttribute('data-text');
+            albumEl.removeAttribute('aria-label');
+            albumEl.classList.add('hidden');
+            albumEl.onclick = null;
+        }
+        if (albumSeparator) {
+            albumSeparator.classList.add('hidden');
+        }
+        const defaultLogo = '/music/assets/logo.svg';
+        setImg('player-cover', defaultLogo);
+        setImg('sidebar-cover', defaultLogo);
+        setImg('detail-cover', defaultLogo);
+        const sidebarSongInfo = document.getElementById('sidebar-song-info');
+        if (sidebarSongInfo) sidebarSongInfo.classList.add('hidden');
+        setPlayerStatus('', false);
+        return;
+    }
+
+    // Bottom Player - 更新标题
     if (titleEl) {
         titleEl.innerText = song.name;
         titleEl.setAttribute('data-text', song.name);
@@ -783,7 +842,6 @@ function updatePlayerInfo(song, actualQuality) {
     updatePlayerQualityBadge(resolvedQuality);
 
     // Bottom Player - 更新来源标签
-    const sourceEl = document.getElementById('player-source');
     if (sourceEl) {
         if (song.source) {
             // Without an explicitly resolved quality, only show the source.
@@ -798,7 +856,6 @@ function updatePlayerInfo(song, actualQuality) {
     }
 
     // Bottom Player - 更新艺术家
-    const artistEl = document.getElementById('player-artist');
     if (artistEl) {
         artistEl.innerText = song.singer;
         artistEl.setAttribute('data-text', song.singer);
@@ -820,8 +877,6 @@ function updatePlayerInfo(song, actualQuality) {
     }
 
     // Bottom Player - 更新专辑并支持专辑类型搜索
-    const albumEl = document.getElementById('player-album');
-    const albumSeparator = document.getElementById('player-meta-separator');
     const albumName = String(song.albumName || song.album || song.meta?.albumName || song.meta?.album || '').trim();
     if (albumEl) {
         if (albumName) {
@@ -956,23 +1011,39 @@ async function togglePlay() {
     }
 
     if (audio.paused) {
+        if (!state.currentPlayingSong && (!state.currentPlaylist || state.currentPlaylist.length === 0)) {
+            showInfo('播放列表为空');
+            return;
+        }
+
         try {
-            // [Crossfade] 如果开启了淡入淡出，先将进度置为 0，播放后再淡入
-            if (settings.enableCrossfade) {
+            const isMuted = Boolean(state.isMuted);
+            const targetVol = typeof state.currentVolume !== 'undefined' ? state.currentVolume : 1;
+            const effectiveVol = isMuted ? 0 : targetVol;
+
+            // [Crossfade] 如果开启了淡入淡出，先将音量置为 0，播放后再淡入
+            if (settings.enableCrossfade && !isMuted && effectiveVol > 0) {
                 audio.volume = 0;
+            } else {
+                audio.volume = effectiveVol;
             }
+            audio.muted = isMuted;
+
             await audio.play();
             updatePlayButton(true);
 
-            if (settings.enableCrossfade) {
-                fadeVolume(typeof state.currentVolume !== 'undefined' ? state.currentVolume : 1, 600);
+            if (settings.enableCrossfade && !isMuted && effectiveVol > 0) {
+                fadeVolume(effectiveVol, 600);
+            } else {
+                audio.volume = effectiveVol;
+                audio.muted = isMuted;
             }
         } catch (e) {
             console.error("[Player] Play blocked:", e);
         }
     } else {
         // [Crossfade] 如果开启了淡入淡出，先淡出再暂停
-        if (settings.enableCrossfade) {
+        if (settings.enableCrossfade && !state.isMuted && audio.volume > 0) {
             await fadeVolume(0, 600);
         }
         audio.pause();
@@ -1004,14 +1075,15 @@ function updatePlayButton(isPlaying: boolean) {
 /**
  * 播放下一首。具备自动跳过被预读器标记为“不可解析”的歌曲的能力。
  * @param {Number} depth 递归尝试深度，防止死循环
+ * @param {Boolean} isManual 是否为用户主动触发（主动触发时单曲循环模式仍顺次切换下一首）
  */
-function playNext(depth = 0) {
+function playNext(depth = 0, isManual = true) {
     if (depth > 10) {
         console.warn('[Queue] Too many unplayable songs skipped, stopping.');
         return;
     }
 
-    const nextIndex = getNextIndex();
+    const nextIndex = getNextIndex(isManual);
     if (nextIndex !== -1 && state.currentPlaylist[nextIndex]) {
         const nextSong = state.currentPlaylist[nextIndex];
 
@@ -1019,7 +1091,7 @@ function playNext(depth = 0) {
         if (nextSong._unplayable && nextIndex !== state.currentIndex) {
             console.log(`[Queue] Auto-skipping unplayable song [${nextIndex}]: ${nextSong.name}`);
             state.currentIndex = nextIndex; // 更新当前索引以便 getNextIndex() 能找到下一首
-            return playNext(depth + 1);
+            return playNext(depth + 1, isManual);
         }
 
         playSong(nextSong, nextIndex);
@@ -1028,15 +1100,20 @@ function playNext(depth = 0) {
     }
 }
 
-function playPrev() {
+function playPrev(isManual = true) {
     if (state.currentPlaylist.length === 0) return;
 
     let prevIndex;
 
     switch (playMode) {
         case 'single':
-            // 单曲循环：继续播放当前歌曲
-            prevIndex = state.currentIndex;
+            // 单曲循环：如果是手动触发上一首，则切换到上一首；否则重播当前歌曲
+            if (isManual) {
+                prevIndex = state.currentIndex - 1;
+                if (prevIndex < 0) prevIndex = state.currentPlaylist.length - 1;
+            } else {
+                prevIndex = state.currentIndex;
+            }
             break;
 
         case 'random':
@@ -1067,6 +1144,13 @@ let volumeFadeInterval = null;
 function fadeVolume(targetVolume, duration = 800) {
     if (volumeFadeInterval) clearInterval(volumeFadeInterval);
 
+    // 如果处于静音状态或目标音量为 0，直接置为 0，不执行渐变提升
+    if (state.isMuted || targetVolume <= 0) {
+        audio.volume = 0;
+        audio.muted = Boolean(state.isMuted);
+        return Promise.resolve();
+    }
+
     const startVolume = audio.volume;
     const steps = 20;
     const increment = (targetVolume - startVolume) / steps;
@@ -1075,6 +1159,14 @@ function fadeVolume(targetVolume, duration = 800) {
 
     return new Promise((resolve) => {
         volumeFadeInterval = setInterval(() => {
+            if (state.isMuted) {
+                clearInterval(volumeFadeInterval);
+                audio.volume = 0;
+                audio.muted = true;
+                resolve();
+                return;
+            }
+
             currentStep++;
             let nextVolume = startVolume + (increment * currentStep);
 

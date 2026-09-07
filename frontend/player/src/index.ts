@@ -186,6 +186,7 @@ const queueFeature = initQueueFeature({
     showInfo,
     showSuccess,
     showSelect,
+    resetPlayer: () => resetPlayer(),
 });
 const { renderQueue } = queueFeature;
 
@@ -1579,6 +1580,8 @@ const playbackState: PlaybackState = {
     set lyricPlayer(value) { lyricPlayer = value; },
     get currentVolume() { return currentVolume; },
     set currentVolume(value) { currentVolume = value; },
+    get isMuted() { return isMuted; },
+    set isMuted(value) { isMuted = value; },
 };
 const playbackFeature = initPlaybackFeature({
     audio: audio as HTMLAudioElement,
@@ -1632,6 +1635,52 @@ const {
     playPrev,
     fadeVolume,
 } = playbackFeature;
+
+function resetPlayer() {
+    try {
+        audio.pause();
+        audio.removeAttribute('src');
+        audio.load();
+    } catch (e) {}
+
+    currentPlayingSong = null;
+    (window as any).currentPlayingSong = null;
+    currentIndex = -1;
+    currentPlaylist = [];
+    preSelectedNextIndex = null;
+    currentLoadingSongId = null;
+    currentQuality = null;
+
+    updatePlayButton(false);
+    updatePlayerInfo(null);
+    setPlayerStatus('', false);
+
+    const progressBar = document.getElementById('progress-bar');
+    const timeCurrent = document.getElementById('time-current');
+    const timeTotal = document.getElementById('time-total');
+    if (progressBar) progressBar.style.width = '0%';
+    if (timeCurrent) timeCurrent.innerText = '00:00';
+    if (timeTotal) timeTotal.innerText = '00:00';
+    document.getElementById('progress-container')?.setAttribute('aria-valuenow', '0');
+
+    if (lyricPlayer) {
+        try { lyricPlayer.pause(); } catch (e) {}
+    }
+    if (typeof renderLyric === 'function') {
+        renderLyric([], '暂无播放');
+    }
+    currentRawLrc = '';
+    currentRawTlrc = '';
+    currentRawRlrc = '';
+    currentRawKlrc = '';
+
+    try {
+        localStorage.removeItem('lx_playback_state');
+    } catch (e) {}
+
+    renderQueue();
+}
+(window as any).resetPlayer = resetPlayer;
 
 // 获取来源类型的中文描述
 // --- Server Cache Helpers ---
@@ -2275,7 +2324,21 @@ window.updatePositionState = updatePositionState; // 暴露给保活模块调用
 
 // 歌曲播放结束时根据播放模式处理
 audio.addEventListener('ended', () => {
-    playNext();
+    if (playMode === 'single') {
+        audio.currentTime = 0;
+        audio.play().then(() => {
+            updatePlayButton(true);
+            if (lyricPlayer) {
+                lyricPlayer.play(0);
+                scrollToActiveLine(true);
+            }
+        }).catch((err) => {
+            console.warn('[Player] 单曲循环快速重播失败，降级重新加载:', err);
+            playNext(0, false);
+        });
+        return;
+    }
+    playNext(0, false);
 });
 
 audio.addEventListener('canplay', () => {

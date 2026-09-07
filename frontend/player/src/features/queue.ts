@@ -20,6 +20,7 @@ export interface QueueFeatureContext {
     showInfo: (message: string) => void;
     showSuccess: (message: string) => void;
     showSelect: (...args: any[]) => Promise<boolean>;
+    resetPlayer?: () => void;
 }
 
 /**
@@ -171,23 +172,41 @@ export function initQueueFeature(context: QueueFeatureContext) {
         const playlist = context.getPlaylist();
         if (!playlist || index < 0 || index >= playlist.length) return;
 
+        const isRemovingCurrent = index === context.getCurrentIndex();
         playlist.splice(index, 1);
-        let currentIndex = context.getCurrentIndex();
-        if (index === currentIndex) {
-            if (playlist.length === 0) {
-                currentIndex = -1;
+
+        if (playlist.length === 0) {
+            if (typeof context.resetPlayer === 'function') {
+                context.resetPlayer();
+            } else {
+                context.setCurrentIndex(-1);
+                context.setPlaylist([]);
                 try { context.getAudio()?.pause(); } catch (error) { }
-            } else if (currentIndex >= playlist.length) {
-                currentIndex = 0;
+                renderQueue();
             }
-        } else if (index < currentIndex) {
-            currentIndex--;
+            context.showSuccess('已从队列移除');
+            return;
         }
 
-        context.setCurrentIndex(currentIndex);
-        context.setPlaylist(playlist);
-        renderQueue();
-        context.savePlaybackState();
+        let currentIndex = context.getCurrentIndex();
+        if (isRemovingCurrent) {
+            if (currentIndex >= playlist.length) {
+                currentIndex = 0;
+            }
+            context.setCurrentIndex(currentIndex);
+            context.setPlaylist(playlist);
+            renderQueue();
+            context.playSong(playlist[currentIndex], currentIndex);
+        } else {
+            if (index < currentIndex) {
+                currentIndex--;
+            }
+            context.setCurrentIndex(currentIndex);
+            context.setPlaylist(playlist);
+            renderQueue();
+            context.savePlaybackState();
+        }
+
         context.showSuccess('已从队列移除');
     }
 
@@ -195,11 +214,15 @@ export function initQueueFeature(context: QueueFeatureContext) {
         const playlist = context.getPlaylist();
         if (!playlist || playlist.length === 0) return;
         if (await context.showSelect('清空队列', '确定要清空当前播放队列吗？', { danger: true })) {
-            context.setPlaylist([]);
-            context.setCurrentIndex(-1);
-            try { context.getAudio()?.pause(); } catch (error) { }
-            renderQueue();
-            context.savePlaybackState();
+            if (typeof context.resetPlayer === 'function') {
+                context.resetPlayer();
+            } else {
+                context.setPlaylist([]);
+                context.setCurrentIndex(-1);
+                try { context.getAudio()?.pause(); } catch (error) { }
+                renderQueue();
+                context.savePlaybackState();
+            }
             context.showInfo('队列已清空');
         }
     }

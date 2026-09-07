@@ -5288,10 +5288,7 @@ document.addEventListener('click', initAudioEngine, { once: true });
 
 function initHeaderClock() {
     const timeEl = document.getElementById('header-clock-time');
-    const pillEl = document.getElementById('header-clock-pill');
     if (!timeEl) return;
-
-    const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
     const updateClock = () => {
         const now = new Date();
@@ -5301,17 +5298,6 @@ function initHeaderClock() {
 
         if (timeEl.textContent !== timeStr) {
             timeEl.textContent = timeStr;
-        }
-
-        if (pillEl) {
-            const year = now.getFullYear();
-            const month = now.getMonth() + 1;
-            const date = now.getDate();
-            const dayName = days[now.getDay()];
-            const titleStr = `${year}年${month}月${date}日 ${dayName}`;
-            if (pillEl.title !== titleStr) {
-                pillEl.title = titleStr;
-            }
         }
     };
 

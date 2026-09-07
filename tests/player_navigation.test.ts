@@ -102,7 +102,7 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(css.includes('background: color-mix(in srgb, var(--c-500) 12%, transparent)')).toBe(false);
         expect(css.includes('.active-option')).toBe(false);
         expect(css.includes('.cs-option:hover')).toBe(true);
-        expect(css.includes('.header-clock-pill')).toBe(true);
+        expect(css.includes('.header-clock-immersive')).toBe(true);
         expect(css.includes('.header-source-pill')).toBe(false);
         expect(css.includes('.player-quality-option:hover')).toBe(true);
         expect(customSelect.includes("item.setAttribute('aria-selected', String(selected))")).toBe(true);

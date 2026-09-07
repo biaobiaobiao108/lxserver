@@ -2104,22 +2104,11 @@ aside {
     transform: rotate(18deg);
 }
 
-/* ── 顶栏时间显示胶囊 ── */
-.header-clock-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 9999px;
-    background: color-mix(in srgb, var(--bg-item-hover) 80%, transparent);
-    border: 1px solid var(--border-main);
-    color: var(--text-main);
+/* ── 顶栏沉浸式时间显示 ── */
+.header-clock-immersive {
+    display: inline-block;
+    line-height: 1;
     cursor: default;
     user-select: none;
-    transition: all 0.2s ease;
-}
-
-.header-clock-pill:hover {
-    border-color: var(--border-hover, var(--border-main));
-    background: var(--bg-panel);
+    letter-spacing: -0.02em;
 }

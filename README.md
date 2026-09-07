@@ -15,7 +15,7 @@
 [![Docker Support](https://img.shields.io/badge/Docker-Alpine%20Slim-2496ED?logo=docker)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](./LICENSE)
 
-[在线特性演示页](./doc/index.html) · [快速开始](#-快速开始--docker-部署) · [环境变量参考](#-环境变量完整速查表) · [Subsonic 接入](#-subsonic-流媒体与第三方客户端接入) · [客户端配置](#-多端客户端连接指南)
+[在线特性演示页 (GitHub Pages)](https://biaobiaobiao108.github.io/lxserver/) · [快速开始](#-快速开始--docker-部署) · [环境变量参考](#-环境变量完整速查表) · [Subsonic 接入](#-subsonic-流媒体与第三方客户端接入) · [客户端配置](#-多端客户端连接指南)
 
 </div>
 
@@ -144,7 +144,7 @@ docker compose up -d --build
 | **Web 网页播放器** | `http://<服务器IP>:9527/music` | 现代 PWA 网页播放器（若开启鉴权需输入 `WEBPLAYER_PASSWORD`） |
 | **Subsonic 接口** | `http://<服务器IP>:9527/rest/` | 兼容 Subsonic / OpenSubsonic API，可直接填入第三方客户端 |
 | **WebSocket 同步** | `ws://<服务器IP>:9527/` | 用于客户端连接实时同步 |
-| **在线交互演示页** | [doc/index.html](./doc/index.html) | 本地浏览器离线打开即可体验全功能交互演示 |
+| **在线交互演示页** | [https://biaobiaobiao108.github.io/lxserver/](https://biaobiaobiao108.github.io/lxserver/) | GitHub Pages 在线访问，或本地浏览器直接打开 `docs/index.html` |
 
 > [!CAUTION]
 > **安全红线警告**：

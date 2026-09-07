@@ -1025,6 +1025,9 @@ aside {
 
 /* Silky Animation for Player Detail */
 #view-player-detail {
+    /* The detail view is a body-level overlay. Keep it above the app header,
+       while leaving the player footer (z-60) available for playback controls. */
+    z-index: 45;
     transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.5s ease-out !important;
     will-change: transform, opacity;
 }
@@ -1035,8 +1038,19 @@ aside {
 }
 
 #player-detail-container {
+    /* The detail navbar is absolutely positioned, so reserve its 5rem height
+       in the content flow instead of letting the first lyric line hide behind it. */
+    padding-block-start: 5rem;
     transition: transform 0.8s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.6s ease-out;
     will-change: transform, opacity;
+}
+
+/* In very short viewports the detail navbar is hidden; reclaim the space so
+   the cover and lyrics remain usable instead of being pushed off-screen. */
+@media (max-height: 500px) {
+    #player-detail-container {
+        padding-block-start: 0;
+    }
 }
 
 #player-footer {

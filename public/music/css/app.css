@@ -1495,7 +1495,6 @@ aside {
 
 /* Every menu uses hover as its only filled highlight. Selection remains
    semantic (aria-selected/aria-checked) and is represented by a checkmark. */
-.header-source-item:hover,
 .cs-option:hover,
 .play-mode-option:hover,
 .playback-rate-option:hover,
@@ -2105,68 +2104,22 @@ aside {
     transform: rotate(18deg);
 }
 
-/* ── 顶栏快速音源选择胶囊 ── */
-.header-source-pill {
+/* ── 顶栏时间显示胶囊 ── */
+.header-clock-pill {
     display: inline-flex;
     align-items: center;
     gap: 6px;
     padding: 4px 10px;
     border-radius: 9999px;
-    font-size: 11px;
-    font-weight: 600;
     background: color-mix(in srgb, var(--bg-item-hover) 80%, transparent);
     border: 1px solid var(--border-main);
     color: var(--text-main);
-    transition: all 0.2s ease;
-    cursor: pointer;
+    cursor: default;
     user-select: none;
-}
-
-.header-source-pill:hover {
-    border-color: var(--c-500, #ec4141);
-    color: var(--c-500, #ec4141);
-    background: var(--bg-panel);
-}
-
-.header-source-dropdown {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 0;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-main);
-    border-radius: 12px;
-    box-shadow: var(--shadow-main);
-    padding: 6px;
-    min-width: 110px;
-    z-index: 70;
     transition: all 0.2s ease;
 }
 
-.header-source-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding: 6px 10px;
-    font-size: 12px;
-    border-radius: 8px;
-    color: var(--text-main);
-    transition: background-color 0.15s ease;
-    cursor: pointer;
-}
-
-.header-source-item:hover {
-    background: var(--bg-item-hover);
-    color: var(--c-500, #ec4141);
-}
-
-.header-source-item.is-active {
-    background: transparent;
-    color: var(--text-main);
-    font-weight: 400;
-}
-
-.header-source-item.is-active:hover {
-    background: var(--bg-item-hover);
-    color: var(--c-500, #ec4141);
+.header-clock-pill:hover {
+    border-color: var(--border-hover, var(--border-main));
+    background: var(--bg-panel);
 }

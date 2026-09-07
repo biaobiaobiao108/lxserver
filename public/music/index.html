@@ -46,10 +46,7 @@
                 <div class="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 flex-shrink-0">
                     <i class="fas fa-music text-sm"></i>
                 </div>
-                <div class="flex flex-col">
-                    <h1 class="text-base font-black text-emerald-600 tracking-wider leading-none">LX MUSIC</h1>
-                    <span class="text-[10px] t-text-dim tracking-tight mt-0.5 font-medium">Web 音乐播放器</span>
-                </div>
+                <h1 class="text-base font-black text-emerald-600 tracking-wider leading-none">LX MUSIC</h1>
                 <!-- Close button for mobile -->
                 <button onclick="toggleSidebar()" aria-label="关闭导航菜单" class="md:hidden absolute right-4 text-gray-500 hover:text-red-500">
                     <i class="fas fa-times"></i>
@@ -173,20 +170,11 @@
                         </button>
                     </div>
 
-                    <!-- Quick Source Selector Pill in Header -->
-                    <div id="header-source-container" class="relative hidden sm:flex items-center ml-2">
-                        <button id="header-source-pill" type="button" class="header-source-pill" onclick="toggleHeaderSourceDropdown(event)" title="切换默认音源">
-                            <i class="fas fa-tower-broadcast text-[10px] text-emerald-500"></i>
-                            <span id="header-source-name">网易云</span>
-                            <i class="fas fa-chevron-down text-[8px] opacity-60"></i>
-                        </button>
-                        <div id="header-source-dropdown" class="header-source-dropdown hidden animate-fade-in shadow-xl">
-                            <div class="text-[9px] font-bold t-text-muted px-2.5 py-1 uppercase tracking-wider border-b t-border-main mb-1">选择音源</div>
-                            <div onclick="selectHeaderSource('wy', '网易云')" class="header-source-item" data-source="wy"><span>网易云</span><i class="fas fa-check text-[10px] text-emerald-500"></i></div>
-                            <div onclick="selectHeaderSource('tx', 'QQ音乐')" class="header-source-item" data-source="tx"><span>QQ音乐</span><i class="fas fa-check text-[10px] text-emerald-500 hidden"></i></div>
-                            <div onclick="selectHeaderSource('kg', '酷狗音乐')" class="header-source-item" data-source="kg"><span>酷狗</span><i class="fas fa-check text-[10px] text-emerald-500 hidden"></i></div>
-                            <div onclick="selectHeaderSource('kw', '酷我音乐')" class="header-source-item" data-source="kw"><span>酷我</span><i class="fas fa-check text-[10px] text-emerald-500 hidden"></i></div>
-                            <div onclick="selectHeaderSource('mg', '咪咕音乐')" class="header-source-item" data-source="mg"><span>咪咕</span><i class="fas fa-check text-[10px] text-emerald-500 hidden"></i></div>
+                    <!-- Header Clock Pill -->
+                    <div id="header-clock-container" class="relative hidden sm:flex items-center ml-2">
+                        <div id="header-clock-pill" class="header-clock-pill select-none" title="当前时间">
+                            <i class="far fa-clock text-[11px] text-emerald-500"></i>
+                            <span id="header-clock-time" class="font-mono font-medium text-xs">--:--</span>
                         </div>
                     </div>
 

@@ -408,8 +408,6 @@ const {
     handleSearchKeyPress,
     updateHeaderAppearanceIcon,
     toggleHeaderAppearance,
-    toggleHeaderSourceDropdown,
-    selectHeaderSource,
     performSearch,
     handleSearchTypeChange,
     applySearchTypeSourceRestrictions,
@@ -5288,11 +5286,48 @@ window.togglePlay = function () {
 document.addEventListener('click', initAudioEngine, { once: true });
 
 
-// Ensure initSearchTips runs on load
+function initHeaderClock() {
+    const timeEl = document.getElementById('header-clock-time');
+    const pillEl = document.getElementById('header-clock-pill');
+    if (!timeEl) return;
+
+    const days = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+
+    const updateClock = () => {
+        const now = new Date();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const timeStr = `${hours}:${minutes}`;
+
+        if (timeEl.textContent !== timeStr) {
+            timeEl.textContent = timeStr;
+        }
+
+        if (pillEl) {
+            const year = now.getFullYear();
+            const month = now.getMonth() + 1;
+            const date = now.getDate();
+            const dayName = days[now.getDay()];
+            const titleStr = `${year}年${month}月${date}日 ${dayName}`;
+            if (pillEl.title !== titleStr) {
+                pillEl.title = titleStr;
+            }
+        }
+    };
+
+    updateClock();
+    setInterval(updateClock, 1000);
+}
+
+// Ensure initSearchTips and initHeaderClock run on load
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initSearchTips);
+    document.addEventListener('DOMContentLoaded', () => {
+        initSearchTips();
+        initHeaderClock();
+    });
 } else {
     initSearchTips();
+    initHeaderClock();
 }
 // ── 全新自定义下拉框管理模块 ──
 initCustomSelectManager(() => SETTINGS_UI_MAP, () => DEFAULT_SETTINGS);

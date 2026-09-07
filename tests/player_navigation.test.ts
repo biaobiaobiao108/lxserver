@@ -83,7 +83,6 @@ describe('Player Navigation and State Restoration Safety', () => {
         const triggerFocusRule = css.match(/\.cs-trigger:focus-visible\s*\{([\s\S]*?)\}/)?.[1] ?? '';
         const selectedOptionRule = css.match(/\.cs-option\.selected\s*\{([\s\S]*?)\}/)?.[1] ?? '';
         const selectedQualityRule = css.match(/\.player-quality-option\[aria-checked="true"\][\s\S]*?\{([\s\S]*?)\}/)?.[1] ?? '';
-        const activeHeaderSourceRule = css.match(/\.header-source-item\.is-active\s*\{([\s\S]*?)\}/)?.[1] ?? '';
         expect(activeTabRule.includes('border-right')).toBe(false);
         expect(css.includes('.cs-wrapper.highlight .cs-trigger')).toBe(false);
         expect(css.includes('.cs-wrapper.highlight .cs-trigger-icon')).toBe(false);
@@ -93,8 +92,6 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(activeLmSelectRule.includes('box-shadow')).toBe(false);
         expect(activeSelectRule.includes('var(--c-500)')).toBe(false);
         expect(activeSelectRule.includes('box-shadow')).toBe(false);
-        expect(activeHeaderSourceRule.includes('var(--c-500)')).toBe(false);
-        expect(activeHeaderSourceRule.includes('font-weight: 700')).toBe(false);
         expect(triggerFocusRule.includes('outline: 2px solid')).toBe(true);
         expect(selectedOptionRule.includes('background: transparent')).toBe(true);
         expect(selectedOptionRule.includes('box-shadow: none')).toBe(true);
@@ -105,7 +102,8 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(css.includes('background: color-mix(in srgb, var(--c-500) 12%, transparent)')).toBe(false);
         expect(css.includes('.active-option')).toBe(false);
         expect(css.includes('.cs-option:hover')).toBe(true);
-        expect(css.includes('.header-source-item:hover')).toBe(true);
+        expect(css.includes('.header-clock-pill')).toBe(true);
+        expect(css.includes('.header-source-pill')).toBe(false);
         expect(css.includes('.player-quality-option:hover')).toBe(true);
         expect(customSelect.includes("item.setAttribute('aria-selected', String(selected))")).toBe(true);
         expect(customSelect.includes("check.className = 'fas fa-check'")).toBe(true);

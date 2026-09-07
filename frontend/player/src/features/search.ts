@@ -96,39 +96,6 @@ function toggleHeaderAppearance() {
 }
 (window as any).toggleHeaderAppearance = toggleHeaderAppearance;
 
-function toggleHeaderSourceDropdown(e?: Event) {
-    if (e) e.stopPropagation();
-    const dropdown = document.getElementById('header-source-dropdown');
-    if (!dropdown) return;
-    dropdown.classList.toggle('hidden');
-}
-(window as any).toggleHeaderSourceDropdown = toggleHeaderSourceDropdown;
-
-function selectHeaderSource(sourceKey: string, sourceName: string) {
-    const nameEl = document.getElementById('header-source-name');
-    if (nameEl) nameEl.textContent = sourceName;
-    const searchSourceSelect = document.getElementById('search-source') as HTMLSelectElement | null;
-    if (searchSourceSelect) {
-        searchSourceSelect.value = sourceKey;
-        if ((window as any).CustomSelectManager) {
-            (window as any).CustomSelectManager.syncUI(searchSourceSelect);
-        }
-    }
-    document.querySelectorAll('#header-source-dropdown .header-source-item').forEach(item => {
-        const itemSource = item.getAttribute('data-source');
-        const checkIcon = item.querySelector('.fa-check');
-        if (checkIcon) {
-            if (itemSource === sourceKey) {
-                checkIcon.classList.remove('hidden');
-            } else {
-                checkIcon.classList.add('hidden');
-            }
-        }
-    });
-    const dropdown = document.getElementById('header-source-dropdown');
-    if (dropdown) dropdown.classList.add('hidden');
-}
-(window as any).selectHeaderSource = selectHeaderSource;
 
 
 /**
@@ -2219,8 +2186,6 @@ window.unobserveLazyImages = function (root = document) {
         handleSearchKeyPress,
         updateHeaderAppearanceIcon,
         toggleHeaderAppearance,
-        toggleHeaderSourceDropdown,
-        selectHeaderSource,
         performSearch,
         handleSearchTypeChange,
         applySearchTypeSourceRestrictions,

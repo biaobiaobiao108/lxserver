@@ -139,4 +139,13 @@ describe('Core Router & HttpContext', () => {
     expect(res).not.toBeNull()
     expect(res?.status).toBe(401)
   })
+
+  test('stopServer is exported and gracefully handles unstarted or running state', async () => {
+    const { stopServer, getStatus } = await import('@/server')
+    expect(typeof stopServer).toBe('function')
+    await expect(stopServer(true)).resolves.toBeUndefined()
+    const status = getStatus()
+    expect(status.status).toBe(false)
+  })
 })
+

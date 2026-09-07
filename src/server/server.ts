@@ -66,6 +66,17 @@ export const startServer = async (port: number, ip: string): Promise<void> => {
   }
 }
 
+export const stopServer = async (closeActiveConnections = false): Promise<void> => {
+  if (bunServerInstance) {
+    startupLog.info('Stopping HTTP and WebSocket server...')
+    bunServerInstance.stop(closeActiveConnections)
+    bunServerInstance = null
+    serverStatus.status = false
+    serverStatus.message = 'Server stopped'
+    serverStatus.address = []
+  }
+}
+
 export const getStatus = (): LX.Sync.Status => getServerStatus()
 export const getDevices = (name: string) => getSyncDevices(name)
 export const removeDevice = (name: string, clientId: string) => removeSyncDevice(name, clientId)

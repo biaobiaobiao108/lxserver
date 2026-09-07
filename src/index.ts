@@ -420,13 +420,13 @@ const { createModuleEvent } = await import('@/event')
 createModuleEvent()
 
 // 初始化 SQLite 原生数据库 (WAL 模式)
-const { initDatabase } = await import('@/database')
+const { initDatabase, closeDb } = await import('@/database')
 initDatabase()
 const { syncUsersToDatabase } = await import('@/user/data')
 syncUsersToDatabase(global.lx.config.users)
 
 // 初始化 Web 服务
-const { startServer } = await import('@/server')
+const { startServer, stopServer } = await import('@/server')
 
 // 初始化 WebDAV 同步
 const { default: WebDAVSync } = await import('@/utils/webdavSync')
@@ -492,10 +492,11 @@ await startServer(global.lx.config.port, global.lx.config.bindIP)
 
 // 监控 config.js 变动以实现热重载 (由于 nodemon 已忽略该文件)
 const rootConfigPath = process.env.CONFIG_PATH || path.join(global.lx.dataPath, 'config.js')
+let configWatcher: fs.FSWatcher | null = null
 if (fs.existsSync(rootConfigPath)) {
   lastConfigHash = getConfigHash(rootConfigPath)
   let debounceTimer: NodeJS.Timeout | null = null
-  fs.watch(rootConfigPath, (event) => {
+  configWatcher = fs.watch(rootConfigPath, (event) => {
     if (event === 'change') {
       if (debounceTimer) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(() => {
@@ -527,3 +528,45 @@ if (fs.existsSync(rootConfigPath)) {
     }
   })
 }
+
+// 优雅停机处理 (Graceful Shutdown)
+let isShuttingDown = false
+const gracefulShutdown = async (signal: string) => {
+  if (isShuttingDown) return
+  isShuttingDown = true
+  console.log(`\nReceived ${signal}, shutting down gracefully...`)
+
+  try {
+    if (configWatcher) {
+      configWatcher.close()
+      configWatcher = null
+    }
+  } catch { }
+
+  try {
+    if (webdavSync) {
+      webdavSync.stopAutoSync()
+    }
+  } catch (err) {
+    console.error('Error stopping WebDAV sync:', err)
+  }
+
+  try {
+    await stopServer(true)
+  } catch (err) {
+    console.error('Error stopping server:', err)
+  }
+
+  try {
+    closeDb()
+  } catch (err) {
+    console.error('Error closing database:', err)
+  }
+
+  console.log('Server stopped cleanly. Goodbye.')
+  process.exit(0)
+}
+
+process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'))
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'))
+

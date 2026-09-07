@@ -134,6 +134,56 @@ docker compose up -d --build
 
 ---
 
+### 方式四：使用 Bun 从源码直接本地运行（原生极速 / 免 Docker）
+
+如果您没有安装 Docker，或者希望直接在宿主机进行开发与调试，只需安装 **[Bun](https://bun.sh)** 运行时即可直接启动服务（毫秒级冷启，无需额外安装 Node.js、Redis 或 Python）：
+
+#### 1. 安装 Bun 运行时（已安装请跳过）
+- **Linux / macOS**:
+  ```bash
+  curl -fsSL https://bun.sh/install | bash
+  ```
+- **Windows (PowerShell)**:
+  ```powershell
+  powershell -c "irm bun.sh/install.ps1 | iex"
+  ```
+
+#### 2. 克隆仓库并安装依赖
+```bash
+git clone https://github.com/biaobiaobiao108/lxserver.git
+cd lxserver
+bun install
+```
+
+#### 3. 配置必要环境变量
+Bun 原生支持自动加载项目根目录下的 `.env` 文件。创建并编辑 `.env`：
+```bash
+# 【必填】管理后台密码（禁止使用 123456 等示例弱口令）
+FRONTEND_PASSWORD=YourStrongAdminPassword123!
+
+# 【可选】同步用户账号，格式为 LX_USER_<用户名>=<密码>
+LX_USER_admin=UserPassword456!
+
+# 服务监听端口与 Subsonic 开启
+PORT=9527
+SUBSONIC_ENABLE=true
+```
+
+#### 4. 构建前端并启动服务
+```bash
+# 极速编译前端产物（仅需数十毫秒）
+bun run build:frontend
+
+# 生产模式启动
+bun start
+
+# 或开发监听热重载模式启动（修改源码自动生效）
+bun run dev
+```
+启动成功后，即可直接在浏览器中访问 `http://localhost:9527/`（管理后台）或 `http://localhost:9527/music`（Web 网页播放器）。
+
+---
+
 ## 🔑 访问地址与默认路径
 
 服务启动后，默认监听 `9527` 端口：

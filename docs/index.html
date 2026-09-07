@@ -573,26 +573,29 @@
         <section id="deployment" class="py-20 px-4 sm:px-6 lg:px-8 max-w-5xl mx-auto z-10">
             <div class="text-center mb-12">
                 <div class="inline-flex items-center space-x-2 text-xs font-semibold t-accent px-3 py-1 rounded-full t-bg-panel border t-border mb-3">
-                    <i class="fab fa-docker"></i>
-                    <span>开箱即用的 Alpine Slim 容器</span>
+                    <i class="fas fa-server"></i>
+                    <span>开箱即用 · 容器化与本地运行双支持</span>
                 </div>
-                <h2 class="text-3xl font-extrabold tracking-tight mb-3">Docker 容器部署指南</h2>
+                <h2 class="text-3xl font-extrabold tracking-tight mb-3">多模式部署与本地运行指南</h2>
                 <p class="text-sm t-text-muted">
-                    生产镜像内置 chromaprint (fpcalc) 音频指纹库与原生健康检查指令，多平台一键开箱即用。
+                    支持开箱即用的 Alpine Docker 容器化编排，或基于原生 Bun 运行时直接从源码毫秒级本地启动。
                 </p>
             </div>
 
             <!-- 部署形式 Tab 切换卡 -->
             <div class="glass-card rounded-3xl p-6 sm:p-8 shadow-2xl">
-                <div class="flex items-center space-x-2 border-b t-border pb-4 mb-6">
+                <div class="flex flex-wrap items-center gap-2 border-b t-border pb-4 mb-6">
                     <button onclick="switchDeployTab('compose')" id="tab-compose" class="px-4 py-2 rounded-xl text-sm font-semibold transition-all t-accent-bg text-white shadow-md">
                         Docker Compose (推荐)
                     </button>
                     <button onclick="switchDeployTab('run')" id="tab-run" class="px-4 py-2 rounded-xl text-sm font-semibold transition-all t-text-muted hover:t-accent">
                         Docker CLI Run
                     </button>
+                    <button onclick="switchDeployTab('bun')" id="tab-bun" class="px-4 py-2 rounded-xl text-sm font-semibold transition-all t-text-muted hover:t-accent flex items-center space-x-1.5">
+                        <span>⚡ Bun 源码直接运行</span>
+                    </button>
                     <button onclick="switchDeployTab('build')" id="tab-build" class="px-4 py-2 rounded-xl text-sm font-semibold transition-all t-text-muted hover:t-accent">
-                        本地源码构建
+                        本地 Docker 构建
                     </button>
                 </div>
 
@@ -650,9 +653,39 @@ services:
   -e ENABLE_WEBPLAYER_AUTH=false \
   -e SUBSONIC_ENABLE=true \
   ghcr.io/biaobiaobiao108/lxserver:latest</code></pre>
+                <!-- Tab 3: Bun Source Run -->
+                <div id="deploy-bun" class="relative hidden">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-mono t-text-dim">终端直接运行（需安装 Bun）</span>
+                        <button onclick="copyPreCode('code-bun', this)" class="text-xs px-3 py-1.5 rounded-lg t-bg-panel border t-border t-text-muted hover:t-accent flex items-center space-x-1">
+                            <i class="far fa-copy"></i>
+                            <span>复制步骤</span>
+                        </button>
+                    </div>
+                    <pre class="rounded-2xl p-4 sm:p-5 bg-slate-950 text-slate-100 font-mono text-xs sm:text-sm overflow-x-auto leading-relaxed"><code id="code-bun"># 1. 克隆代码仓库并安装依赖
+git clone https://github.com/biaobiaobiao108/lxserver.git
+cd lxserver
+bun install
+
+# 2. 配置根目录 .env 文件 (Bun 原生自动加载)
+cat <<EOF > .env
+FRONTEND_PASSWORD=YourStrongAdminPassword123!
+LX_USER_admin=UserPassword456!
+PORT=9527
+SUBSONIC_ENABLE=true
+EOF
+
+# 3. 极速编译前端产物（仅需数十毫秒）
+bun run build:frontend
+
+# 4. 启动服务（生产启动）
+bun start
+
+# 或使用热重载开发模式：
+# bun run dev</code></pre>
                 </div>
 
-                <!-- Tab 3: Local Build -->
+                <!-- Tab 4: Local Build -->
                 <div id="deploy-build" class="relative hidden">
                     <div class="flex justify-between items-center mb-2">
                         <span class="text-xs font-mono t-text-dim">克隆与构建</span>
@@ -935,7 +968,7 @@ docker compose logs -f lx-sync-server</code></pre>
         // 4. 部署 Tab 切换
         // ==========================================
         function switchDeployTab(tab) {
-            const tabs = ['compose', 'run', 'build'];
+            const tabs = ['compose', 'run', 'bun', 'build'];
             tabs.forEach(t => {
                 const el = document.getElementById(`deploy-${t}`);
                 const btn = document.getElementById(`tab-${t}`);

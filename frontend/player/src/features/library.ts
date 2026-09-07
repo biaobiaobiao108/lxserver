@@ -14,6 +14,7 @@ export interface LibraryFeatureContext {
     enterAlbum: (id: any, source?: string) => void;
     downloadArtistAlbumSongs: (album: any, button: HTMLElement) => Promise<void>;
     exitListSecondaryModes: () => void;
+    leaveSearchNavigation?: () => void;
     setCurrentSearchScope: (scope: string) => void;
     getSourceTag: (source: any) => string;
 }
@@ -32,6 +33,7 @@ export function initLibraryFeature(context: LibraryFeatureContext) {
     const enterAlbum = context.enterAlbum;
     const downloadArtistAlbumSongs = context.downloadArtistAlbumSongs;
     const exitListSecondaryModes = context.exitListSecondaryModes;
+    const leaveSearchNavigation = context.leaveSearchNavigation;
     const setCurrentSearchScope = context.setCurrentSearchScope;
     const getSourceTag = context.getSourceTag;
     const API_BASE = '/api/music';
@@ -532,6 +534,7 @@ window.renderLibraryAlbums = renderLibraryAlbums;
 
 /** 点击侧边栏"收藏歌手"，切换到展示视图 */
 function handleArtistLibraryClick() {
+    leaveSearchNavigation?.();
     exitListSecondaryModes && exitListSecondaryModes();
     document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
     const activeView = document.getElementById('view-search');
@@ -563,6 +566,7 @@ window.handleArtistLibraryClick = handleArtistLibraryClick;
 
 /** 点击侧边栏"收藏专辑"，切换到展示视图 */
 function handleAlbumLibraryClick() {
+    leaveSearchNavigation?.();
     exitListSecondaryModes && exitListSecondaryModes();
     document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
     const activeView = document.getElementById('view-search');
@@ -784,4 +788,3 @@ window.removeLibraryAlbum = removeLibraryAlbum;
     Object.assign(window, feature);
     return feature;
 }
-

@@ -12,7 +12,7 @@ export type SearchFeatureContext = {
     getCurrentListData: () => any;
     getAuthToken: () => string | null;
     getUserAuthHeaders: () => Record<string, string>;
-    switchTab: (tabId: string) => void;
+    switchTab: (tabId: string, preserveSearchNavigation?: boolean) => void;
     setCurrentSearchScope: (scope: string) => void;
     loadLibraryData?: (...args: any[]) => any;
     isArtistFavorited?: (...args: any[]) => boolean;
@@ -275,19 +275,28 @@ function isAlbumRequestCurrent(request: AlbumRequestContext) {
 
 let searchDetailOpen = false;
 
+type SearchDetailHistoryState = {
+    page: 'search-detail';
+    kind: 'artist' | 'album';
+    id: string;
+    source: string;
+    order?: string;
+    tab?: string;
+};
+
 function setSearchDetailOpen(value: boolean) {
     searchDetailOpen = value;
 }
 
-function isSearchDetailOpen() {
-    return searchDetailOpen;
-}
-
-
 //搜索歌曲
 async function doSearch(page = 1, append = false, prefetch = false) {
     if (prefetch && searchDetailOpen) return;
-    if (!prefetch) setSearchDetailOpen(false);
+    if (!prefetch) {
+        setSearchDetailOpen(false);
+        if (window.history.state?.page === 'search-detail') {
+            window.history.replaceState({ page: 'search' }, '');
+        }
+    }
     invalidateSearchRequest();
     invalidateAlbumRequest();
     const typeEl = document.getElementById('search-type');
@@ -894,7 +903,14 @@ async function enterArtist(id, source = 'wy', order = 'hot', tab = 'songs', isBa
         lastSearchType = typeEl ? typeEl.value : 'singer';
         lastSearchResultList = [...(window.viewingPlaylist || [])];
         currentArtistInfo = null; // 重置缓存
-        window.history.pushState({ page: 'search-detail' }, '');
+        window.history.pushState({
+            page: 'search-detail',
+            kind: 'artist',
+            id: String(id),
+            source: String(source),
+            order: String(order),
+            tab,
+        } satisfies SearchDetailHistoryState, '');
     }
 
     const previousArtistOrder = window.currentArtistOrder || 'hot';
@@ -1623,7 +1639,7 @@ async function downloadArtistAlbumSongs(album, button) {
 }
 window.downloadArtistAlbumSongs = downloadArtistAlbumSongs;
 
-async function enterAlbum(id, source = 'wy') {
+async function enterAlbum(id, source = 'wy', fromHistory = false) {
     invalidateSearchRequest();
     invalidateArtistRequest();
     invalidateAlbumRequest();
@@ -1652,7 +1668,14 @@ async function enterAlbum(id, source = 'wy') {
         lastSearchType = typeEl ? typeEl.value : 'album';
         lastSearchResultList = [...(window.viewingPlaylist || [])];
     }
-    window.history.pushState({ page: 'search-detail' }, '');
+    if (!fromHistory) {
+        window.history.pushState({
+            page: 'search-detail',
+            kind: 'album',
+            id: albumId,
+            source: albumSource,
+        } satisfies SearchDetailHistoryState, '');
+    }
 
     const resultsContainer = document.getElementById('search-results');
     resultsContainer.innerHTML = '<div class="flex items-center justify-center h-full"><i class="fas fa-spinner fa-spin text-4xl text-emerald-500"></i></div>';
@@ -1708,9 +1731,23 @@ function goBackToSearch(fromPopState = false) {
         return;
     }
 
-    if (!lastSearchResultList) return;
+    if (!lastSearchResultList) {
+        setSearchDetailOpen(false);
+        return;
+    }
 
     setSearchDetailOpen(false);
+
+    restoreSearchResults();
+
+    currentArtistId = null;
+    window.currentArtistId = null;
+    window.currentAlbumId = null;
+    window.currentAlbumSource = null;
+}
+
+function restoreSearchResults() {
+    if (!lastSearchResultList) return false;
 
     const container = document.getElementById('search-results');
     const header = document.getElementById('search-results-header');
@@ -1744,11 +1781,59 @@ function goBackToSearch(fromPopState = false) {
         else pageInfoEl.innerText = `搜索结果`;
     }
 
-    lastSearchResultList = null;
-    lastSearchType = null;
-    currentArtistId = null;
+    return true;
 }
 window.goBackToSearch = goBackToSearch;
+
+function leaveSearchView() {
+    invalidateSearchRequest();
+    invalidateArtistRequest();
+    invalidateAlbumRequest();
+    setSearchDetailOpen(false);
+    window.tempArtistContext = null;
+    currentArtistId = null;
+    currentArtistInfo = null;
+    window.currentArtistId = null;
+    window.currentAlbumId = null;
+    window.currentAlbumSource = null;
+
+    restoreSearchResults();
+
+    if (window.history.state?.page === 'search-detail') {
+        window.history.replaceState({ page: 'tab', tabId: 'search' }, '');
+    }
+}
+
+function handleSearchPopState(historyState: any) {
+    if (historyState?.page === 'search-detail') {
+        // 浏览器从其它主页面返回搜索详情时，先恢复搜索视图；保留当前 History 项，
+        // 避免 switchTab 的常规清理逻辑把正在恢复的详情路由替换掉。
+        switchTab('search', true);
+        const id = historyState.id;
+        const source = historyState.source || 'wy';
+        if (id === undefined || id === null || id === '') return false;
+
+        // 通过前进按钮恢复详情时，不再新建 History 项。
+        window.tempArtistContext = null;
+        if (historyState.kind === 'album') {
+            void enterAlbum(String(id), String(source), true);
+            return true;
+        }
+        if (historyState.kind === 'artist') {
+            void enterArtist(String(id), String(source), historyState.order || 'hot', historyState.tab || 'songs', true);
+            return true;
+        }
+        return false;
+    }
+
+    if (searchDetailOpen) {
+        switchTab('search', true);
+        goBackToSearch(true);
+        return true;
+    }
+
+    return false;
+}
 
 window.enterArtist = enterArtist;
 
@@ -2170,7 +2255,8 @@ window.unobserveLazyImages = function (root = document) {
         downloadArtistAlbumSongs,
         enterAlbum,
         goBackToSearch,
-        isSearchDetailOpen,
+        leaveSearchView,
+        handleSearchPopState,
         getImgUrl,
         renderResults,
         createMarqueeHtml,

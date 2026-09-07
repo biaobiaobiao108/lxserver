@@ -99,6 +99,15 @@ let currentPlayingSong = null; // Track currently playing song independently of 
 window.batchCollectSongs = null; // Store songs for batch collection modal
 const audio = document.getElementById('audio-player');
 let currentPlaybackRate = 1.0;
+let clearSearchNavigation = () => {};
+
+// 搜索详情和歌词详情都是当前 SPA 进程内的临时视图。页面刷新后无法恢复它们
+// 的内存上下文，因此将遗留的详情状态归一化为普通播放器入口，避免下一次
+// back/forward 把旧页面状态误当成当前视图。
+const initialNavigationPage = window.history.state?.page;
+if (!initialNavigationPage || initialNavigationPage === 'search-detail' || initialNavigationPage === 'player-detail') {
+    window.history.replaceState({ page: 'player' }, '');
+}
 
 function setCurrentSearchScope(scope: string) {
     window.currentSearchScope = scope;
@@ -339,6 +348,7 @@ const libraryFeature = initLibraryFeature({
     enterAlbum: (id, source) => enterAlbum(id, source),
     downloadArtistAlbumSongs: (album, button) => downloadArtistAlbumSongs(album, button),
     exitListSecondaryModes: () => exitListSecondaryModes(),
+    leaveSearchNavigation: () => clearSearchNavigation(),
     setCurrentSearchScope,
     getSourceTag: (source) => getSourceTag(source),
 });
@@ -382,7 +392,7 @@ const searchFeature = initSearchFeature({
     getCurrentListData: () => currentListData,
     getAuthToken: () => authToken,
     getUserAuthHeaders: getPlayerUserAuthHeaders,
-    switchTab: (tabId) => switchTab(tabId),
+    switchTab: (tabId, preserveSearchNavigation) => switchTab(tabId, preserveSearchNavigation),
     setCurrentSearchScope,
     loadLibraryData: (...args) => loadLibraryData(...args),
     isArtistFavorited: (...args) => isArtistFavorited(...args),
@@ -434,13 +444,15 @@ const {
     downloadArtistAlbumSongs,
     enterAlbum,
     goBackToSearch,
-    isSearchDetailOpen,
+    leaveSearchView,
+    handleSearchPopState,
     getImgUrl,
     renderResults,
     createMarqueeHtml,
     applyMarqueeChecks,
     lazyLoadImages,
 } = searchFeature;
+clearSearchNavigation = leaveSearchView;
 
 // Initialize Unified Search for Global (Favorites/Search)
 window.goToPage = function (page) {
@@ -1276,12 +1288,16 @@ function changeQualityPreference(quality) {
 
 
 // Tab Switching
-function switchTab(tabId) {
+function switchTab(tabId, preserveSearchNavigation = false) {
     // Favorites is a sidebar group toggle, not a main content view.
     if (tabId === 'favorites') {
         handleFavoritesClick();
         return;
     }
+
+    // 主页面切换时关闭搜索详情，避免隐藏页面继续持有 History 详情状态。
+    // 路由恢复时保留当前 History 项，否则会把正在恢复的详情替换掉。
+    if (!preserveSearchNavigation) clearSearchNavigation();
 
     document.querySelectorAll('[id^="view-"]').forEach(el => {
         el.classList.add('hidden');
@@ -3278,8 +3294,7 @@ const lyricFeature = initLyricFeature({
     getUserAuthHeaders,
     getImgUrl,
     setImg,
-    goBackToSearch,
-    isSearchDetailOpen,
+    handleSearchPopState,
     updateStorageStatsUI,
     escapeHtmlText,
     formatTime,
@@ -3652,6 +3667,7 @@ function renderMyLists(data) {
 }
 
 function handleListClick(listId, skipAutoUpdate = false) {
+    clearSearchNavigation();
     exitListSecondaryModes();
 
     if (!currentListData) return;

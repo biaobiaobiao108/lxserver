@@ -95,10 +95,18 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(searchContent.includes('if (prefetch && searchDetailOpen) return;')).toBe(true);
         expect(searchContent.includes("if (!searchDetailOpen && window.currentSearchScope === 'network'" )).toBe(true);
         expect(searchContent.includes('function isAlbumRequestCurrent')).toBe(true);
+        expect(searchContent.includes("kind: 'album'" )).toBe(true);
+        expect(searchContent.includes("kind: 'artist'" )).toBe(true);
+        expect(searchContent.includes('function handleSearchPopState')).toBe(true);
+        expect(searchContent.includes("switchTab('search', true)")).toBe(true);
+        expect(searchContent.includes('function leaveSearchView')).toBe(true);
         expect(searchContent.includes('获取专辑歌曲失败：${escapeHtmlText(e.message)}')).toBe(true);
         expect(albumSection.includes('goBackToSearch();')).toBe(false);
         expect(lyricsContent.includes('lyricHistoryClosePending')).toBe(true);
-        expect(lyricsContent.includes('if (isSearchDetailOpen())')).toBe(true);
+        expect(lyricsContent.includes('handleSearchPopState(e.state)')).toBe(true);
+        expect(lyricsContent.includes("if (e.state?.page === 'player-detail') return;")).toBe(true);
+        expect(lyricsContent.includes("if (e.state?.page === 'player-detail') {\n        toggleLyrics(true);\n        return;\n    }")).toBe(true);
+        expect(fs.readFileSync(path.join(import.meta.dir, '../frontend/player/src/index.ts'), 'utf8').includes("window.history.replaceState({ page: 'player' }, '')")).toBe(true);
     });
 });
 

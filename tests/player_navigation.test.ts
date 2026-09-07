@@ -170,6 +170,18 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(playbackContent.includes('audio.muted = isMuted;')).toBe(true);
         expect(playbackContent.includes('if (settings.enableCrossfade && !isMuted && effectiveVol > 0)')).toBe(true);
     });
+
+    it('queue count badge updates immediately on playlist change without opening drawer', () => {
+        const queueContent = fs.readFileSync(path.join(import.meta.dir, '../frontend/player/src/features/queue.ts'), 'utf8');
+        const playbackContent = fs.readFileSync(playbackSrcPath, 'utf8');
+        const indexHtmlContent = fs.readFileSync(path.join(import.meta.dir, '../public/music/index.html'), 'utf8');
+
+        expect(queueContent.includes('function updateQueueBadge()')).toBe(true);
+        expect(queueContent.includes('updateQueueBadge,')).toBe(true);
+        expect(playbackContent.includes('updateQueueBadge();')).toBe(true);
+        expect(indexHtmlContent.includes('id="queue-badge-count-mobile"')).toBe(true);
+        expect(indexHtmlContent.includes('id="queue-badge-count"')).toBe(true);
+    });
 });
 
 describe('Update Notification Engine & PostHog Removal', () => {

@@ -188,7 +188,7 @@ const queueFeature = initQueueFeature({
     showSelect,
     resetPlayer: () => resetPlayer(),
 });
-const { renderQueue } = queueFeature;
+const { renderQueue, updateQueueBadge } = queueFeature;
 
 function loadCommentsFeature() {
     return loadPlayerFeature(
@@ -1602,6 +1602,7 @@ const playbackFeature = initPlaybackFeature({
     updateMediaSessionMetadata: (...args) => updateMediaSessionMetadata(...args),
     updateLyricDetailInfo: (...args) => updateLyricDetailInfo(...args),
     renderQueue,
+    updateQueueBadge,
     cleanSongData,
     getImgUrl,
     getQualityTags,
@@ -1679,6 +1680,7 @@ function resetPlayer() {
     } catch (e) {}
 
     renderQueue();
+    updateQueueBadge();
 }
 (window as any).resetPlayer = resetPlayer;
 
@@ -2249,6 +2251,7 @@ async function restorePlaybackState() {
         updatePlayerInfo(state.song, currentQuality);
         updateMediaSessionMetadata(state.song);
         renderQueue(); // 提前渲染队列 UI
+        updateQueueBadge();
 
         // 4. 设置恢复时间点
         const resumeTime = state.time || 0;
@@ -4770,7 +4773,8 @@ document.addEventListener('DOMContentLoaded', () => {
         await userSessionReady;
         console.log('[Init] 启动后台初始化任务...');
         loadSettings();
-        restorePlaybackState();
+        await restorePlaybackState();
+        updateQueueBadge();
 
         // [新增] 延迟显示热搜，避免启动请求堆积
         if (typeof showInitialSearchState === 'function') {

@@ -31,19 +31,48 @@ export interface QueueFeatureContext {
 export function initQueueFeature(context: QueueFeatureContext) {
     let isQueueRendered = false;
 
+    function updateQueueBadge() {
+        const playlist = context.getPlaylist();
+        const queueLen = playlist ? playlist.length : 0;
+        const text = queueLen > 99 ? '99+' : String(queueLen);
+        const isHidden = queueLen === 0;
+
+        const badgeEls = [
+            document.getElementById('queue-badge-count'),
+            document.getElementById('queue-badge-count-mobile'),
+        ];
+
+        badgeEls.forEach(badgeEl => {
+            if (badgeEl) {
+                badgeEl.innerText = text;
+                badgeEl.classList.toggle('hidden', isHidden);
+            }
+        });
+
+        const countEl = document.getElementById('queue-count');
+        if (countEl) countEl.innerText = `${queueLen} SONGS`;
+
+        const desktopBtn = document.getElementById('player-queue-btn');
+        if (desktopBtn) {
+            desktopBtn.setAttribute('title', queueLen > 0 ? `当前播放队列 (${queueLen})` : '当前播放队列');
+            desktopBtn.setAttribute('aria-label', queueLen > 0 ? `播放队列，共 ${queueLen} 首` : '播放队列');
+        }
+        const mobileBtn = document.getElementById('player-queue-btn-mobile');
+        if (mobileBtn) {
+            mobileBtn.setAttribute('title', queueLen > 0 ? `当前播放队列 (${queueLen})` : '当前播放队列');
+            mobileBtn.setAttribute('aria-label', queueLen > 0 ? `播放队列，共 ${queueLen} 首` : '播放队列');
+        }
+    }
+
     function renderQueue() {
+        updateQueueBadge();
+
         const listContainer = document.getElementById('queue-list');
         const countEl = document.getElementById('queue-count');
         if (!listContainer) return;
 
         const playlist = context.getPlaylist();
         const currentIndex = context.getCurrentIndex();
-        const badgeEl = document.getElementById('queue-badge-count');
-        const queueLen = playlist ? playlist.length : 0;
-        if (badgeEl) {
-            badgeEl.innerText = queueLen > 99 ? '99+' : String(queueLen);
-            badgeEl.classList.toggle('hidden', queueLen === 0);
-        }
 
         if (!playlist || playlist.length === 0) {
             listContainer.innerHTML = `
@@ -244,6 +273,7 @@ export function initQueueFeature(context: QueueFeatureContext) {
 
     const feature = {
         renderQueue,
+        updateQueueBadge,
         toggleQueueDrawer,
         scrollToCurrentSongInQueue,
         playSongFromQueue,
@@ -253,6 +283,7 @@ export function initQueueFeature(context: QueueFeatureContext) {
     };
 
     Object.assign(window, {
+        updateQueueBadge,
         toggleQueueDrawer,
         scrollToCurrentSongInQueue,
         playSongFromQueue,

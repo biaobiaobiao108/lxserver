@@ -48,6 +48,7 @@ export type PlaybackFeatureContext = {
     updateMediaSessionMetadata: (...args: any[]) => any;
     updateLyricDetailInfo?: (...args: any[]) => any;
     renderQueue: (...args: any[]) => any;
+    updateQueueBadge?: () => void;
     cleanSongData: (...args: any[]) => any;
     getImgUrl: (...args: any[]) => any;
     getQualityTags: (...args: any[]) => any;
@@ -88,6 +89,7 @@ export function initPlaybackFeature(context: PlaybackFeatureContext) {
     const fetchLyric = context.fetchLyric;
     const updateMediaSessionMetadata = context.updateMediaSessionMetadata;
     const renderQueue = context.renderQueue;
+    const updateQueueBadge = context.updateQueueBadge || (() => (window as any).updateQueueBadge?.());
     const cleanSongData = context.cleanSongData;
     const getImgUrl = context.getImgUrl;
     const getQualityTags = context.getQualityTags;
@@ -260,10 +262,12 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
     // 异步触发歌词抓取，初步尝试（此时音质可能尚未最终确定，但在 playSong 后续逻辑中会再次同步）
     fetchLyric(song);
 
-    // Refresh queue UI if drawer is open to update active indicator
+    // Refresh queue UI if drawer is open to update active indicator, always refresh badge
     const queueDrawer = document.getElementById('queue-drawer');
     if (queueDrawer && !queueDrawer.classList.contains('translate-x-full')) {
         renderQueue();
+    } else {
+        updateQueueBadge();
     }
 
     // [Fix] 切换歌曲前强制重置手动滚动状态
@@ -471,6 +475,7 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
                         state.currentPlaylist = context.getCurrentListData().defaultList;
                         state.currentIndex = 0;
                         state.currentPlayingScope = 'local_list';
+                        updateQueueBadge();
                     }
                 } else {
                     // 搜索结果：关闭"切换歌单"时，才退回 defaultList
@@ -479,6 +484,7 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
                         state.currentPlaylist = context.getCurrentListData().defaultList;
                         state.currentIndex = 0;
                         state.currentPlayingScope = 'local_list';
+                        updateQueueBadge();
                     }
                 }
             }
@@ -703,6 +709,7 @@ function updatePlaylist(list, startIndex = 0, scope = 'local_list', shouldAddToD
     // [New] Use a shallow copy to prevent mutations from affecting the source list
     state.currentPlaylist = [...list];
     state.currentPlayingScope = scope;
+    updateQueueBadge();
 
     // 如果是从网络搜索或歌单来源，确保 playSong 能识别并更新 UI/历史
     playSong(state.currentPlaylist[startIndex], startIndex, null, false, false, shouldAddToDefault);

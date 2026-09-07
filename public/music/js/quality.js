@@ -129,6 +129,28 @@ function getQualityDisplayName(quality) {
     return QUALITY_NAMES[quality] || String(quality || '').toUpperCase();
 }
 
+function getQualityBadgeLabel(quality) {
+    switch (String(quality || '').toLowerCase()) {
+        case 'master': return 'Master';
+        case 'atmos_plus': return 'Atmos+';
+        case 'atmos': return 'Atmos';
+        case 'hires':
+        case 'flac24bit': return 'Hi-Res';
+        case 'flac': return 'SQ';
+        case '320k': return '320K';
+        case '192k': return '192K';
+        case '128k': return '128K';
+        default: return String(quality || '').toUpperCase();
+    }
+}
+
+function getQualityBadgeClass(quality) {
+    const normalized = String(quality || '').toLowerCase();
+    if (normalized === 'flac') return 'badge-quality-sq';
+    if (normalized === 'hires' || normalized === 'flac24bit') return 'badge-quality-hires';
+    return 'badge-quality-runtime';
+}
+
 function getQualityColor(quality) {
     return QUALITY_COLORS[quality] || QUALITY_COLORS['128k'];
 }
@@ -149,6 +171,8 @@ window.QualityManager = {
     getAvailableQualities,
     getSelectableQualities,
     getQualityDisplayName,
+    getQualityBadgeLabel,
+    getQualityBadgeClass,
     getQualityColor,
     isQualityAvailable
 };

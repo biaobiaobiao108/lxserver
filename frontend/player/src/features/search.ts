@@ -551,6 +551,17 @@ function showInitialSearchState() {
 
 
 function getQualityTags(item) {
+    const resolvedQuality = item.quality || item.type;
+    if (resolvedQuality) {
+        const badgeLabel = window.QualityManager?.getQualityBadgeLabel
+            ? window.QualityManager.getQualityBadgeLabel(resolvedQuality)
+            : String(resolvedQuality).toUpperCase();
+        const badgeClass = window.QualityManager?.getQualityBadgeClass
+            ? window.QualityManager.getQualityBadgeClass(resolvedQuality)
+            : 'badge-quality-runtime';
+        return `<span class="${badgeClass} flex-shrink-0">${escapeHtmlText(badgeLabel)}</span>`;
+    }
+
     const tags = [];
     // 兼容多种音质字段位置:
     // 1. types / _types (旧版/部分源)

@@ -178,7 +178,22 @@ async function runRecoveryFlow(error) {
     }
 }
 
-async function playSong(song, index, forceQuality = null, noPlay = false, isRetry = false, shouldAddToDefault = null) {
+function restoreAudioPosition(position) {
+    const requestedPosition = Number(position);
+    if (!Number.isFinite(requestedPosition) || requestedPosition <= 0) return;
+
+    const applyPosition = () => {
+        const duration = Number(audio.duration);
+        audio.currentTime = Number.isFinite(duration) && duration > 0
+            ? Math.min(requestedPosition, duration)
+            : requestedPosition;
+    };
+
+    if (audio.readyState >= 1) applyPosition();
+    else audio.addEventListener('loadedmetadata', applyPosition, { once: true });
+}
+
+async function playSong(song, index, forceQuality = null, noPlay = false, isRetry = false, shouldAddToDefault = null, resumeTime = null) {
     // 1. Debounce / Lock: If already loading this song, ignore click
     // [Fix] Allow retry to bypass this check
     if (state.currentLoadingSongId === song.id && !isRetry) {
@@ -402,15 +417,14 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
         }
 
         audio.src = finalUrl;
+        restoreAudioPosition(resumeTime);
 
         if (noPlay) {
             setPlayerStatus('', false);
             updatePlayButton(false);
             if (window._resumeInfo && window._resumeInfo.time > 0) {
-                audio.addEventListener('loadedmetadata', () => {
-                    audio.currentTime = window._resumeInfo.time;
-                    delete window._resumeInfo;
-                }, { once: true });
+                restoreAudioPosition(window._resumeInfo.time);
+                delete window._resumeInfo;
             }
             return;
         }
@@ -484,6 +498,22 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
             state.currentLoadingSongId = null;
         }
     }
+}
+
+async function changePlaybackQuality(quality) {
+    if (!quality || !state.currentPlayingSong) return false;
+
+    const song = state.currentPlayingSong;
+    const wasPlaying = !audio.paused && !audio.ended;
+    const resumeTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+
+    // Start a fresh recovery chain for the explicit user choice and bypass the
+    // same-song loading guard when the previous request has not fully settled.
+    state.currentLoadingSongId = null;
+    state.currentRecoveryState = null;
+
+    await playSong(song, state.currentIndex, quality, !wasPlaying, false, null, resumeTime);
+    return true;
 }
 
 // 设置播放器状态文本
@@ -704,6 +734,32 @@ window.setImg = (id, src) => {
     }
 };
 
+function updatePlayerQualityBadge(quality) {
+    const badge = document.getElementById('player-quality-tag');
+    if (!badge) return;
+
+    const normalizedQuality = quality ? String(quality).toLowerCase() : '';
+    const label = normalizedQuality
+        ? (window.QualityManager?.getQualityBadgeLabel?.(normalizedQuality) || normalizedQuality.toUpperCase())
+        : '—';
+    const fullName = normalizedQuality
+        ? (window.QualityManager?.getQualityDisplayName?.(normalizedQuality) || label)
+        : '正在获取实际音质';
+    const badgeClass = normalizedQuality
+        ? (window.QualityManager?.getQualityBadgeClass?.(normalizedQuality) || 'badge-quality-runtime')
+        : 'badge-quality-runtime';
+
+    const labelEl = badge.querySelector('#player-quality-label');
+    if (labelEl) labelEl.textContent = label;
+    else badge.textContent = label;
+
+    badge.classList.remove('badge-quality-sq', 'badge-quality-hires', 'badge-quality-runtime');
+    badge.classList.add(badgeClass);
+    badge.title = normalizedQuality ? `当前音质：${fullName}，点击选择播放音质` : fullName;
+    badge.setAttribute('aria-label', normalizedQuality ? `当前音质：${fullName}，选择播放音质` : fullName);
+    badge.setAttribute('data-quality', normalizedQuality);
+}
+
 function updatePlayerInfo(song, actualQuality) {
     // Bottom Player - 更新标题
     const titleEl = document.getElementById('player-title');
@@ -721,15 +777,17 @@ function updatePlayerInfo(song, actualQuality) {
         titleEl.classList.add('hover:text-emerald-500', 'cursor-pointer', 'transition-colors');
     }
 
+    const resolvedQuality = actualQuality === undefined
+        ? (song === state.currentPlayingSong ? state.currentQuality : null)
+        : actualQuality;
+    updatePlayerQualityBadge(resolvedQuality);
+
     // Bottom Player - 更新来源标签
     const sourceEl = document.getElementById('player-source');
     if (sourceEl) {
         if (song.source) {
             // Without an explicitly resolved quality, only show the source.
             // This prevents the player's badge from claiming a higher advertised quality.
-            const resolvedQuality = actualQuality === undefined
-                ? (song === state.currentPlayingSong ? state.currentQuality : null)
-                : actualQuality;
             const qualityTags = resolvedQuality ? getQualityTags({ quality: resolvedQuality }) : '';
             sourceEl.innerHTML = getSourceTag(song.source) + qualityTags;
             sourceEl.classList.remove('hidden');
@@ -1047,6 +1105,7 @@ function fadeVolume(targetVolume, duration = 800) {
         updatePlaylist,
         setImg,
         updatePlayerInfo,
+        changePlaybackQuality,
         togglePlay,
         updatePlayButton,
         playNext,

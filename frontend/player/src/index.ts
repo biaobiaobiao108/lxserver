@@ -1563,6 +1563,7 @@ const {
     updatePlaylist,
     setImg,
     updatePlayerInfo,
+    changePlaybackQuality,
     togglePlay,
     updatePlayButton,
     playNext,
@@ -4362,6 +4363,7 @@ window.playNext = playNext;
 window.playPrev = playPrev;
 window.seek = seek;
 window.changeQualityPreference = changeQualityPreference;
+window.toggleQualityModal = toggleQualityModal;
 
 // Volume
 window.setVolume = setVolume;
@@ -4427,6 +4429,159 @@ async function handleDownloadClick(event) {
     } else {
         showError('下载功能未就绪');
     }
+}
+
+let qualityMenuCleanup = null;
+
+function getPlayerQualityOptions() {
+    const select = document.getElementById('quality-select') as HTMLSelectElement | null;
+    if (select && select.options.length) {
+        return Array.from(select.options).map(option => ({
+            value: option.value,
+            label: option.textContent?.trim() || option.value,
+        }));
+    }
+
+    const fallback = ['128k', '320k', 'flac', 'flac24bit', 'hires', 'atmos', 'atmos_plus', 'master'];
+    return fallback.map(value => ({
+        value,
+        label: window.QualityManager?.getQualityDisplayName?.(value) || value,
+    }));
+}
+
+function getPlayerQualityBadgeLabel(quality) {
+    return window.QualityManager?.getQualityBadgeLabel?.(quality) || String(quality || '').toUpperCase();
+}
+
+function closeQualityModal(restoreFocus = false) {
+    const menu = document.getElementById('player-quality-menu');
+    const trigger = document.getElementById('player-quality-tag');
+    if (menu) {
+        menu.hidden = true;
+        menu.classList.remove('is-open');
+    }
+    trigger?.setAttribute('aria-expanded', 'false');
+    qualityMenuCleanup?.();
+    qualityMenuCleanup = null;
+    if (restoreFocus) (trigger as HTMLButtonElement | null)?.focus();
+}
+
+function handleQualityMenuKeydown(event) {
+    const menu = document.getElementById('player-quality-menu');
+    if (!menu || menu.hidden) return;
+
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        closeQualityModal(true);
+        return;
+    }
+
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const options = Array.from(menu.querySelectorAll('[role="menuitemradio"]')) as HTMLButtonElement[];
+    if (!options.length) return;
+    event.preventDefault();
+    const currentIndex = options.indexOf(document.activeElement as HTMLButtonElement);
+    const offset = event.key === 'ArrowDown' ? 1 : -1;
+    options[(currentIndex + offset + options.length) % options.length].focus();
+}
+
+function renderQualityMenu() {
+    const menu = document.getElementById('player-quality-menu');
+    if (!menu) return;
+
+    const currentPreference = String(settings.preferredQuality || '');
+    menu.replaceChildren();
+
+    const heading = document.createElement('div');
+    heading.className = 'px-3 py-2 text-[10px] font-bold t-text-muted uppercase tracking-wider';
+    heading.textContent = '播放音质';
+    menu.appendChild(heading);
+
+    getPlayerQualityOptions().forEach(option => {
+        const button = document.createElement('button');
+        const selected = option.value === currentPreference;
+        button.type = 'button';
+        button.className = 'player-quality-option';
+        button.setAttribute('role', 'menuitemradio');
+        button.setAttribute('aria-checked', String(selected));
+        button.dataset.quality = option.value;
+        button.title = option.label;
+
+        const badge = document.createElement('span');
+        badge.className = 'player-quality-option-badge';
+        badge.textContent = getPlayerQualityBadgeLabel(option.value);
+        const name = document.createElement('span');
+        name.className = 'player-quality-option-name';
+        name.textContent = option.label;
+        const check = document.createElement('i');
+        check.className = 'fas fa-check player-quality-option-check';
+        check.setAttribute('aria-hidden', 'true');
+
+        button.append(badge, name, check);
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            void selectPlayerQuality(option.value);
+        });
+        menu.appendChild(button);
+    });
+}
+
+async function selectPlayerQuality(quality) {
+    closeQualityModal();
+    await updateSetting('preferredQuality', quality);
+    if (String(settings.preferredQuality || '') !== String(quality)) return;
+    if (currentPlayingSong) {
+        try {
+            await changePlaybackQuality(quality);
+        } catch (error) {
+            console.error('[Quality] 切换播放音质失败:', error);
+            showError(error?.message || '切换播放音质失败');
+        }
+    }
+}
+
+function toggleQualityModal(event) {
+    event?.stopPropagation();
+    event?.preventDefault();
+
+    const menu = document.getElementById('player-quality-menu');
+    const trigger = document.getElementById('player-quality-tag');
+    if (!menu || !trigger) return;
+
+    if (!menu.hidden) {
+        closeQualityModal();
+        return;
+    }
+
+    renderQualityMenu();
+    menu.hidden = false;
+    menu.classList.add('is-open');
+    trigger.setAttribute('aria-expanded', 'true');
+
+    const handleOutsideClick = (outsideEvent) => {
+        const control = document.getElementById('player-quality-control');
+        if (control && !control.contains(outsideEvent.target)) closeQualityModal();
+    };
+    const handleEscape = (keyboardEvent) => {
+        if (keyboardEvent.key === 'Escape') closeQualityModal(true);
+    };
+    const handleViewportChange = () => closeQualityModal();
+    document.addEventListener('click', handleOutsideClick);
+    window.addEventListener('keydown', handleEscape);
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+    menu.addEventListener('keydown', handleQualityMenuKeydown);
+    qualityMenuCleanup = () => {
+        document.removeEventListener('click', handleOutsideClick);
+        window.removeEventListener('keydown', handleEscape);
+        window.removeEventListener('resize', handleViewportChange);
+        window.removeEventListener('scroll', handleViewportChange, true);
+        menu.removeEventListener('keydown', handleQualityMenuKeydown);
+    };
+
+    const selected = Array.from(menu.querySelectorAll('[role="menuitemradio"]'))
+        .find(option => (option as HTMLElement).dataset.quality === String(settings.preferredQuality || '')) as HTMLButtonElement | undefined;
+    (selected || menu.querySelector('[role="menuitemradio"]') as HTMLButtonElement | null)?.focus();
 }
 
 // 监听窗口大小变化

@@ -3570,8 +3570,14 @@
         <!-- Right: Audio Quality, Volume & Queue Tools -->
         <div class="w-full md:w-[28%] hidden md:flex items-center justify-end gap-2.5 lg:gap-3.5 order-2 md:order-none pr-8">
             <!-- Quality Badge Button -->
-            <span id="player-quality-tag" class="badge-quality-sq cursor-pointer hover:opacity-80 transition-opacity select-none"
-                onclick="typeof toggleQualityModal === 'function' && toggleQualityModal()" title="音质选择">SQ</span>
+            <div id="player-quality-control" class="relative flex items-center">
+                <button id="player-quality-tag" type="button" class="badge-quality-runtime player-quality-tag transition-opacity select-none"
+                    aria-haspopup="menu" aria-expanded="false" aria-controls="player-quality-menu"
+                    onclick="toggleQualityModal(event)" title="音质选择">
+                    <span id="player-quality-label">—</span>
+                </button>
+                <div id="player-quality-menu" role="menu" aria-label="播放音质" hidden></div>
+            </div>
 
             <!-- Download Button -->
             <button id="btn-player-download" aria-label="下载或缓存"

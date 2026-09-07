@@ -26,10 +26,24 @@ async function build() {
   }
 
   // 2. Build Music Player
+  const playerOutdir = path.join(import.meta.dir, '../public/music')
+  const playerChunkDir = path.join(playerOutdir, 'js/chunks')
+  if (fs.existsSync(playerChunkDir)) fs.rmSync(playerChunkDir, { recursive: true, force: true })
+  for (const filename of fs.readdirSync(playerOutdir)) {
+    if (filename.startsWith('chunk-') && filename.endsWith('.js')) {
+      fs.rmSync(path.join(playerOutdir, filename), { force: true })
+    }
+  }
+
   const playerResult = await Bun.build({
     entrypoints: [playerEntry],
-    outdir: path.join(import.meta.dir, '../public/music'),
-    naming: 'app.js',
+    outdir: playerOutdir,
+    naming: {
+      entry: 'app.js',
+      chunk: 'js/chunks/[name]-[hash].[ext]',
+    },
+    format: 'esm',
+    splitting: true,
     minify: shouldMinify,
     target: 'browser',
     sourcemap: isWatch ? 'inline' : 'none',

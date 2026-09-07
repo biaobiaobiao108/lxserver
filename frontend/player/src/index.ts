@@ -26,7 +26,7 @@ import { initCustomSelectManager } from './custom_select';
 import { initSearchTips } from './search_tips';
 import { showInput, showOptions, showSelect } from './player_dialogs';
 import { initPlayerNotifications } from './player_notifications';
-import './sleep_timer';
+import { loadPlayerFeature } from './player_feature_loader';
 
 /*
  * Copyright 2026 xcq0607 (https://github.com/xcq0607)
@@ -101,6 +101,33 @@ const {
     hideLoading,
     dismissAllToasts,
 } = initPlayerNotifications(() => ({ createMarqueeHtml, applyMarqueeChecks }));
+
+// Sleep timer is intentionally loaded on first use. The legacy HTML still
+// calls these names, so keep stable window proxies while moving the actual
+// implementation out of the initial bundle.
+function loadSleepTimerFeature() {
+    return loadPlayerFeature(
+        'sleep-timer',
+        () => import('./sleep_timer'),
+        '正在加载睡眠定时功能...'
+    );
+}
+
+function callSleepTimerFeature(name: string, args: any[]) {
+    return loadSleepTimerFeature().then((feature) => {
+        const handler = (feature as any)[name];
+        return typeof handler === 'function' ? handler(...args) : undefined;
+    });
+}
+
+Object.assign(window, {
+    openSleepTimerModal: (...args: any[]) => callSleepTimerFeature('openSleepTimerModal', args),
+    closeSleepTimerModal: (...args: any[]) => callSleepTimerFeature('closeSleepTimerModal', args),
+    setSleepTimer: (...args: any[]) => callSleepTimerFeature('setSleepTimer', args),
+    cancelSleepTimer: (...args: any[]) => callSleepTimerFeature('cancelSleepTimer', args),
+    showCustomTimerInput: (...args: any[]) => callSleepTimerFeature('showCustomTimerInput', args),
+    applyCustomTimer: (...args: any[]) => callSleepTimerFeature('applyCustomTimer', args),
+});
 
 // Initialize Unified Search for Global (Favorites/Search)
 window.goToPage = function (page) {

@@ -25,7 +25,7 @@ function showError(message) {
 let sleepTimerId = null;
 let sleepTimerEnd = 0;
 
-function openSleepTimerModal() {
+export function openSleepTimerModal() {
     const modal = document.getElementById('sleep-timer-modal');
     const content = document.getElementById('sleep-timer-modal-content');
     if (!modal || !content) return;
@@ -42,7 +42,7 @@ function openSleepTimerModal() {
     updateSleepTimerModalUI();
 }
 
-function closeSleepTimerModal() {
+export function closeSleepTimerModal() {
     const modal = document.getElementById('sleep-timer-modal');
     const content = document.getElementById('sleep-timer-modal-content');
     if (!modal || !content) return;
@@ -56,7 +56,7 @@ function closeSleepTimerModal() {
     }, 300);
 }
 
-function setSleepTimer(minutes) {
+export function setSleepTimer(minutes) {
     cancelSleepTimer();
     const durationMs = minutes * 60 * 1000;
     sleepTimerEnd = Date.now() + durationMs;
@@ -66,7 +66,7 @@ function setSleepTimer(minutes) {
     showSuccess(`已设置 ${minutes} 分钟后停止播放`);
 }
 
-function cancelSleepTimer() {
+export function cancelSleepTimer() {
     if (sleepTimerId) {
         clearInterval(sleepTimerId);
         sleepTimerId = null;
@@ -147,12 +147,12 @@ function updateSleepTimerModalUI() {
     if (customInput) customInput.classList.add('hidden');
 }
 
-function showCustomTimerInput() {
+export function showCustomTimerInput() {
     const input = document.getElementById('custom-timer-input');
     if (input) input.classList.remove('hidden');
 }
 
-function applyCustomTimer() {
+export function applyCustomTimer() {
     const inputEl = document.getElementById('custom-minutes');
     const val = parseInt(inputEl.value);
     if (val > 0) {
@@ -171,12 +171,3 @@ document.addEventListener('mousedown', (e) => {
         closeSleepTimerModal();
     }
 });
-
-
-// Public handlers retained for the legacy inline controls.
-(window as any).openSleepTimerModal = openSleepTimerModal;
-(window as any).closeSleepTimerModal = closeSleepTimerModal;
-(window as any).setSleepTimer = setSleepTimer;
-(window as any).cancelSleepTimer = cancelSleepTimer;
-(window as any).showCustomTimerInput = showCustomTimerInput;
-(window as any).applyCustomTimer = applyCustomTimer;

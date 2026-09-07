@@ -1412,19 +1412,19 @@
                         <div
                             class="flex border-b t-border-main mb-6 overflow-x-auto whitespace-nowrap hide-scrollbar scroll-smooth">
                             <button onclick="switchSettingsTab('system')" id="settings-tab-system"
-                                class="px-6 py-2 text-sm font-medium text-emerald-600 border-b-2 border-emerald-600 transition-colors focus:outline-none flex-shrink-0">
+                                class="settings-tab settings-tab-active px-6 py-2 text-sm font-medium border-b-2 transition-colors focus:outline-none flex-shrink-0">
                                 系统
                             </button>
                             <button onclick="switchSettingsTab('display')" id="settings-tab-display"
-                                class="px-6 py-2 text-sm font-medium text-gray-500 hover:text-emerald-600 border-b-2 border-transparent transition-colors focus:outline-none flex-shrink-0">
+                                class="settings-tab px-6 py-2 text-sm font-medium border-b-2 transition-colors focus:outline-none flex-shrink-0">
                                 显示
                             </button>
                             <button onclick="switchSettingsTab('logic')" id="settings-tab-logic"
-                                class="px-6 py-2 text-sm font-medium text-gray-500 hover:text-emerald-600 border-b-2 border-transparent transition-colors focus:outline-none flex-shrink-0">
+                                class="settings-tab px-6 py-2 text-sm font-medium border-b-2 transition-colors focus:outline-none flex-shrink-0">
                                 逻辑
                             </button>
                             <button onclick="switchSettingsTab('logs')" id="settings-tab-logs"
-                                class="px-6 py-2 text-sm font-medium text-gray-500 hover:text-emerald-600 border-b-2 border-transparent transition-colors focus:outline-none flex-shrink-0">
+                                class="settings-tab px-6 py-2 text-sm font-medium border-b-2 transition-colors focus:outline-none flex-shrink-0">
                                 日志
                             </button>
                         </div>
@@ -3571,7 +3571,7 @@
         <div class="w-full md:w-[28%] hidden md:flex items-center justify-end gap-2.5 lg:gap-3.5 order-2 md:order-none pr-8">
             <!-- Quality Badge Button -->
             <div id="player-quality-control" class="relative flex items-center">
-                <button id="player-quality-tag" type="button" class="badge-quality-runtime player-quality-tag transition-opacity select-none"
+                <button id="player-quality-tag" type="button" class="badge-quality-runtime player-secondary-action player-quality-tag select-none"
                     aria-haspopup="menu" aria-expanded="false" aria-controls="player-quality-menu"
                     onclick="toggleQualityModal(event)" title="音质选择">
                     <span id="player-quality-label">—</span>
@@ -3581,40 +3581,40 @@
 
             <!-- Download Button -->
             <button id="btn-player-download" aria-label="下载或缓存"
-                class="t-text-muted hover:text-emerald-500 text-xs p-1.5 transition-colors"
+                class="player-secondary-action"
                 onclick="handleDownloadClick(event)" title="下载/缓存">
                 <i class="fas fa-download"></i>
             </button>
 
             <!-- Sound Effects Button -->
             <button id="btn-sound-effects" aria-label="均衡器与音效"
-                class="t-text-muted hover:text-emerald-500 text-xs p-1.5 transition-colors"
+                class="player-secondary-action"
                 onclick="toggleSoundEffects()" title="均衡器 & 音效">
                 <i class="fas fa-sliders-h"></i>
             </button>
 
             <!-- Share Card Button -->
             <button aria-label="分享歌词卡片"
-                class="t-text-muted hover:text-emerald-500 text-xs p-1.5 transition-colors"
+                class="player-secondary-action"
                 onclick="openLyricCard()" title="分享歌词卡片">
                 <i class="fas fa-image"></i>
             </button>
 
             <!-- Comments Button -->
             <button aria-label="查看评论"
-                class="t-text-muted hover:text-emerald-500 text-xs p-1.5 transition-colors"
+                class="player-secondary-action"
                 onclick="toggleCommentModal()" title="查看评论">
                 <i class="fas fa-comment-dots"></i>
             </button>
 
             <!-- Lyrics Toggle Button -->
             <button aria-label="打开歌词详情"
-                class="t-text-muted hover:text-emerald-500 text-xs font-bold px-1.5 py-0.5 rounded border t-border-main transition-colors"
+                class="player-secondary-action player-lyrics-action"
                 onclick="toggleLyrics()" title="歌词与唱片">词</button>
 
             <!-- Volume Slider Group -->
             <div class="flex items-center gap-1.5 group ml-1">
-                <button aria-label="静音或取消静音" onclick="toggleMute()" class="t-text-muted hover:text-emerald-500 transition-colors p-1">
+                <button aria-label="静音或取消静音" onclick="toggleMute()" class="player-secondary-action">
                     <i id="volume-icon" class="fas fa-volume-up w-3.5 text-xs"></i>
                 </button>
                 <div class="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-1 cursor-pointer relative group-hover:h-1.5 transition-all" id="volume-container"
@@ -3630,7 +3630,7 @@
 
             <!-- Queue Drawer Button with Count Badge -->
             <button id="player-queue-btn" aria-label="播放队列" aria-controls="queue-drawer" aria-expanded="false"
-                class="relative t-text-muted hover:text-emerald-500 text-sm p-1.5 transition-colors ml-1"
+                class="player-secondary-action relative ml-1"
                 onclick="toggleQueueDrawer()" title="当前播放队列">
                 <i class="fas fa-list"></i>
                 <span id="queue-badge-count" class="queue-badge hidden">0</span>

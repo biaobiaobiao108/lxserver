@@ -84,10 +84,10 @@ function updateAppearanceUI(activeMode) {
     document.querySelectorAll('.appearance-option').forEach(btn => {
         const mode = btn.getAttribute('data-appearance');
         if (mode === activeMode) {
-            btn.classList.add('ring-emerald-500', 'border-emerald-500', 'text-emerald-600');
+            btn.classList.add('appearance-option-active');
             btn.classList.remove('t-border-main', 't-text-muted');
         } else {
-            btn.classList.remove('ring-emerald-500', 'border-emerald-500', 'text-emerald-600');
+            btn.classList.remove('appearance-option-active');
             btn.classList.add('t-border-main', 't-text-muted');
         }
     });
@@ -104,8 +104,8 @@ function switchSettingsTab(tabName) {
         if (panel) panel.classList.add('hidden');
 
         if (tab) {
-            tab.classList.remove('text-emerald-600', 'border-emerald-600');
-            tab.classList.add('text-gray-500', 'border-transparent', 'hover:text-emerald-600');
+            tab.classList.remove('settings-tab-active');
+            tab.classList.add('settings-tab');
         }
     });
 
@@ -118,8 +118,8 @@ function switchSettingsTab(tabName) {
     }
 
     if (activeTab) {
-        activeTab.classList.add('text-emerald-600', 'border-emerald-600');
-        activeTab.classList.remove('text-gray-500', 'border-transparent', 'hover:text-emerald-600');
+        activeTab.classList.add('settings-tab-active');
+        activeTab.classList.remove('settings-tab');
 
         // Scroll to the active tab to make sure it's visible (for mobile)
         activeTab.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });

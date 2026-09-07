@@ -5,6 +5,7 @@
 */
 
 :root {
+    color-scheme: light;
     /* Base Transition */
     --theme-transition: 0.3s ease;
 
@@ -41,6 +42,7 @@
 
 /* Dark Mode Overrides */
 :root[data-appearance="dark"] {
+    color-scheme: dark;
     --bg-main: #16161a;
     --bg-panel: #212127;
     --bg-item-hover: #2d2e35;
@@ -60,6 +62,7 @@
 /* System Preference (Default if no data-appearance is set) */
 @media (prefers-color-scheme: dark) {
     :root:not([data-appearance="light"]) {
+        color-scheme: dark;
         --bg-main: #16161a;
         --bg-panel: #212127;
         --bg-item-hover: #2d2e35;
@@ -242,6 +245,28 @@ i {
 
 .t-shadow {
     box-shadow: var(--shadow-main) !important;
+}
+
+/* Shared theme-aware states for settings and player controls. */
+.settings-tab {
+    color: var(--text-muted) !important;
+    border-color: transparent !important;
+}
+
+.settings-tab:hover,
+.settings-tab:focus-visible,
+.settings-tab-active {
+    color: var(--c-600, var(--c-500)) !important;
+}
+
+.settings-tab-active {
+    border-color: var(--c-500) !important;
+}
+
+.appearance-option-active {
+    border-color: var(--c-500) !important;
+    color: var(--c-600, var(--c-500)) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-500) 24%, transparent);
 }
 
 /* Global overrides for dark mode compatibility */

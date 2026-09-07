@@ -58,6 +58,16 @@ import { initSyncFeature, type SyncState } from './features/sync';
 const API_BASE = '/api/music';
 const credentialStorage = window.sessionStorage;
 
+// 认证功能在入口后段初始化，前面的功能模块通过稳定桥接函数访问它，
+// 避免在模块组装阶段把尚未赋值的认证方法传进去。
+type PlayerAuthBridge = {
+    getUserAuthHeaders: () => Record<string, string>;
+    isUserLoggedIn: () => boolean;
+};
+let playerAuthBridge: PlayerAuthBridge | null = null;
+const getPlayerUserAuthHeaders = () => playerAuthBridge?.getUserAuthHeaders() ?? {};
+const isPlayerUserLoggedIn = () => playerAuthBridge?.isUserLoggedIn() ?? false;
+
 function getCredential(key: string): string | null {
     const current = credentialStorage.getItem(key);
     if (current !== null) return current;
@@ -190,10 +200,10 @@ function loadCustomSourcesFeature() {
         'custom-sources',
         () => import('./features/custom_sources').then(({ initCustomSourcesFeature }) => initCustomSourcesFeature({
             getCredential,
-            getUserAuthHeaders,
+            getUserAuthHeaders: getPlayerUserAuthHeaders,
             getCurrentListData: () => currentListData,
             getSettings: () => settings,
-            isUserLoggedIn,
+            isUserLoggedIn: isPlayerUserLoggedIn,
             handleAdminAuth,
             updateSetting,
             createMarqueeHtml: (text, className) => createMarqueeHtml(text, className),
@@ -232,7 +242,7 @@ function togglePublicSourcesSetting(...args: any[]) { return callCustomSourcesFe
 const playlistModalFeature = initPlaylistModalFeature({
     getCurrentPlayingSong: () => currentPlayingSong,
     getCurrentListData: () => currentListData,
-    isUserLoggedIn,
+    isUserLoggedIn: isPlayerUserLoggedIn,
     requireAdminForOpenWrite: (action) => requireAdminForOpenWrite(action),
     renderMyLists: (data) => renderMyLists(data),
     isCurrentlyViewingLocalList: (listId) => isCurrentlyViewingLocalList(listId),
@@ -241,7 +251,7 @@ const playlistModalFeature = initPlaylistModalFeature({
     refreshUserListData: () => refreshUserListData(),
     exitBatchMode: () => (window as any).exitBatchMode?.(),
     deselectAll: () => (window as any).deselectAll?.(),
-    getUserAuthHeaders,
+    getUserAuthHeaders: getPlayerUserAuthHeaders,
     showError,
     showInfo,
     showSuccess,
@@ -261,7 +271,7 @@ function loadCacheFeature() {
         'cache',
         () => import('./features/cache').then(({ initCacheFeature }) => initCacheFeature({
             getCredential,
-            getUserAuthHeaders,
+            getUserAuthHeaders: getPlayerUserAuthHeaders,
             getSettings: () => settings,
             setSettings: (nextSettings) => {
                 settings = nextSettings;
@@ -308,8 +318,8 @@ function clearServerCache(...args: any[]) { return callCacheFeature('clearServer
 
 const libraryFeature = initLibraryFeature({
     getCredential,
-    getUserAuthHeaders,
-    isUserLoggedIn,
+    getUserAuthHeaders: getPlayerUserAuthHeaders,
+    isUserLoggedIn: isPlayerUserLoggedIn,
     requireAdminForOpenWrite: (action) => requireAdminForOpenWrite(action),
     showInfo,
     showSuccess,
@@ -633,6 +643,7 @@ const authFeature = initAuthFeature({
     showSelect,
     handleSyncLogout: (skipConfirm) => handleSyncLogout(skipConfirm),
 });
+playerAuthBridge = authFeature;
 const {
     getUserAuthHeaders,
     isUserLoggedIn,

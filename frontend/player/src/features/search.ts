@@ -49,8 +49,12 @@ export function initSearchFeature(context: SearchFeatureContext) {
     const showInfo = context.showInfo;
     const showError = context.showError;
     const loadLibraryData = (...args: any[]) => context.loadLibraryData?.(...args);
-    const isArtistFavorited = (...args: any[]) => context.isArtistFavorited?.(...args) ?? false;
-    const isAlbumFavorited = (...args: any[]) => context.isAlbumFavorited?.(...args) ?? false;
+    const isArtistFavorited = (...args: any[]) => typeof context.isArtistFavorited === 'function'
+        ? context.isArtistFavorited(...args)
+        : false;
+    const isAlbumFavorited = (...args: any[]) => typeof context.isAlbumFavorited === 'function'
+        ? context.isAlbumFavorited(...args)
+        : false;
     const updateAlbumLibraryMeta = (...args: any[]) => context.updateAlbumLibraryMeta?.(...args);
     const renderLibraryArtists = context.renderLibraryArtists;
     const renderLibraryAlbums = context.renderLibraryAlbums;
@@ -148,7 +152,11 @@ function performSearch(query, source = null, type = 'song') {
     const typeEl = document.getElementById('search-type');
     const validSources = ['kw', 'kg', 'tx', 'wy', 'mg'];
     const searchType = ['song', 'singer', 'album'].includes(type) ? type : 'song';
-    if (typeEl) typeEl.value = searchType;
+    if (typeEl) {
+        typeEl.value = searchType;
+        const customSelectManager = (window as any).CustomSelectManager;
+        if (typeof customSelectManager?.syncUI === 'function') customSelectManager.syncUI(typeEl);
+    }
     if (source && sourceEl && validSources.includes(source)) {
         sourceEl.value = source;
     }
@@ -197,6 +205,9 @@ function applySearchTypeSourceRestrictions() {
     } else {
         Array.from(sourceSelect.options).forEach(opt => { opt.disabled = false; });
     }
+
+    const customSelectManager = (window as any).CustomSelectManager;
+    if (typeof customSelectManager?.syncUI === 'function') customSelectManager.syncUI(sourceSelect);
 }
 window.handleSearchTypeChange = handleSearchTypeChange;
 

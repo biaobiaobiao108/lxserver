@@ -5,6 +5,8 @@ import path from 'path';
 describe('Player Navigation and State Restoration Safety', () => {
     const playerSrcPath = path.join(import.meta.dir, '../frontend/player/src/index.ts');
     const playbackSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/playback.ts');
+    const searchSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/search.ts');
+    const playerCssPath = path.join(import.meta.dir, '../public/music/css/app.css');
     const playerDistPath = path.join(import.meta.dir, '../public/music/app.js');
 
     beforeAll(() => {
@@ -57,6 +59,29 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(html.includes('viewport-fit=cover')).toBe(true);
         expect(html.includes('id="mobile-menu-btn"')).toBe(true);
         expect(html.includes('toggleSidebar()')).toBe(true);
+    });
+
+    it('artist and album searches guard favorite callbacks and use the auth bridge', () => {
+        const srcContent = fs.readFileSync(playerSrcPath, 'utf8');
+        const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
+        expect(srcContent.includes('getUserAuthHeaders: getPlayerUserAuthHeaders')).toBe(true);
+        expect(srcContent.includes('isUserLoggedIn: isPlayerUserLoggedIn')).toBe(true);
+        expect(searchContent.includes("typeof context.isArtistFavorited === 'function'")).toBe(true);
+        expect(searchContent.includes("typeof context.isAlbumFavorited === 'function'")).toBe(true);
+    });
+
+    it('player active states do not add the removed accent borders', () => {
+        const css = fs.readFileSync(playerCssPath, 'utf8');
+        const activeTabRule = css.match(/\.active-tab\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+        const highlightRule = css.match(/\.cs-wrapper\.highlight \.cs-trigger\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+        const activeSelectRule = css.match(/\.cs-wrapper\.active \.cs-trigger\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+        const triggerFocusRule = css.match(/\.cs-trigger:focus-visible\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+        expect(activeTabRule.includes('border-right')).toBe(false);
+        expect(highlightRule.includes('border-color')).toBe(false);
+        expect(highlightRule.includes('box-shadow')).toBe(false);
+        expect(activeSelectRule.includes('border-color')).toBe(false);
+        expect(activeSelectRule.includes('box-shadow')).toBe(false);
+        expect(triggerFocusRule.includes('outline: none')).toBe(true);
     });
 });
 

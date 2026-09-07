@@ -102,6 +102,7 @@ export function initPlaybackFeature(context: PlaybackFeatureContext) {
     const showError = context.showError;
     const pushDataChange = context.pushDataChange;
     const renderMyLists = context.renderMyLists;
+    let hintTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function playFromView(index) {
     if (!context.getViewingPlaylist() || !context.getViewingPlaylist()[index]) return;

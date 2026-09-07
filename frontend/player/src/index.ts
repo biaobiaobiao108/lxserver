@@ -1475,7 +1475,6 @@ let currentLoadingRequestId = 0; // Track latest request ID
 
 let currentQuality = null; // 当前播放音质 (从 settings.preferredQuality 动态获取)
 let currentSourceType = 'normal'; // 当前链接来源类型: 'normal' | 'cache' | 'server_cache'
-let hintTimeout = null;
 
 const playbackState: PlaybackState = {
     get currentLoadingSongId() { return currentLoadingSongId; },
@@ -3228,6 +3227,9 @@ const lyricFeature = initLyricFeature({
     getCurrentQuality: () => currentQuality,
     getCurrentPlaybackRate: () => currentPlaybackRate,
     getUserAuthHeaders,
+    getImgUrl,
+    setImg,
+    goBackToSearch,
     updateStorageStatsUI,
     escapeHtmlText,
     formatTime,

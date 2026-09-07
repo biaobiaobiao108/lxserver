@@ -23,6 +23,9 @@ export interface LyricFeatureContext {
     getCurrentQuality: () => any;
     getCurrentPlaybackRate: () => number;
     getUserAuthHeaders: () => Record<string, string>;
+    getImgUrl: (song: any) => string;
+    setImg: (id: string, src: string) => void;
+    goBackToSearch: (fromPopState?: boolean) => any;
     updateStorageStatsUI: (...args: any[]) => any;
     escapeHtmlText: (text: any) => string;
     formatTime: (seconds: number) => string;
@@ -42,6 +45,9 @@ export function initLyricFeature(context: LyricFeatureContext) {
         },
     });
     const getUserAuthHeaders = context.getUserAuthHeaders;
+    const getImgUrl = context.getImgUrl;
+    const setImg = context.setImg;
+    const goBackToSearch = context.goBackToSearch;
     const updateStorageStatsUI = context.updateStorageStatsUI;
     const escapeHtmlText = context.escapeHtmlText;
     const formatTime = context.formatTime;
@@ -890,4 +896,3 @@ function renderLyric(lines, emptyMsg = '暂无歌词') {
         renderLyric,
     };
 }
-

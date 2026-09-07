@@ -30,7 +30,6 @@ import { loadPlayerFeature } from './player_feature_loader';
 import { setPlayerDrawerOpen } from './features/player_drawer';
 import { initQueueFeature } from './features/queue';
 import { initPlaylistModalFeature } from './features/playlist_modal';
-import { initCacheFeature } from './features/cache';
 import { initLibraryFeature } from './features/library';
 
 /*
@@ -249,43 +248,55 @@ const {
     handleTogglePlaylist,
 } = playlistModalFeature;
 
-const cacheFeature = initCacheFeature({
-    getCredential,
-    getUserAuthHeaders,
-    getSettings: () => settings,
-    setSettings: (nextSettings) => {
-        settings = nextSettings;
-        window.settings = nextSettings;
-    },
-    persistSettings: () => persistSettings(),
-    pushSettingsToServer: () => pushSettingsToServer(),
-    setPlayerDrawerOpen,
-    showSelect,
-    showSuccess,
-    showInfo,
-    showError,
-    escapeHtmlText,
-    defaultSettings: DEFAULT_SETTINGS,
-});
-const {
-    updateStorageStatsUI,
-    resetAllSettings,
-    clearCache,
-    updateServerCacheSize,
-    toggleCacheDrawer,
-    refreshCacheList,
-    retryCacheLyric,
-    downloadAllCacheLyrics,
-    toggleCacheBatchMode,
-    exitCacheBatchMode,
-    toggleCacheSelection,
-    selectAllCache,
-    deselectAllCache,
-    updateCacheBatchCount,
-    removeCacheItem,
-    batchDeleteCache,
-    clearServerCache,
-} = cacheFeature;
+function loadCacheFeature() {
+    return loadPlayerFeature(
+        'cache',
+        () => import('./features/cache').then(({ initCacheFeature }) => initCacheFeature({
+            getCredential,
+            getUserAuthHeaders,
+            getSettings: () => settings,
+            setSettings: (nextSettings) => {
+                settings = nextSettings;
+                window.settings = nextSettings;
+            },
+            persistSettings: () => persistSettings(),
+            pushSettingsToServer: () => pushSettingsToServer(),
+            setPlayerDrawerOpen,
+            showSelect,
+            showSuccess,
+            showInfo,
+            showError,
+            escapeHtmlText,
+            defaultSettings: DEFAULT_SETTINGS,
+        })),
+        '正在加载缓存管理...'
+    );
+}
+
+function callCacheFeature(name: string, args: any[] = []) {
+    return loadCacheFeature().then((feature) => {
+        const handler = (feature as any)[name];
+        return typeof handler === 'function' ? handler(...args) : undefined;
+    });
+}
+
+function updateStorageStatsUI(...args: any[]) { return callCacheFeature('updateStorageStatsUI', args); }
+function resetAllSettings(...args: any[]) { return callCacheFeature('resetAllSettings', args); }
+function clearCache(...args: any[]) { return callCacheFeature('clearCache', args); }
+function updateServerCacheSize(...args: any[]) { return callCacheFeature('updateServerCacheSize', args); }
+function toggleCacheDrawer(...args: any[]) { return callCacheFeature('toggleCacheDrawer', args); }
+function refreshCacheList(...args: any[]) { return callCacheFeature('refreshCacheList', args); }
+function retryCacheLyric(...args: any[]) { return callCacheFeature('retryCacheLyric', args); }
+function downloadAllCacheLyrics(...args: any[]) { return callCacheFeature('downloadAllCacheLyrics', args); }
+function toggleCacheBatchMode(...args: any[]) { return callCacheFeature('toggleCacheBatchMode', args); }
+function exitCacheBatchMode(...args: any[]) { return callCacheFeature('exitCacheBatchMode', args); }
+function toggleCacheSelection(...args: any[]) { return callCacheFeature('toggleCacheSelection', args); }
+function selectAllCache(...args: any[]) { return callCacheFeature('selectAllCache', args); }
+function deselectAllCache(...args: any[]) { return callCacheFeature('deselectAllCache', args); }
+function updateCacheBatchCount(...args: any[]) { return callCacheFeature('updateCacheBatchCount', args); }
+function removeCacheItem(...args: any[]) { return callCacheFeature('removeCacheItem', args); }
+function batchDeleteCache(...args: any[]) { return callCacheFeature('batchDeleteCache', args); }
+function clearServerCache(...args: any[]) { return callCacheFeature('clearServerCache', args); }
 
 const libraryFeature = initLibraryFeature({
     getCredential,

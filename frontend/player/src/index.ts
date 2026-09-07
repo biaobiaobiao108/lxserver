@@ -29,7 +29,6 @@ import { initPlayerNotifications } from './player_notifications';
 import { loadPlayerFeature } from './player_feature_loader';
 import { setPlayerDrawerOpen } from './features/player_drawer';
 import { initQueueFeature } from './features/queue';
-import { initCommentsFeature } from './features/comments';
 import { initCustomSourcesFeature } from './features/custom_sources';
 import { initPlaylistModalFeature } from './features/playlist_modal';
 import { initCacheFeature } from './features/cache';
@@ -157,17 +156,29 @@ const queueFeature = initQueueFeature({
 });
 const { renderQueue } = queueFeature;
 
-const commentsFeature = initCommentsFeature({
-    getActiveSong: () => currentPlayingSong,
-    escapeHtmlText,
-});
-const {
-    toggleCommentModal,
-    switchCommentType,
-    refreshComments,
-    fetchComments,
-    toggleSongInList,
-} = commentsFeature;
+function loadCommentsFeature() {
+    return loadPlayerFeature(
+        'comments',
+        () => import('./features/comments').then(({ initCommentsFeature }) => initCommentsFeature({
+            getActiveSong: () => currentPlayingSong,
+            escapeHtmlText,
+        })),
+        '正在加载评论功能...'
+    );
+}
+
+function callCommentsFeature(name: string, args: any[] = []) {
+    return loadCommentsFeature().then((feature) => {
+        const handler = (feature as any)[name];
+        return typeof handler === 'function' ? handler(...args) : undefined;
+    });
+}
+
+function toggleCommentModal(...args: any[]) { return callCommentsFeature('toggleCommentModal', args); }
+function switchCommentType(...args: any[]) { return callCommentsFeature('switchCommentType', args); }
+function refreshComments(...args: any[]) { return callCommentsFeature('refreshComments', args); }
+function fetchComments(...args: any[]) { return callCommentsFeature('fetchComments', args); }
+function toggleSongInList(...args: any[]) { return callCommentsFeature('toggleSongInList', args); }
 
 const customSourcesFeature = initCustomSourcesFeature({
     getCredential,

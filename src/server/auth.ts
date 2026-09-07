@@ -11,6 +11,7 @@ import querystring from 'node:querystring'
 import store from '@/utils/cache'
 import { getUserSpace, getUserName, setUserName, createClientKeyInfo } from '@/user'
 import { toMD5 } from '@/utils'
+import { getDb } from '@/database'
 
 export const getAvailableIP = (reqOrIp: http.IncomingMessage | Request | string) => {
   let ip: string | undefined
@@ -177,8 +178,39 @@ export const authConnect = async (reqOrUrl: http.IncomingMessage | Request | str
 
 export const SESSION_COOKIE_NAME = 'lx_player_session'
 const playerSessions = new Map<string, { createdAt: number }>()
-const PLAYER_SESSION_TTL = 24 * 60 * 60 * 1000
+export const PLAYER_SESSION_TTL = 30 * 24 * 60 * 60 * 1000
 const MAX_PLAYER_SESSIONS = 10_000
+
+const hashPlayerSession = (sessionId: string): string => (
+  crypto.createHash('sha256').update(sessionId).digest('hex')
+)
+
+const persistPlayerSession = (sessionId: string, createdAt: number): void => {
+  try {
+    getDb().run(
+      'INSERT OR REPLACE INTO player_sessions (session_hash, created_at) VALUES (?, ?)',
+      [hashPlayerSession(sessionId), createdAt]
+    )
+  } catch (error) {
+    console.error('[Auth] 播放器会话持久化失败:', error)
+  }
+}
+
+const deletePersistedPlayerSession = (sessionId: string): void => {
+  try {
+    getDb().run('DELETE FROM player_sessions WHERE session_hash = ?', [hashPlayerSession(sessionId)])
+  } catch (error) {
+    console.error('[Auth] 播放器会话清理失败:', error)
+  }
+}
+
+const prunePersistedPlayerSessions = (now = Date.now()): void => {
+  try {
+    getDb().run('DELETE FROM player_sessions WHERE created_at <= ?', [now - PLAYER_SESSION_TTL])
+  } catch (error) {
+    console.error('[Auth] 过期播放器会话清理失败:', error)
+  }
+}
 
 export const ADMIN_SESSION_COOKIE_NAME = 'lx_admin_session'
 export const USER_SESSION_COOKIE_NAME = 'lx_user_session'
@@ -286,6 +318,7 @@ const pruneExpiredPlayerSessions = (now = Date.now()) => {
   for (const [sessionId, session] of playerSessions) {
     if (now - session.createdAt > PLAYER_SESSION_TTL) playerSessions.delete(sessionId)
   }
+  prunePersistedPlayerSessions(now)
   while (playerSessions.size > MAX_PLAYER_SESSIONS) {
     const oldest = playerSessions.keys().next().value
     if (!oldest) break
@@ -297,13 +330,16 @@ const pruneExpiredPlayerSessions = (now = Date.now()) => {
 export const createPlayerSession = (): string => {
   pruneExpiredPlayerSessions()
   const sessionId = crypto.randomBytes(32).toString('hex')
-  playerSessions.set(sessionId, { createdAt: Date.now() })
+  const createdAt = Date.now()
+  playerSessions.set(sessionId, { createdAt })
+  persistPlayerSession(sessionId, createdAt)
   return sessionId
 }
 
 /** 移除播放器会话 */
 export const removePlayerSession = (sessionId: string): void => {
   playerSessions.delete(sessionId)
+  deletePersistedPlayerSession(sessionId)
 }
 
 /** 校验会话有效性 */
@@ -313,12 +349,27 @@ export const checkPlayerAuthSession = (cookies: Record<string, string>): boolean
   const sessionId = cookies[SESSION_COOKIE_NAME]
   if (!sessionId) return false
   const session = playerSessions.get(sessionId)
-  if (!session) return false
-  if (Date.now() - session.createdAt > PLAYER_SESSION_TTL) {
+  const now = Date.now()
+  if (session && now - session.createdAt <= PLAYER_SESSION_TTL) return true
+  if (session) {
     playerSessions.delete(sessionId)
+    deletePersistedPlayerSession(sessionId)
+  }
+
+  try {
+    const persisted = getDb().query<{ created_at: number }, [string]>(
+      'SELECT created_at FROM player_sessions WHERE session_hash = ?'
+    ).get(hashPlayerSession(sessionId))
+    if (!persisted || now - persisted.created_at > PLAYER_SESSION_TTL) {
+      deletePersistedPlayerSession(sessionId)
+      return false
+    }
+    playerSessions.set(sessionId, { createdAt: persisted.created_at })
+    return true
+  } catch (error) {
+    console.error('[Auth] 播放器会话读取失败:', error)
     return false
   }
-  return true
 }
 
 export const verifyAdminAuth = (

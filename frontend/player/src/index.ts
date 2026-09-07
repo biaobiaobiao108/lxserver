@@ -63,6 +63,7 @@ function getCredential(key: string): string | null {
     if (current !== null) return current;
     const legacy = window.localStorage.getItem(key);
     if (legacy === null) return null;
+
     credentialStorage.setItem(key, legacy);
     window.localStorage.removeItem(key);
     return legacy;
@@ -622,11 +623,13 @@ let authEnabled = false;
 let authToken = sessionStorage.getItem('lx_player_auth');
 // 用户 Token：将明文密码传输改为 Token 验证
 let userToken = getCredential('lx_user_token');
+let userSessionActive = false;
 const authFeature = initAuthFeature({
     credentialStorage,
     getCredential,
     getUserToken: () => userToken,
     setUserToken: (token) => { userToken = token; },
+    isUserSessionActive: () => userSessionActive,
     showSelect,
     handleSyncLogout: (skipConfirm) => handleSyncLogout(skipConfirm),
 });
@@ -834,6 +837,14 @@ async function handleTogglePublicFavorites() {
 window.handleTogglePublicFavorites = handleTogglePublicFavorites;
 
 // 页面加载时：检查是否开启认证，若开启则显示登出按钮
+let resolveUserSessionReady: (() => void) | null = null;
+const userSessionReady = Promise.race([
+    new Promise<void>((resolve) => {
+        resolveUserSessionReady = resolve;
+    }),
+    new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+]);
+
 (async () => {
     try {
         const response = await fetch('/api/music/config');
@@ -854,11 +865,30 @@ window.handleTogglePublicFavorites = handleTogglePublicFavorites;
         if (typeof syncSettingsUI === 'function') syncSettingsUI();
         else if (typeof updateAdminUI === 'function') updateAdminUI();
 
+        // Restore the HttpOnly user session after a browser restart. The
+        // cookie is not readable from JavaScript, so ask the server for the
+        // associated username and keep the token fallback below for legacy
+        // sessions.
+        try {
+            const userSessionRes = await fetch('/api/user/auth/verify', {
+                credentials: 'same-origin'
+            });
+            const userSessionData = await userSessionRes.json();
+            if (userSessionData.valid && userSessionData.username) {
+                userSessionActive = true;
+                localStorage.setItem('lx_sync_mode', 'local');
+                localStorage.setItem('lx_sync_user', userSessionData.username);
+            }
+        } catch (e) {
+            console.warn('[Auth] 用户会话恢复失败:', e);
+        }
+
         // [新增] 有 Token 时验证其有效性
         if (userToken) {
             try {
                 const vRes = await fetch('/api/user/auth/verify', {
-                    headers: { 'x-user-token': userToken }
+                    headers: { 'x-user-token': userToken },
+                    credentials: 'same-origin'
                 });
                 const vData = await vRes.json();
                 if (!vData.valid) {
@@ -873,6 +903,8 @@ window.handleTogglePublicFavorites = handleTogglePublicFavorites;
                 console.warn('[Auth] Token 验证失败:', e);
             }
         }
+
+        resolveUserSessionReady?.();
 
         // [新增] 公开受限用户自动尝试从服务器拉取配置 (_open)
         if (config['user.enablePublicRestriction']) {
@@ -907,6 +939,7 @@ window.handleTogglePublicFavorites = handleTogglePublicFavorites;
 
     } catch (error) {
         console.error('[Auth] 初始化检查失败:', error);
+        resolveUserSessionReady?.();
     }
 })();
 
@@ -4640,7 +4673,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // [优化] 延迟执行非关键初始化逻辑（设置恢复、状态重置、自动登录等）
     // 允许浏览器先完成主要的渲染和 load 事件，释放 PWA 安装按钮并显示刷新图标
-    setTimeout(() => {
+    setTimeout(async () => {
+        // 等待 HttpOnly Cookie 校验完成，避免自动恢复逻辑先于认证结果执行。
+        await userSessionReady;
         console.log('[Init] 启动后台初始化任务...');
         loadSettings();
         restorePlaybackState();
@@ -4667,21 +4702,26 @@ document.addEventListener('DOMContentLoaded', () => {
         if (savedMode === 'local') {
             const u = localStorage.getItem('lx_sync_user');
             const p = getCredential('lx_sync_pass');
-            if (u && p) {
-                // [优化] 如果已经有有效的 Token，不再重复登录
-                if (userToken) {
-                    console.log('[AutoLogin] 检测到有效 Token，跳过自动登录流程并直接恢复会话。');
-                    return;
-                }
-
-                console.log('[AutoLogin] 检测到本地账户且无有效 Token，正在自动登录...');
+            if (u && (p || userToken || userSessionActive)) {
                 // Fill UI
                 const uInput = document.getElementById('sync-local-user');
                 const pInput = document.getElementById('sync-local-pass');
                 if (uInput) uInput.value = u;
                 if (pInput) pInput.value = p;
-                // Trigger login
-                handleLocalLogin();
+
+                if (p) {
+                    console.log('[AutoLogin] 检测到本地账户凭据，正在自动登录...');
+                    // Trigger login
+                    handleLocalLogin();
+                } else {
+                    // A valid HttpOnly session or persisted user token is
+                    // enough for list APIs. Initialize the local client
+                    // without putting the password into persistent storage.
+                    console.log('[AutoLogin] 检测到有效的本地会话，正在恢复登录状态...');
+                    syncManager.initLocal(u, '');
+                    await reloadUserFavorites();
+                    updateSyncStatus(`<i class="fas fa-check-circle text-emerald-500"></i> 已恢复登录 (用户: ${escapeHtmlText(u)})`);
+                }
             }
         } else if (savedMode === 'remote') {
             const url = localStorage.getItem('lx_sync_url');

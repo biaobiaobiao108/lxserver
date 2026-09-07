@@ -3,6 +3,7 @@ export interface AuthFeatureContext {
     getCredential: (key: string) => string | null;
     getUserToken: () => string | null;
     setUserToken: (token: string | null) => void;
+    isUserSessionActive: () => boolean;
     showSelect: (...args: any[]) => Promise<boolean>;
     handleSyncLogout: (skipConfirm?: boolean) => Promise<void>;
 }
@@ -43,7 +44,7 @@ export function initAuthFeature(context: AuthFeatureContext) {
         const user = localStorage.getItem('lx_sync_user');
         const token = context.getCredential('lx_user_token');
         const pass = context.getCredential('lx_sync_pass');
-        return !!user && user !== '_open' && !!(token || pass);
+        return !!user && user !== '_open' && !!(token || pass || context.isUserSessionActive());
     }
 
     function isPublicLibraryContext(): boolean {
@@ -107,7 +108,7 @@ export function initAuthFeature(context: AuthFeatureContext) {
 
         const username = localStorage.getItem('lx_sync_user');
         const token = context.getCredential('lx_user_token');
-        if (token && username) {
+        if ((token || context.isUserSessionActive()) && username) {
             loginBtn.classList.add('hidden');
             loginBtn.classList.remove('flex');
             userDisplay.classList.add('flex');

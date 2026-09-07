@@ -12,6 +12,7 @@ import {
   createPlayerSession,
   removePlayerSession,
   SESSION_COOKIE_NAME,
+  PLAYER_SESSION_TTL,
   clearLoginFailures,
   isLoginRateLimited,
   recordLoginFailure,
@@ -42,11 +43,41 @@ export interface UserTokenConfig {
 /** 用户 Token 存储：token → { username, createdAt } */
 export const userSessions = new Map<string, { username: string; createdAt: number }>()
 export const USER_SESSION_TTL = 7 * 24 * 60 * 60 * 1000 // 7天
-const PLAYER_SESSION_TTL = 24 * 60 * 60 * 1000 // 24小时
 const MAX_USER_SESSIONS = 10_000
 const MAX_PERSISTENT_TOKENS_PER_USER = 100
 const MAX_TOKEN_NAME_LENGTH = 128
 const MAX_TOKEN_LIFETIME_MS = 10 * 365 * 24 * 60 * 60 * 1000
+
+const hashUserSession = (sessionId: string): string => (
+  crypto.createHash('sha256').update(sessionId).digest('hex')
+)
+
+const persistUserSession = (sessionId: string, username: string, createdAt: number): void => {
+  try {
+    getDb().run(
+      'INSERT OR REPLACE INTO user_sessions (session_hash, user_name, created_at) VALUES (?, ?, ?)',
+      [hashUserSession(sessionId), username, createdAt]
+    )
+  } catch (error) {
+    console.error('[Auth] 用户会话持久化失败:', error)
+  }
+}
+
+const deletePersistedUserSession = (sessionId: string): void => {
+  try {
+    getDb().run('DELETE FROM user_sessions WHERE session_hash = ?', [hashUserSession(sessionId)])
+  } catch (error) {
+    console.error('[Auth] 用户会话清理失败:', error)
+  }
+}
+
+const prunePersistedUserSessions = (now = Date.now()): void => {
+  try {
+    getDb().run('DELETE FROM user_sessions WHERE created_at <= ?', [now - USER_SESSION_TTL])
+  } catch (error) {
+    console.error('[Auth] 过期用户会话清理失败:', error)
+  }
+}
 
 const normalizeTokenName = (value: unknown): string => {
   const name = typeof value === 'string' ? value.trim() : ''
@@ -71,8 +102,12 @@ const parseTokenExpiry = (expireDays: unknown, expiresAt: unknown, now = Date.no
 
 const pruneExpiredUserSessions = (now = Date.now()) => {
   for (const [token, session] of userSessions) {
-    if (now - session.createdAt > USER_SESSION_TTL) userSessions.delete(token)
+    if (now - session.createdAt > USER_SESSION_TTL) {
+      userSessions.delete(token)
+      deletePersistedUserSession(token)
+    }
   }
+  prunePersistedUserSessions(now)
 }
 
 const issueUserSession = (username: string): string => {
@@ -82,7 +117,9 @@ const issueUserSession = (username: string): string => {
     if (oldest) userSessions.delete(oldest[0])
   }
   const token = crypto.randomBytes(32).toString('hex')
-  userSessions.set(token, { username, createdAt: Date.now() })
+  const createdAt = Date.now()
+  userSessions.set(token, { username, createdAt })
+  persistUserSession(token, username, createdAt)
   return token
 }
 
@@ -193,6 +230,7 @@ setTimeout(() => {
  * 2. 其次验证持久化 API Token（管理面板产生）
  */
 export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { headers: any }): string | null => {
+  pruneExpiredUserSessions()
   let token: string | null = null
   let ip = '127.0.0.1'
   let url = ''
@@ -218,7 +256,26 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
     if (session && Date.now() - session.createdAt <= USER_SESSION_TTL) {
       return session.username
     }
-    if (session) userSessions.delete(token)
+    if (session) {
+      userSessions.delete(token)
+      deletePersistedUserSession(token)
+    }
+
+    try {
+      const persisted = getDb().query<{ user_name: string; created_at: number }, [string]>(
+        'SELECT user_name, created_at FROM user_sessions WHERE session_hash = ?'
+      ).get(hashUserSession(token))
+      if (persisted && Date.now() - persisted.created_at <= USER_SESSION_TTL) {
+        userSessions.set(token, {
+          username: persisted.user_name,
+          createdAt: persisted.created_at,
+        })
+        return persisted.user_name
+      }
+      if (persisted) deletePersistedUserSession(token)
+    } catch (error) {
+      console.error('[Auth] 用户会话读取失败:', error)
+    }
 
     // 2. 持久化 API Token 验证
     const persistentUsername = persistentTokens.get(token)
@@ -352,7 +409,10 @@ export const createAuthRouter = (): Router => {
 
   router.post('/api/user/logout', (ctx) => {
     const token = ctx.headers.get('x-user-token') || ctx.cookies[USER_SESSION_COOKIE_NAME]
-    if (token) userSessions.delete(token)
+    if (token) {
+      userSessions.delete(token)
+      deletePersistedUserSession(token)
+    }
     return ctx.json({ success: true }, 200, {
       'Set-Cookie': `${USER_SESSION_COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Strict; Max-Age=0${ctx.url.protocol === 'https:' ? '; Secure' : ''}`,
     })
@@ -374,7 +434,7 @@ export const createAuthRouter = (): Router => {
           status: 200,
           headers: {
             'Content-Type': 'application/json',
-            'Set-Cookie': `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${PLAYER_SESSION_TTL / 1000}${ctx.url.protocol === 'https:' ? '; Secure' : ''}`,
+            'Set-Cookie': `${SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${Math.floor(PLAYER_SESSION_TTL / 1000)}${ctx.url.protocol === 'https:' ? '; Secure' : ''}`,
           },
         })
       }

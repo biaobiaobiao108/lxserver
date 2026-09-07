@@ -117,16 +117,16 @@ async function handleSyncLogout(skipConfirm = false) {
     }
 
     try {
-        // 1. 服务端注销 Token
-        if (state.userToken) {
-            try {
-                await fetch('/api/user/logout', {
-                    method: 'POST',
-                    headers: { 'x-user-token': state.userToken }
-                });
-            } catch (e) { console.warn('[Auth] Token 注销失败:', e); }
-            state.userToken = null;
-        }
+        // 1. 服务端注销 Token/HttpOnly Session。即使当前页面没有内存 Token，
+        // 也必须发起请求，否则浏览器重启后仍会凭 Cookie 自动恢复登录。
+        try {
+            await fetch('/api/user/logout', {
+                method: 'POST',
+                headers: state.userToken ? { 'x-user-token': state.userToken } : undefined,
+                credentials: 'same-origin'
+            });
+        } catch (e) { console.warn('[Auth] 用户会话注销失败:', e); }
+        state.userToken = null;
 
         // 2. 关闭 WebSocket 同步连接
         if (syncManager && syncManager.client && typeof syncManager.client.close === 'function') {

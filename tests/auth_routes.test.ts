@@ -12,6 +12,7 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 }
 
 const { createAuthRouter, userSessions } = await import('@/server/routes/auth')
+const { PLAYER_SESSION_TTL } = await import('@/server/auth')
 
 describe('Auth & Token Routes (routes/auth.ts)', () => {
   beforeEach(() => {
@@ -53,8 +54,42 @@ describe('Auth & Token Routes (routes/auth.ts)', () => {
     expect(res.status).toBe(200)
     expect(res.headers.get('Set-Cookie')).toContain('lx_player_session=')
     expect(res.headers.get('Set-Cookie')).toContain('HttpOnly')
+    expect(res.headers.get('Set-Cookie')).toContain(`Max-Age=${PLAYER_SESSION_TTL / 1000}`)
     const body = await res.json()
     expect(body.success).toBe(true)
+  })
+
+  test('user session cookie remains valid after in-memory session cache loss', async () => {
+    const router = createAuthRouter()
+
+    const loginRes = await router.handle(new Request('http://localhost:9527/api/user/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: 'test_user', password: 'password123' }),
+    }))
+    expect(loginRes.status).toBe(200)
+
+    const setCookie = loginRes.headers.get('Set-Cookie')
+    expect(setCookie).toContain('lx_user_session=')
+    const cookie = setCookie!.split(';', 1)[0]
+    const token = decodeURIComponent(cookie.slice(cookie.indexOf('=') + 1))
+    userSessions.delete(token)
+
+    const verifyRes = await router.handle(new Request('http://localhost:9527/api/user/auth/verify', {
+      headers: { Cookie: cookie },
+    }))
+    expect(await verifyRes.json()).toEqual({ valid: true, username: 'test_user' })
+
+    const logoutRes = await router.handle(new Request('http://localhost:9527/api/user/logout', {
+      method: 'POST',
+      headers: { Cookie: cookie },
+    }))
+    expect(logoutRes.headers.get('Set-Cookie')).toContain('Max-Age=0')
+
+    const afterLogoutRes = await router.handle(new Request('http://localhost:9527/api/user/auth/verify', {
+      headers: { Cookie: cookie },
+    }))
+    expect(await afterLogoutRes.json()).toEqual({ valid: false, username: null })
   })
 
   test('GET /api/user/auth/verify checks token validity', async () => {

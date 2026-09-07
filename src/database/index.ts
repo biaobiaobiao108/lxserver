@@ -107,7 +107,26 @@ export const initDatabase = (customDbPath?: string): Database => {
     );
   `)
 
-  // 8. 缓存与下载元数据索引表
+  // 8. 用户登录会话：仅保存会话 ID 的哈希，支持服务重启后恢复登录
+  db.run(`
+    CREATE TABLE IF NOT EXISTS user_sessions (
+      session_hash TEXT PRIMARY KEY,
+      user_name TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+  `)
+  db.run('CREATE INDEX IF NOT EXISTS idx_user_sessions_created_at ON user_sessions(created_at);')
+
+  // 9. 播放器访问会话：仅保存会话 ID 的哈希，支持服务重启后恢复登录
+  db.run(`
+    CREATE TABLE IF NOT EXISTS player_sessions (
+      session_hash TEXT PRIMARY KEY,
+      created_at INTEGER NOT NULL
+    );
+  `)
+  db.run('CREATE INDEX IF NOT EXISTS idx_player_sessions_created_at ON player_sessions(created_at);')
+
+  // 10. 缓存与下载元数据索引表
   db.run(`
     CREATE TABLE IF NOT EXISTS cache_index (
       location TEXT NOT NULL,

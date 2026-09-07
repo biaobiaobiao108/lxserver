@@ -358,12 +358,6 @@ html, body {
     color: var(--c-600) !important;
 }
 
-.active-option {
-    background-color: var(--c-500) !important;
-    color: white !important;
-    box-shadow: 0 4px 12px var(--c-200);
-}
-
 /* Lyric View Styles */
 .mask-image-gradient {
     mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%);
@@ -820,21 +814,6 @@ aside {
 }
 
 /* 菜单选中项样式 */
-.active-option {
-    background-color: var(--c-500) !important;
-    color: #ffffff !important;
-}
-
-[data-appearance="dark"] .active-option {
-    background-color: var(--c-600) !important;
-    color: #ffffff !important;
-}
-
-.active-option i,
-.active-option span {
-    color: #ffffff !important;
-}
-
 /* Sleep Timer Styles */
 .timer-preset-btn {
     padding: 0.75rem 1rem;
@@ -1325,15 +1304,16 @@ aside {
     color: var(--c-500);
 }
 
-.lm-filter-tag.active, .lm-select.active {
+.lm-filter-tag.active {
     background-color: var(--c-500);
     border-color: var(--c-500);
     color: #fff;
 }
 
-.cs-wrapper.highlight .cs-trigger {
-    background: color-mix(in srgb, var(--c-500) 10%, var(--bg-panel));
-    color: var(--text-main);
+.lm-select.active {
+    background-color: var(--bg-panel);
+    border-color: var(--border-main);
+    color: var(--text-muted);
 }
 
 .lm-select:focus {
@@ -1346,9 +1326,10 @@ aside {
     color: var(--text-main);
 }
 
-/* 自定义下拉控件使用 active/highlight 状态表达选择，避免叠加全局焦点外框。 */
+/* Keep keyboard focus visible without turning the trigger into a selected state. */
 .cs-trigger:focus-visible {
-    outline: none;
+    outline: 2px solid var(--c-500);
+    outline-offset: 2px;
 }
 
 /* ── 多选筛选标签组特有样式 ── */
@@ -1397,10 +1378,6 @@ aside {
     min-height: 26px;
 }
 
-.lm-select.active {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23ffffff'/%3E%3C/svg%3E");
-}
-
 /* ── 自定义下拉组件基础样式 ── */
 .cs-wrapper {
     display: inline-block;
@@ -1440,7 +1417,6 @@ aside {
     margin-left: 8px;
 }
 .cs-wrapper.active .cs-trigger-icon { transform: rotate(180deg); }
-.cs-wrapper.highlight .cs-trigger-icon { color: var(--c-600, var(--c-500)); }
 
 /* Portal 模式下的下拉框 */
 .cs-dropdown {
@@ -1487,26 +1463,46 @@ aside {
     align-items: center;
     justify-content: space-between;
 }
-.cs-option:hover {
-    background: color-mix(in srgb, var(--c-500) 10%, var(--bg-panel));
-    color: var(--c-600, var(--c-500));
-}
-.cs-option:focus-visible {
-    outline: 2px solid var(--c-500);
-    outline-offset: -2px;
-}
 .cs-option.disabled {
     cursor: not-allowed;
     opacity: 0.45;
 }
 .cs-option.selected {
-    background: color-mix(in srgb, var(--c-500) 12%, var(--bg-panel));
-    box-shadow: inset 3px 0 0 var(--c-500);
-    color: var(--text-main);
-    font-weight: 700;
+    background: transparent;
+    box-shadow: none;
+    color: var(--text-muted);
+    font-weight: 500;
 }
 .cs-option i { font-size: 9px; opacity: 0; }
 .cs-option.selected i { opacity: 1; color: var(--c-600, var(--c-500)); }
+
+.player-quality-option[aria-checked="true"],
+.play-mode-option[aria-pressed="true"],
+.playback-rate-option[aria-pressed="true"] {
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+    font-weight: inherit;
+}
+
+.cs-option:focus-visible,
+.play-mode-option:focus-visible,
+.playback-rate-option:focus-visible,
+.player-quality-option:focus-visible {
+    outline: 2px solid var(--c-500);
+    outline-offset: -2px;
+}
+
+/* Every menu uses hover as its only filled highlight. Selection remains
+   semantic (aria-selected/aria-checked) and is represented by a checkmark. */
+.header-source-item:hover,
+.cs-option:hover,
+.play-mode-option:hover,
+.playback-rate-option:hover,
+.player-quality-option:hover {
+    background: var(--bg-item-hover);
+    color: var(--c-600, var(--c-500));
+}
 
 /* 暗色模式微调 */
 :root[data-appearance="dark"] .cs-dropdown,
@@ -1962,14 +1958,22 @@ aside {
     font-size: 0.75rem;
 }
 
-.player-quality-option:hover,
-.player-quality-option:focus-visible,
-.player-quality-option[aria-checked="true"] {
-    background: color-mix(in srgb, var(--c-500) 12%, transparent);
+.player-quality-option:hover {
+    background: var(--bg-item-hover);
     color: var(--c-600, var(--c-500));
 }
 
+.player-quality-option[aria-checked="true"] {
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
+    font-weight: inherit;
+}
+
 .player-quality-option:focus-visible {
+    background: transparent;
+    box-shadow: none;
+    color: inherit;
     outline: 2px solid var(--c-500);
     outline-offset: -2px;
 }
@@ -2157,6 +2161,12 @@ aside {
 }
 
 .header-source-item.is-active {
+    background: transparent;
+    color: var(--text-main);
+    font-weight: 400;
+}
+
+.header-source-item.is-active:hover {
+    background: var(--bg-item-hover);
     color: var(--c-500, #ec4141);
-    font-weight: 700;
 }

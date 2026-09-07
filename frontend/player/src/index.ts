@@ -2579,11 +2579,9 @@ function updatePlaybackRateUI() {
     const options = document.querySelectorAll('.playback-rate-option');
     options.forEach(opt => {
         const rate = parseFloat(opt.dataset.rate);
-        if (rate === currentPlaybackRate) {
-            opt.classList.add('active-option', 'font-bold');
-        } else {
-            opt.classList.remove('active-option', 'font-bold');
-        }
+        const selected = rate === currentPlaybackRate;
+        opt.setAttribute('aria-pressed', String(selected));
+        opt.classList.remove('active-option', 'font-bold');
     });
 }
 
@@ -2636,13 +2634,11 @@ function updatePlayModeUI() {
         }
     }
 
-    // 高亮当前选中的选项
+    // Keep the selected state semantic without adding a persistent visual fill.
     options.forEach(opt => {
-        if (opt.dataset.mode === playMode) {
-            opt.classList.add('active-option', 'font-bold');
-        } else {
-            opt.classList.remove('active-option', 'font-bold');
-        }
+        const selected = opt.dataset.mode === playMode;
+        opt.setAttribute('aria-pressed', String(selected));
+        opt.classList.remove('active-option', 'font-bold');
     });
 }
 
@@ -4434,6 +4430,9 @@ window.toggleQualityModal = toggleQualityModal;
 window.setVolume = setVolume;
 window.toggleMute = toggleMute;
 window.setPlayMode = setPlayMode;
+window.togglePlayModeMenu = togglePlayModeMenu;
+window.setPlaybackRate = setPlaybackRate;
+window.togglePlaybackRateMenu = togglePlaybackRateMenu;
 window.showSelect = showSelect;
 window.showSuccess = showSuccess;
 window.showInfo = showInfo;

@@ -267,23 +267,11 @@ export function initCustomSelectManager(getSettingsUiMap, getDefaultSettings) {
             });
         },
 
-        updateHighlight(select: HTMLSelectElement, wrapper: HTMLElement) {
-            const value = select.value;
-            let isDefault = false;
-            if (select.id) {
-                const settingsUiMap = getSettingsUiMap?.() || {};
-                const defaultSettings = getDefaultSettings?.() || {};
-                const key = Object.keys(settingsUiMap).find(k => settingsUiMap[k].id === select.id);
-                if (key && defaultSettings[key] !== undefined) {
-                    isDefault = String(value) === String(defaultSettings[key]);
-                }
-            }
-
-            if (!select.id || isDefault || ['all', 'none', 'root', 'mtime', 'desc', 'wy', '20', 'song'].includes(value)) {
-                wrapper.classList.remove('highlight');
-            } else {
-                wrapper.classList.add('highlight');
-            }
+        updateHighlight(_select: HTMLSelectElement, wrapper: HTMLElement) {
+            // Selection is communicated by the checkmark and aria-selected.
+            // Keep clearing the legacy class so existing integrations cannot
+            // reintroduce a persistent theme highlight for non-default values.
+            wrapper.classList.remove('highlight');
         },
 
         closeAll(restoreFocus = false) {

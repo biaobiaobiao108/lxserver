@@ -6,6 +6,7 @@ describe('Player Navigation and State Restoration Safety', () => {
     const playerSrcPath = path.join(import.meta.dir, '../frontend/player/src/index.ts');
     const playbackSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/playback.ts');
     const searchSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/search.ts');
+    const customSelectSrcPath = path.join(import.meta.dir, '../frontend/player/src/custom_select.ts');
     const playerCssPath = path.join(import.meta.dir, '../public/music/css/app.css');
     const playerDistPath = path.join(import.meta.dir, '../public/music/app.js');
 
@@ -74,16 +75,44 @@ describe('Player Navigation and State Restoration Safety', () => {
 
     it('player active states do not add the removed accent borders', () => {
         const css = fs.readFileSync(playerCssPath, 'utf8');
+        const customSelect = fs.readFileSync(customSelectSrcPath, 'utf8');
+        const playerSrc = fs.readFileSync(playerSrcPath, 'utf8');
         const activeTabRule = css.match(/\.active-tab\s*\{([\s\S]*?)\}/)?.[1] ?? '';
-        const highlightRule = css.match(/\.cs-wrapper\.highlight \.cs-trigger\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+        const activeLmSelectRule = css.match(/\.lm-select\.active\s*\{([\s\S]*?)\}/)?.[1] ?? '';
         const activeSelectRule = css.match(/\.cs-wrapper\.active \.cs-trigger\s*\{([\s\S]*?)\}/)?.[1] ?? '';
         const triggerFocusRule = css.match(/\.cs-trigger:focus-visible\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+        const selectedOptionRule = css.match(/\.cs-option\.selected\s*\{([\s\S]*?)\}/)?.[1] ?? '';
+        const selectedQualityRule = css.match(/\.player-quality-option\[aria-checked="true"\][\s\S]*?\{([\s\S]*?)\}/)?.[1] ?? '';
+        const activeHeaderSourceRule = css.match(/\.header-source-item\.is-active\s*\{([\s\S]*?)\}/)?.[1] ?? '';
         expect(activeTabRule.includes('border-right')).toBe(false);
-        expect(highlightRule.includes('border-color')).toBe(false);
-        expect(highlightRule.includes('box-shadow')).toBe(false);
-        expect(activeSelectRule.includes('border-color')).toBe(false);
+        expect(css.includes('.cs-wrapper.highlight .cs-trigger')).toBe(false);
+        expect(css.includes('.cs-wrapper.highlight .cs-trigger-icon')).toBe(false);
+        expect(customSelect.includes("wrapper.classList.remove('highlight')")).toBe(true);
+        expect(customSelect.includes("wrapper.classList.add('highlight')")).toBe(false);
+        expect(activeLmSelectRule.includes('var(--c-500)')).toBe(false);
+        expect(activeLmSelectRule.includes('box-shadow')).toBe(false);
+        expect(activeSelectRule.includes('var(--c-500)')).toBe(false);
         expect(activeSelectRule.includes('box-shadow')).toBe(false);
-        expect(triggerFocusRule.includes('outline: none')).toBe(true);
+        expect(activeHeaderSourceRule.includes('var(--c-500)')).toBe(false);
+        expect(activeHeaderSourceRule.includes('font-weight: 700')).toBe(false);
+        expect(triggerFocusRule.includes('outline: 2px solid')).toBe(true);
+        expect(selectedOptionRule.includes('background: transparent')).toBe(true);
+        expect(selectedOptionRule.includes('box-shadow: none')).toBe(true);
+        expect(selectedOptionRule.includes('inset')).toBe(false);
+        expect(selectedOptionRule.includes('font-weight: 700')).toBe(false);
+        expect(selectedQualityRule.includes('background: transparent')).toBe(true);
+        expect(selectedQualityRule.includes('box-shadow: none')).toBe(true);
+        expect(css.includes('background: color-mix(in srgb, var(--c-500) 12%, transparent)')).toBe(false);
+        expect(css.includes('.active-option')).toBe(false);
+        expect(css.includes('.cs-option:hover')).toBe(true);
+        expect(css.includes('.header-source-item:hover')).toBe(true);
+        expect(css.includes('.player-quality-option:hover')).toBe(true);
+        expect(customSelect.includes("item.setAttribute('aria-selected', String(selected))")).toBe(true);
+        expect(customSelect.includes("check.className = 'fas fa-check'")).toBe(true);
+        expect(playerSrc.includes("opt.setAttribute('aria-pressed', String(selected))")).toBe(true);
+        expect(playerSrc.includes('window.togglePlayModeMenu = togglePlayModeMenu')).toBe(true);
+        expect(playerSrc.includes('window.setPlaybackRate = setPlaybackRate')).toBe(true);
+        expect(playerSrc.includes('window.togglePlaybackRateMenu = togglePlaybackRateMenu')).toBe(true);
     });
 
     it('album detail navigation cancels stale searches and isolates history events', () => {

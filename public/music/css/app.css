@@ -1490,12 +1490,38 @@ aside {
    NetEase Cloud Music Modern Experience Styles
    ========================================================================== */
 
-/* ── 拟真黑胶唱片机 (Vinyl Record Turntable) ── */
+/* ── 拟真黑胶唱片机 (Vinyl Record Turntable) - 严格正圆几何 ── */
 .vinyl-player-container {
     position: relative;
     display: flex;
     align-items: center;
     justify-content: center;
+    width: min(72vw, 340px);
+    height: min(72vw, 340px);
+    max-width: 340px;
+    max-height: 340px;
+    aspect-ratio: 1 / 1;
+    flex-shrink: 0;
+    margin: 0 auto;
+    contain: layout paint;
+}
+
+@media (min-width: 1025px) {
+    .vinyl-player-container {
+        width: 380px;
+        height: 380px;
+        max-width: 380px;
+        max-height: 380px;
+    }
+}
+
+@media (min-width: 1280px) {
+    .vinyl-player-container {
+        width: 420px;
+        height: 420px;
+        max-width: 420px;
+        max-height: 420px;
+    }
 }
 
 /* 机械唱针 (Tonearm) */
@@ -1518,20 +1544,30 @@ aside {
     transform: rotate(0deg);
 }
 
-/* 旋转黑胶盘 (Vinyl Disc) */
+/* 旋转黑胶盘底座 (Vinyl Disc Base Wrap) - 严格正圆 */
 .vinyl-disc-wrap {
     position: relative;
-    border-radius: 9999px;
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 50% !important;
     background: #0d0e11;
     padding: 14px;
+    box-sizing: border-box;
     box-shadow: 0 20px 48px -8px rgba(0, 0, 0, 0.65), 0 0 0 6px rgba(255, 255, 255, 0.04);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
 }
 
+/* 旋转黑胶盘 (Vinyl Disc) - 严格正圆与 GPU 加速 */
 .vinyl-disc {
     position: relative;
     width: 100%;
     height: 100%;
-    border-radius: 9999px;
+    aspect-ratio: 1 / 1;
+    border-radius: 50% !important;
     background: radial-gradient(
         circle,
         #101114 0%,
@@ -1550,6 +1586,10 @@ aside {
     justify-content: center;
     animation: vinyl-spin 22s linear infinite;
     animation-play-state: paused;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    will-change: transform;
+    transform: translateZ(0);
 }
 
 .vinyl-disc.is-playing {
@@ -1558,32 +1598,49 @@ aside {
 
 @keyframes vinyl-spin {
     from {
-        transform: rotate(0deg);
+        transform: rotate(0deg) translateZ(0);
     }
     to {
-        transform: rotate(360deg);
+        transform: rotate(360deg) translateZ(0);
     }
 }
 
-/* 唱片中心封面 */
+/* 唱片中心封面 - 严格正圆 */
 .vinyl-disc-cover {
     width: 66%;
     height: 66%;
-    border-radius: 9999px;
+    aspect-ratio: 1 / 1;
+    border-radius: 50% !important;
     overflow: hidden;
     position: relative;
     box-shadow: 0 0 0 4px #0c0d10, 0 0 16px rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    flex-shrink: 0;
 }
 
-/* 唱片中心金属轴心 */
+.vinyl-disc-cover img {
+    width: 100%;
+    height: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 50% !important;
+    object-fit: cover;
+    display: block;
+}
+
+/* 唱片中心金属轴心 - 严格正圆 */
 .vinyl-center-hole {
     position: absolute;
     width: 28px;
     height: 28px;
-    border-radius: 9999px;
+    aspect-ratio: 1 / 1;
+    border-radius: 50% !important;
     background: radial-gradient(circle, #f1f5f9 35%, #94a3b8 70%, #475569 100%);
     box-shadow: 0 0 6px rgba(0, 0, 0, 0.65), inset 0 0 2px rgba(0, 0, 0, 0.85);
     z-index: 5;
+    flex-shrink: 0;
 }
 
 /* ── 歌单卡片播放量与浮动播放按钮 ── */
@@ -1761,4 +1818,83 @@ aside {
     justify-content: center;
     box-shadow: 0 2px 5px rgba(236, 65, 65, 0.4);
     pointer-events: none;
+}
+
+/* ── 顶栏深浅色模式切换按钮 ── */
+.header-appearance-toggle {
+    width: 32px;
+    height: 32px;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+}
+
+.header-appearance-toggle:hover {
+    background: var(--bg-item-hover);
+    color: var(--c-500, #ec4141);
+    transform: rotate(18deg);
+}
+
+/* ── 顶栏快速音源选择胶囊 ── */
+.header-source-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    font-size: 11px;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--bg-item-hover) 80%, transparent);
+    border: 1px solid var(--border-main);
+    color: var(--text-main);
+    transition: all 0.2s ease;
+    cursor: pointer;
+    user-select: none;
+}
+
+.header-source-pill:hover {
+    border-color: var(--c-500, #ec4141);
+    color: var(--c-500, #ec4141);
+    background: var(--bg-panel);
+}
+
+.header-source-dropdown {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-main);
+    border-radius: 12px;
+    box-shadow: var(--shadow-main);
+    padding: 6px;
+    min-width: 110px;
+    z-index: 70;
+    transition: all 0.2s ease;
+}
+
+.header-source-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 6px 10px;
+    font-size: 12px;
+    border-radius: 8px;
+    color: var(--text-main);
+    transition: background-color 0.15s ease;
+    cursor: pointer;
+}
+
+.header-source-item:hover {
+    background: var(--bg-item-hover);
+    color: var(--c-500, #ec4141);
+}
+
+.header-source-item.is-active {
+    color: var(--c-500, #ec4141);
+    font-weight: 700;
 }

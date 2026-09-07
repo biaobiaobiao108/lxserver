@@ -1702,22 +1702,67 @@ function handleSearchKeyPress(e) {
     }
 }
 
-function handleHeaderSearchKeyPress(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-        const headerInput = document.getElementById('header-search-input') as HTMLInputElement | null;
-        const mainInput = document.getElementById('search-input') as HTMLInputElement | null;
-        if (headerInput) {
-            const query = headerInput.value.trim();
-            if (query) {
-                if (mainInput) mainInput.value = query;
-                switchTab('search');
-                if (typeof (window as any).hideSearchSuggestions === 'function') (window as any).hideSearchSuggestions();
-                doSearch();
-            }
-        }
+function updateHeaderAppearanceIcon() {
+    const icon = document.getElementById('header-theme-icon');
+    if (!icon) return;
+    const currentAttr = document.documentElement.getAttribute('data-appearance');
+    const isDark = currentAttr === 'dark' || (!currentAttr && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (isDark) {
+        icon.className = 'fas fa-sun text-sm text-amber-400';
+    } else {
+        icon.className = 'fas fa-moon text-sm text-gray-600';
     }
 }
-(window as any).handleHeaderSearchKeyPress = handleHeaderSearchKeyPress;
+(window as any).updateHeaderAppearanceIcon = updateHeaderAppearanceIcon;
+
+function toggleHeaderAppearance() {
+    const currentAttr = document.documentElement.getAttribute('data-appearance');
+    const isDark = currentAttr === 'dark' || (!currentAttr && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const targetMode = isDark ? 'light' : 'dark';
+    if (typeof (window as any).setAppearance === 'function') {
+        (window as any).setAppearance(targetMode);
+    } else {
+        document.documentElement.setAttribute('data-appearance', targetMode);
+        localStorage.setItem('lx_appearance', targetMode);
+    }
+    updateHeaderAppearanceIcon();
+}
+(window as any).toggleHeaderAppearance = toggleHeaderAppearance;
+
+function toggleHeaderSourceDropdown(e?: Event) {
+    if (e) e.stopPropagation();
+    const dropdown = document.getElementById('header-source-dropdown');
+    if (!dropdown) return;
+    dropdown.classList.toggle('hidden');
+}
+(window as any).toggleHeaderSourceDropdown = toggleHeaderSourceDropdown;
+
+function selectHeaderSource(sourceKey: string, sourceName: string) {
+    const nameEl = document.getElementById('header-source-name');
+    if (nameEl) nameEl.textContent = sourceName;
+    const searchSourceSelect = document.getElementById('search-source') as HTMLSelectElement | null;
+    if (searchSourceSelect) {
+        searchSourceSelect.value = sourceKey;
+        if ((window as any).CustomSelectManager) {
+            (window as any).CustomSelectManager.syncUI(searchSourceSelect);
+        }
+    }
+    document.querySelectorAll('#header-source-dropdown .header-source-item').forEach(item => {
+        const itemSource = item.getAttribute('data-source');
+        const checkIcon = item.querySelector('.fa-check');
+        if (checkIcon) {
+            if (itemSource === sourceKey) {
+                checkIcon.classList.remove('hidden');
+            } else {
+                checkIcon.classList.add('hidden');
+            }
+        }
+    });
+    const dropdown = document.getElementById('header-source-dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+}
+(window as any).selectHeaderSource = selectHeaderSource;
+
 
 /**
  * 快速跳转到搜索页并执行查询
@@ -14296,9 +14341,20 @@ document.addEventListener('click', (e) => {
     if (!e.target.closest('.cs-wrapper') && !e.target.closest('.cs-dropdown')) {
         window.CustomSelectManager.closeAll();
     }
+    const sourceContainer = document.getElementById('header-source-container');
+    if (sourceContainer && !sourceContainer.contains(e.target as Node)) {
+        const dropdown = document.getElementById('header-source-dropdown');
+        if (dropdown && !dropdown.classList.contains('hidden')) {
+            dropdown.classList.add('hidden');
+        }
+    }
 });
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
     window.CustomSelectManager.initAll();
+    if (typeof (window as any).updateHeaderAppearanceIcon === 'function') {
+        (window as any).updateHeaderAppearanceIcon();
+    }
 });
+

@@ -182,7 +182,12 @@ function unlockBody(): void {
 
 function setBackgroundInert(overlay: OverlayElement): void {
     inertBackgroundElements = Array.from(document.body.children)
-        .filter((child): child is HTMLElement => child instanceof HTMLElement && child !== overlay && !child.classList.contains('skip-link'));
+        .filter((child): child is HTMLElement => (
+            child instanceof HTMLElement &&
+            child !== overlay &&
+            !child.classList.contains('skip-link') &&
+            !(overlay.id === 'view-player-detail' && child.id === 'player-footer')
+        ));
     inertBackgroundElements.forEach(element => {
         if (!element.inert) element.inert = true;
         if (!element.hasAttribute('inert')) element.setAttribute('inert', '');

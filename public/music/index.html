@@ -173,13 +173,20 @@
                         </button>
                     </div>
 
-                    <!-- Global Capsule Search Bar -->
-                    <div id="header-search-container" class="relative flex items-center flex-1 max-w-[200px] sm:max-w-xs md:max-w-sm">
-                        <div class="netease-search-capsule w-full flex items-center h-8 md:h-9 px-3 rounded-full border t-border-main text-xs">
-                            <i class="fas fa-search t-text-muted text-xs mr-2 shrink-0"></i>
-                            <input type="text" id="header-search-input" placeholder="搜索歌曲、歌手、专辑..."
-                                class="w-full bg-transparent focus:outline-none t-text-main placeholder:text-gray-400 text-xs min-w-0"
-                                onkeypress="handleHeaderSearchKeyPress(event)" />
+                    <!-- Quick Source Selector Pill in Header -->
+                    <div id="header-source-container" class="relative hidden sm:flex items-center ml-2">
+                        <button id="header-source-pill" type="button" class="header-source-pill" onclick="toggleHeaderSourceDropdown(event)" title="切换默认音源">
+                            <i class="fas fa-tower-broadcast text-[10px] text-emerald-500"></i>
+                            <span id="header-source-name">网易云</span>
+                            <i class="fas fa-chevron-down text-[8px] opacity-60"></i>
+                        </button>
+                        <div id="header-source-dropdown" class="header-source-dropdown hidden animate-fade-in shadow-xl">
+                            <div class="text-[9px] font-bold t-text-muted px-2.5 py-1 uppercase tracking-wider border-b t-border-main mb-1">选择音源</div>
+                            <div onclick="selectHeaderSource('wy', '网易云')" class="header-source-item" data-source="wy"><span>网易云</span><i class="fas fa-check text-[10px] text-emerald-500"></i></div>
+                            <div onclick="selectHeaderSource('tx', 'QQ音乐')" class="header-source-item" data-source="tx"><span>QQ音乐</span><i class="fas fa-check text-[10px] text-emerald-500 hidden"></i></div>
+                            <div onclick="selectHeaderSource('kg', '酷狗音乐')" class="header-source-item" data-source="kg"><span>酷狗</span><i class="fas fa-check text-[10px] text-emerald-500 hidden"></i></div>
+                            <div onclick="selectHeaderSource('kw', '酷我音乐')" class="header-source-item" data-source="kw"><span>酷我</span><i class="fas fa-check text-[10px] text-emerald-500 hidden"></i></div>
+                            <div onclick="selectHeaderSource('mg', '咪咕音乐')" class="header-source-item" data-source="mg"><span>咪咕</span><i class="fas fa-check text-[10px] text-emerald-500 hidden"></i></div>
                         </div>
                     </div>
 
@@ -223,6 +230,12 @@
                             </button>
                         </div>
                     </div>
+
+                    <!-- Theme Dark/Light Mode Toggle -->
+                    <button id="header-theme-toggle" onclick="toggleHeaderAppearance()" aria-label="切换深色/浅色模式"
+                        class="header-appearance-toggle" title="切换深浅模式">
+                        <i id="header-theme-icon" class="fas fa-moon text-sm"></i>
+                    </button>
 
                     <!-- PWA Install Button -->
                     <button id="pwa-install-btn"
@@ -3259,7 +3272,7 @@
             <!-- Left: NetEase Vinyl Turntable (黑胶唱片机) -->
             <div id="mobile-player-cover-container" class="flex flex-col items-center justify-center flex-shrink-0 relative my-auto">
                 <!-- Turntable Wrap -->
-                <div class="vinyl-player-container w-[68vw] max-w-[320px] aspect-square md:w-[380px] md:h-[380px] lg:w-[420px] lg:h-[420px] relative">
+                <div class="vinyl-player-container">
                     <!-- Tonearm (机械唱针) -->
                     <svg id="vinyl-tonearm" class="vinyl-tonearm" viewBox="0 0 100 160" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <!-- Tonearm Base Pivot -->
@@ -3275,13 +3288,13 @@
                     </svg>
 
                     <!-- Rotating Vinyl Disc Wrap -->
-                    <div class="vinyl-disc-wrap w-full h-full">
+                    <div class="vinyl-disc-wrap">
                         <div id="vinyl-disc" class="vinyl-disc">
                             <!-- Center Rotating Cover -->
                             <div class="vinyl-disc-cover">
                                 <img id="detail-cover" src="/music/assets/logo.svg" loading="lazy" decoding="async" alt="正在播放歌曲封面"
                                     onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');"
-                                    class="w-full h-full object-cover dynamic-logo is-placeholder">
+                                    class="dynamic-logo is-placeholder">
                             </div>
                             <!-- Spindle Center Hole -->
                             <div class="vinyl-center-hole"></div>

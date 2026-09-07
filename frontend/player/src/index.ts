@@ -31,6 +31,8 @@ import { setPlayerDrawerOpen } from './features/player_drawer';
 import { initQueueFeature } from './features/queue';
 import { initPlaylistModalFeature } from './features/playlist_modal';
 import { initLibraryFeature } from './features/library';
+import { initAuthFeature } from './features/auth';
+import { initSyncSettingsFeature } from './features/sync_settings';
 
 /*
  * Copyright 2026 xcq0607 (https://github.com/xcq0607)
@@ -540,67 +542,58 @@ window.selectedSongObjects = new Map();
 let expandBtnTimeout = null; // 展开按钮淡化计时器
 let toggleLyricsBtnTimeout = null; // 歌词按钮淡化计时器
 
-// ===== 认证相关代码 (Player Cookie Session + User Token) =====
+// ===== 认证相关状态 (Player Cookie Session + User Token) =====
 let authEnabled = false;
 // authToken 保留用于播放器登录 (player.password) 颁发的 session
 let authToken = sessionStorage.getItem('lx_player_auth');
 // 用户 Token：将明文密码传输改为 Token 验证
 let userToken = getCredential('lx_user_token');
-
-/**
- * 生成用户 API 请求所需的认证 Headers。
- * 优先使用 Token，若无 Token 则兼容旧的 x-user-password 方式。
- * 注意：此函数总是返回"真实用户"的凭证，不受 isViewingPublicFavorites 影响。
- * 若需要 _open 头，请在调用处手动覆盖 x-user-name。
- */
-function getUserAuthHeaders() {
-    // 始终优先使用已登录的真实用户
-    let username = localStorage.getItem('lx_sync_user') || '';
-    // 过滤掉 _open 假用户
-    if (username === '_open') username = '';
-
-    const adminPass = getCredential('lx_admin_password');
-
-    const headers = {};
-    if (userToken) {
-        headers['x-user-name'] = username;
-        headers['x-user-token'] = userToken;
-    } else {
-        const pass = getCredential('lx_sync_pass');
-        if (username && pass) {
-            headers['x-user-name'] = username;
-            headers['x-user-password'] = pass;
-        } else if (username) {
-            headers['x-user-name'] = username;
+const authFeature = initAuthFeature({
+    credentialStorage,
+    getCredential,
+    getUserToken: () => userToken,
+    setUserToken: (token) => { userToken = token; },
+    showSelect,
+    handleSyncLogout: (skipConfirm) => handleSyncLogout(skipConfirm),
+});
+const {
+    getUserAuthHeaders,
+    isUserLoggedIn,
+    isPublicLibraryContext,
+    ensureUserAuthToken,
+    updateUserUI,
+    handleHeaderLogout,
+} = authFeature;
+const syncSettingsFeature = initSyncSettingsFeature({
+    getSettings: () => settings,
+    setSettings: (nextSettings) => {
+        settings = nextSettings;
+        window.settings = nextSettings;
+    },
+    getCredential,
+    getUserAuthHeaders,
+    persistSettings: () => persistSettings(),
+    restoreRemoteSyncCode: (value) => restoreRemoteSyncCode(value),
+    syncSettingsUI: () => syncSettingsUI(),
+    setupNetworkListAutoCheck: () => setupNetworkListAutoCheck(),
+    pushSoundEffects: () => {
+        if (window.soundEffects && typeof window.soundEffects.pushToServer === 'function') {
+            window.soundEffects.pushToServer();
         }
-    }
-    if (adminPass) {
-        headers['x-frontend-auth'] = adminPass;
-    }
-    return headers;
-}
-window.getUserAuthHeaders = getUserAuthHeaders;
-
-function isUserLoggedIn() {
-    const user = localStorage.getItem('lx_sync_user');
-    const token = getCredential('lx_user_token');
-    const pass = getCredential('lx_sync_pass');
-    return !!user && user !== '_open' && !!(token || pass);
-}
-window.isUserLoggedIn = isUserLoggedIn;
-
-/**
- * 判断当前 library（收藏歌手/专辑）操作是否应该指向 _open 公开用户
- * 如果已经登录了普通账号，任何 Library 操作（歌手/专辑）始终属于个人账户，不属于 _open
- * 只有在未登录普通账号时，指向 _open 公开空间
- */
-function isPublicLibraryContext() {
-    if (isUserLoggedIn()) return false;
-    return true;
-}
-window.isPublicLibraryContext = isPublicLibraryContext;
-
-
+    },
+    fetchSoundEffects: () => {
+        if (window.soundEffects && typeof window.soundEffects.fetchFromServer === 'function') {
+            window.soundEffects.fetchFromServer();
+        }
+    },
+    showSuccess,
+    showError,
+});
+const {
+    pushSettingsToServer,
+    manualSaveSettings,
+    fetchSettingsFromServer,
+} = syncSettingsFeature;
 
 async function fetchPublicListData() {
     const enablePublicFavorites = !!window.lx_config?.['user.enablePublicFavorites'];
@@ -735,117 +728,6 @@ async function handleTogglePublicFavorites() {
     }
 }
 window.handleTogglePublicFavorites = handleTogglePublicFavorites;
-
-let userTokenRefreshPromise = null;
-
-async function ensureUserAuthToken(options = {}) {
-    const force = options.force === true;
-    const username = localStorage.getItem('lx_sync_user') || '';
-    const password = getCredential('lx_sync_pass') || '';
-
-    if (!username || !password) {
-        if (force) {
-            userToken = null;
-            credentialStorage.removeItem('lx_user_token');
-            if (typeof updateUserUI === 'function') updateUserUI();
-        }
-        return false;
-    }
-    if (userToken && !force) return true;
-    if (userTokenRefreshPromise) return userTokenRefreshPromise;
-
-    userTokenRefreshPromise = (async () => {
-        if (force) {
-            userToken = null;
-            credentialStorage.removeItem('lx_user_token');
-        }
-        try {
-            const response = await fetch('/api/user/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            if (!response.ok) return false;
-
-            const result = await response.json();
-            if (!result.success || !result.token) return false;
-
-            userToken = result.token;
-            credentialStorage.setItem('lx_user_token', userToken);
-            if (typeof updateUserUI === 'function') updateUserUI();
-            return true;
-        } catch (error) {
-            console.warn('[Auth] Token 自动续签失败:', error);
-            return false;
-        } finally {
-            userTokenRefreshPromise = null;
-        }
-    })();
-
-    return userTokenRefreshPromise;
-}
-window.ensureUserAuthToken = ensureUserAuthToken;
-
-/**
- * 更新顶部栏的用户状态显示 (登录按钮/用户名)
- */
-function updateUserUI() {
-    const loginBtn = document.getElementById('header-login-btn');
-    const userDisplay = document.getElementById('header-user-display');
-    const usernameEl = document.getElementById('header-username');
-
-    if (!loginBtn || !userDisplay || !usernameEl) return;
-
-    const username = localStorage.getItem('lx_sync_user');
-    const token = getCredential('lx_user_token');
-
-    if (token && username) {
-        // 已登录
-        loginBtn.classList.add('hidden');
-        loginBtn.classList.remove('flex');
-        userDisplay.classList.add('flex');
-        userDisplay.classList.remove('hidden');
-        usernameEl.innerText = username;
-    } else {
-        // 未登录
-        loginBtn.classList.add('flex');
-        loginBtn.classList.remove('hidden');
-        userDisplay.classList.add('hidden');
-        userDisplay.classList.remove('flex');
-    }
-}
-window.updateUserUI = updateUserUI;
-
-/**
- * 顶部栏退出登录处理 (带确认弹窗与全量缓存清理)
- */
-async function handleHeaderLogout(e) {
-    if (e) e.stopPropagation();
-    if (typeof handleSyncLogout === 'function') {
-        await handleSyncLogout(false);
-    } else {
-        const confirmed = typeof showSelect === 'function'
-            ? await showSelect('退出同步账号', '确定要退出当前账号并清除同步凭证？', { danger: true })
-            : confirm('确定要退出当前账号并清除同步凭证？');
-        if (confirmed) {
-            try {
-                if (window.ListStore && typeof window.ListStore.remove === 'function') {
-                    await window.ListStore.remove().catch(() => {});
-                }
-                if ('caches' in window) {
-                    const keys = await caches.keys();
-                    await Promise.all(keys.map(k => caches.delete(k)));
-                }
-            } catch (err) {}
-            const agreementAccepted = localStorage.getItem('lx_agreement_accepted');
-            localStorage.clear();
-            sessionStorage.clear();
-            if (agreementAccepted) localStorage.setItem('lx_agreement_accepted', agreementAccepted);
-            window.location.reload();
-        }
-    }
-}
-window.handleHeaderLogout = handleHeaderLogout;
 
 // 页面加载时：检查是否开启认证，若开启则显示登出按钮
 (async () => {
@@ -7556,137 +7438,6 @@ function switchSyncMode(mode) {
         handleRemoteBack();
     }
 }
-
-//同步设置
-async function pushSettingsToServer(force = false) {
-    if (!force && !settings.saveAccountSettingsToFile) return;
-    // Only local sync mode supports this for now
-    if (localStorage.getItem('lx_sync_mode') !== 'local' && !window.lx_config?.['user.enablePublicRestriction'] && !force) return;
-
-    const user = localStorage.getItem('lx_sync_user');
-    const isPublicMode = !user && window.lx_config?.['user.enablePublicRestriction'];
-    if (!user && !isPublicMode && !force) return;
-
-    try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (isPublicMode) {
-            // 公开受限用户：不需账号认证，但需要管理员密码
-            headers['x-user-name'] = 'default';
-            const adminPass = getCredential('lx_admin_password');
-            if (adminPass) headers['x-frontend-auth'] = adminPass;
-        } else {
-            // 已登录用户：使用 Token（或兼容旧密码）
-            Object.assign(headers, getUserAuthHeaders());
-            const adminPass = getCredential('lx_admin_password');
-            if (adminPass) headers['x-frontend-auth'] = adminPass;
-        }
-
-        const res = await fetch('/api/user/settings', {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify(settings)
-        });
-        if (res.ok) {
-            console.log('[Settings] 已成功同步到服务器');
-        }
-
-        // 同时同步音质配置
-        if (window.soundEffects && typeof window.soundEffects.pushToServer === 'function') {
-            window.soundEffects.pushToServer();
-        }
-    } catch (e) {
-        console.error('[Settings] 同步到服务器失败:', e);
-        if (force) throw e;
-    }
-}
-
-async function manualSaveSettings(btn) {
-    const originalText = btn.innerHTML;
-    try {
-        btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> 正在处理...';
-
-        // 1. Sync to localStorage
-        persistSettings();
-
-        // 2. Force push to server (settings.json)
-        await pushSettingsToServer(true);
-
-        btn.innerHTML = '<i class="fas fa-check mr-2"></i> 保存成功 (已同步到服务器)';
-        btn.classList.add('bg-emerald-50', 'dark:bg-emerald-500/10', 'text-emerald-600', 'dark:text-emerald-400', 'border-emerald-200');
-        btn.classList.remove('bg-blue-50', 'dark:bg-blue-500/10', 'text-blue-600', 'dark:text-blue-400', 'border-blue-100');
-
-        setTimeout(() => {
-            btn.innerHTML = originalText;
-            btn.classList.remove('bg-emerald-50', 'dark:bg-emerald-500/10', 'text-emerald-600', 'dark:text-emerald-400', 'border-emerald-200');
-            btn.classList.add('bg-blue-50', 'dark:bg-blue-500/10', 'text-blue-600', 'dark:text-blue-400', 'border-blue-100');
-            btn.disabled = false;
-        }, 2000);
-        showSuccess('配置已成功保存并同步至服务器');
-    } catch (e) {
-        console.error('[Settings] 手动保存失败:', e);
-        btn.innerHTML = '<i class="fas fa-times mr-2"></i> 保存失败';
-        btn.classList.add('text-red-500', 'border-red-200');
-        setTimeout(() => {
-            btn.innerHTML = originalText;
-            btn.classList.remove('text-red-500', 'border-red-200');
-            btn.disabled = false;
-        }, 2000);
-        showError('同步失败，请检查网络或登录状态');
-    }
-}
-
-async function fetchSettingsFromServer() {
-    if (!settings.saveAccountSettingsToFile) return;
-
-    const user = localStorage.getItem('lx_sync_user');
-    const isPublicMode = !user && window.lx_config?.['user.enablePublicRestriction'];
-    if (!user && !isPublicMode) return;
-
-    try {
-        console.log('[Settings] 正在从服务器尝试加载设置...');
-        const headers = {};
-        if (isPublicMode) {
-            headers['x-user-name'] = 'default';
-            const adminPass = getCredential('lx_admin_password');
-            if (adminPass) headers['x-frontend-auth'] = adminPass;
-        } else {
-            Object.assign(headers, getUserAuthHeaders());
-            const adminPass = getCredential('lx_admin_password');
-            if (adminPass) headers['x-frontend-auth'] = adminPass;
-        }
-
-        const res = await fetch('/api/user/settings', {
-            headers: headers
-        });
-
-        if (res.ok) {
-            const serverSettings = await res.json();
-            console.log('[Settings] 从服务器加载设置成功:', serverSettings);
-            // Merge settings
-            settings = normalizeStoredSettings({ ...settings, ...serverSettings });
-            restoreRemoteSyncCode(serverSettings?.remoteSyncCode);
-            // Save to local
-            persistSettings();
-            // Update UI
-            syncSettingsUI();
-            setupNetworkListAutoCheck();
-            if (typeof showSuccess === 'function') {
-                showSuccess('已从服务器恢复设置');
-            }
-
-            // 同时加载音效设置
-            if (window.soundEffects && typeof window.soundEffects.fetchFromServer === 'function') {
-                window.soundEffects.fetchFromServer();
-            }
-        } else {
-            console.log('[Settings] 服务器无设置文件或加载失败');
-        }
-    } catch (e) {
-        console.error('[Settings] 从服务器加载设置失败:', e);
-    }
-}
-
 
 function updateSyncStatus(html, showLogout = true) {
     const statusEl = document.getElementById('sync-status');

@@ -26,6 +26,7 @@ export interface LyricFeatureContext {
     getImgUrl: (song: any) => string;
     setImg: (id: string, src: string) => void;
     goBackToSearch: (fromPopState?: boolean) => any;
+    isSearchDetailOpen?: () => boolean;
     updateStorageStatsUI: (...args: any[]) => any;
     escapeHtmlText: (text: any) => string;
     formatTime: (seconds: number) => string;
@@ -48,14 +49,18 @@ export function initLyricFeature(context: LyricFeatureContext) {
     const getImgUrl = context.getImgUrl;
     const setImg = context.setImg;
     const goBackToSearch = context.goBackToSearch;
+    const isSearchDetailOpen = context.isSearchDetailOpen || (() => false);
     const updateStorageStatsUI = context.updateStorageStatsUI;
     const escapeHtmlText = context.escapeHtmlText;
     const formatTime = context.formatTime;
     const startToggleLyricsBtnTimer = context.startToggleLyricsBtnTimer;
     const SCROLL_LOCK_DURATION = context.scrollLockDuration;
+let lyricHistoryClosePending = false;
+
 function toggleLyrics(fromPopState = false) {
     if (!fromPopState && state.isLyricViewOpen) {
         if (window.history.state && window.history.state.page === 'player-detail') {
+            lyricHistoryClosePending = true;
             window.history.back();
         }
     }
@@ -121,9 +126,14 @@ window.addEventListener('popstate', (e) => {
         return;
     }
 
+    // 关闭歌词详情时会主动回退一个 player-detail 历史项；该 popstate 不是搜索详情返回。
+    if (lyricHistoryClosePending) {
+        lyricHistoryClosePending = false;
+        return;
+    }
+
     // 2. 处理搜索详情 (歌手/专辑)
-    const backBtn = document.getElementById('search-back-btn');
-    if (backBtn && !backBtn.classList.contains('hidden')) {
+    if (isSearchDetailOpen()) {
         goBackToSearch(true);
     }
 });

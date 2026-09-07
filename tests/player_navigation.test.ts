@@ -85,6 +85,21 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(activeSelectRule.includes('box-shadow')).toBe(false);
         expect(triggerFocusRule.includes('outline: none')).toBe(true);
     });
+
+    it('album detail navigation cancels stale searches and isolates history events', () => {
+        const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
+        const lyricsContent = fs.readFileSync(path.join(import.meta.dir, '../frontend/player/src/features/lyrics.ts'), 'utf8');
+        const albumSection = searchContent.match(/async function enterAlbum\([\s\S]*?\n}\n\nfunction goBackToSearch/)?.[0] ?? '';
+
+        expect(searchContent.includes('function invalidateSearchRequest')).toBe(true);
+        expect(searchContent.includes('if (prefetch && searchDetailOpen) return;')).toBe(true);
+        expect(searchContent.includes("if (!searchDetailOpen && window.currentSearchScope === 'network'" )).toBe(true);
+        expect(searchContent.includes('function isAlbumRequestCurrent')).toBe(true);
+        expect(searchContent.includes('获取专辑歌曲失败：${escapeHtmlText(e.message)}')).toBe(true);
+        expect(albumSection.includes('goBackToSearch();')).toBe(false);
+        expect(lyricsContent.includes('lyricHistoryClosePending')).toBe(true);
+        expect(lyricsContent.includes('if (isSearchDetailOpen())')).toBe(true);
+    });
 });
 
 describe('Update Notification Engine & PostHog Removal', () => {

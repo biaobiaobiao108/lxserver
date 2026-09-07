@@ -213,9 +213,83 @@ window.handleSearchTypeChange = handleSearchTypeChange;
 
 const SOURCES = ['kw', 'kg', 'tx', 'wy', 'mg'];
 
+type SearchRequestContext = {
+    serial: number;
+    controller: AbortController;
+};
+
+let searchRequestSerial = 0;
+let searchRequestController: AbortController | null = null;
+let prefetchTimer: ReturnType<typeof setTimeout> | null = null;
+
+function beginSearchRequest(): SearchRequestContext {
+    searchRequestController?.abort();
+    const controller = new AbortController();
+    searchRequestController = controller;
+    return { serial: ++searchRequestSerial, controller };
+}
+
+function invalidateSearchRequest() {
+    searchRequestController?.abort();
+    searchRequestController = null;
+    searchRequestSerial += 1;
+    if (prefetchTimer !== null) {
+        clearTimeout(prefetchTimer);
+        prefetchTimer = null;
+    }
+}
+
+function isSearchRequestCurrent(request: SearchRequestContext) {
+    return request.serial === searchRequestSerial && !request.controller.signal.aborted;
+}
+
+type AlbumRequestContext = {
+    serial: number;
+    controller: AbortController;
+    id: string;
+    source: string;
+};
+
+let albumRequestSerial = 0;
+let albumRequestController: AbortController | null = null;
+
+function beginAlbumRequest(id, source): AlbumRequestContext {
+    albumRequestController?.abort();
+    const controller = new AbortController();
+    albumRequestController = controller;
+    return { serial: ++albumRequestSerial, controller, id: String(id), source: String(source) };
+}
+
+function invalidateAlbumRequest() {
+    albumRequestController?.abort();
+    albumRequestController = null;
+    albumRequestSerial += 1;
+}
+
+function isAlbumRequestCurrent(request: AlbumRequestContext) {
+    return request.serial === albumRequestSerial
+        && !request.controller.signal.aborted
+        && String(window.currentAlbumId) === request.id
+        && String(window.currentAlbumSource) === request.source;
+}
+
+let searchDetailOpen = false;
+
+function setSearchDetailOpen(value: boolean) {
+    searchDetailOpen = value;
+}
+
+function isSearchDetailOpen() {
+    return searchDetailOpen;
+}
+
 
 //搜索歌曲
 async function doSearch(page = 1, append = false, prefetch = false) {
+    if (prefetch && searchDetailOpen) return;
+    if (!prefetch) setSearchDetailOpen(false);
+    invalidateSearchRequest();
+    invalidateAlbumRequest();
     const typeEl = document.getElementById('search-type');
     const type = typeEl ? typeEl.value : 'song';
 
@@ -296,6 +370,8 @@ async function doSearch(page = 1, append = false, prefetch = false) {
         return;
     }
 
+    const request = beginSearchRequest();
+
     if (!append) {
         currentSearch = { name: input, source };
         pageState.value = 1;
@@ -317,7 +393,10 @@ async function doSearch(page = 1, append = false, prefetch = false) {
             if (pageInfoEl) pageInfoEl.innerText = `聚合搜索 (前20条/源)`;
 
             const promises = SOURCES.map(s =>
-                fetch(`${API_BASE}/search?name=${encodeURIComponent(input)}&source=${s}&page=1&type=${type}`, { headers })
+                fetch(`${API_BASE}/search?name=${encodeURIComponent(input)}&source=${s}&page=1&type=${type}`, {
+                    headers,
+                    signal: request.controller.signal,
+                })
                     .then(res => res.json())
                     .then(data => data.map(item => ({ ...item, source: s })))
                     .catch(e => {
@@ -329,7 +408,10 @@ async function doSearch(page = 1, append = false, prefetch = false) {
             list = results.flat();
         } else {
             // Single Source Search — 支持前端决定拉取多少页
-            const res = await fetch(`${API_BASE}/search?name=${encodeURIComponent(input)}&source=${source}&type=${type}&page=${page}&pages=${FETCH_PAGES_STEP}`, { headers });
+            const res = await fetch(`${API_BASE}/search?name=${encodeURIComponent(input)}&source=${source}&type=${type}&page=${page}&pages=${FETCH_PAGES_STEP}`, {
+                headers,
+                signal: request.controller.signal,
+            });
 
             if (!res.ok) {
                 throw new Error(`搜索请求失败: ${res.status} ${res.statusText}`);
@@ -345,6 +427,9 @@ async function doSearch(page = 1, append = false, prefetch = false) {
 
             list = data.map(item => ({ ...item, source }));
         }
+
+        // 进入专辑/歌手详情后，旧搜索请求即使晚返回也不能覆盖详情页。
+        if (!isSearchRequestCurrent(request)) return;
 
         // song/singer/album 统一支持 append 追加翻页
         if (append && (type === 'song' || type === 'singer' || type === 'album')) {
@@ -374,6 +459,7 @@ async function doSearch(page = 1, append = false, prefetch = false) {
             else renderResults(list);
         }
     } catch (e) {
+        if (e?.name === 'AbortError' || !isSearchRequestCurrent(request)) return;
         console.error('[Search] 搜索失败:', e);
         if (append) {
             try {
@@ -798,6 +884,9 @@ function isArtistRequestCurrent(request: ArtistRequestContext, id, source, tab, 
 }
 
 async function enterArtist(id, source = 'wy', order = 'hot', tab = 'songs', isBack = false) {
+    invalidateSearchRequest();
+    invalidateAlbumRequest();
+    setSearchDetailOpen(true);
     const typeEl = document.getElementById('search-type');
 
     // 记录返回状态 (仅当从非歌手列表进入 且 不是从子页面返回时)
@@ -1535,7 +1624,15 @@ async function downloadArtistAlbumSongs(album, button) {
 window.downloadArtistAlbumSongs = downloadArtistAlbumSongs;
 
 async function enterAlbum(id, source = 'wy') {
+    invalidateSearchRequest();
     invalidateArtistRequest();
+    invalidateAlbumRequest();
+    const albumId = String(id);
+    const albumSource = String(source);
+    window.currentAlbumId = albumId;
+    window.currentAlbumSource = albumSource;
+    setSearchDetailOpen(true);
+    const request = beginAlbumRequest(albumId, albumSource);
     // 保存进入专辑前的上下文，如果是从歌手页进入，则记录歌手 ID
     const artistHeader = document.getElementById('artist-detail-header');
     if (artistHeader) {
@@ -1561,29 +1658,41 @@ async function enterAlbum(id, source = 'wy') {
     resultsContainer.innerHTML = '<div class="flex items-center justify-center h-full"><i class="fas fa-spinner fa-spin text-4xl text-emerald-500"></i></div>';
 
     try {
-        const res = await fetch(`${API_BASE}/albumSongs?id=${id}&source=${source}`);
+        const res = await fetch(`${API_BASE}/albumSongs?id=${encodeURIComponent(albumId)}&source=${encodeURIComponent(albumSource)}`, {
+            signal: request.controller.signal,
+        });
         if (!res.ok) throw new Error('Failed to fetch album songs');
         const data = await res.json();
+        if (!isAlbumRequestCurrent(request)) return;
         const songList = data.list || (Array.isArray(data) ? data : []);
         renderResults(songList);
         const pageInfoEl = document.getElementById('page-info');
         if (pageInfoEl) pageInfoEl.innerText = `专辑歌曲列表`;
 
         // [新增] 如果该专辑已收藏，则异步丰富其元数据
-        if (isAlbumFavorited(id, source)) {
-            updateAlbumLibraryMeta(id, source, data);
+        if (isAlbumFavorited(albumId, albumSource)) {
+            updateAlbumLibraryMeta(albumId, albumSource, data);
         }
 
         const backBtn = document.getElementById('search-back-btn');
         if (backBtn) backBtn.classList.remove('hidden');
     } catch (e) {
+        if (e?.name === 'AbortError' || !isAlbumRequestCurrent(request)) return;
+        console.error('[Search] 获取专辑歌曲失败:', e);
         showError(`获取专辑歌曲失败: ${e.message}`);
-        goBackToSearch();
+        resultsContainer.innerHTML = `<div class="text-center text-red-500 p-8">
+            <p>获取专辑歌曲失败：${escapeHtmlText(e.message)}</p>
+            <button type="button" onclick="goBackToSearch()" class="mt-4 px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600">返回专辑搜索</button>
+        </div>`;
+        const backBtn = document.getElementById('search-back-btn');
+        if (backBtn) backBtn.classList.remove('hidden');
     }
 }
 
 function goBackToSearch(fromPopState = false) {
+    invalidateSearchRequest();
     invalidateArtistRequest();
+    invalidateAlbumRequest();
     if (!fromPopState) {
         if (window.history.state && window.history.state.page === 'search-detail') {
             window.history.back();
@@ -1600,6 +1709,8 @@ function goBackToSearch(fromPopState = false) {
     }
 
     if (!lastSearchResultList) return;
+
+    setSearchDetailOpen(false);
 
     const container = document.getElementById('search-results');
     const header = document.getElementById('search-results-header');
@@ -1885,7 +1996,7 @@ function renderResults(list) {
     applyMarqueeChecks(container);
 
     // [Prefetch] 自动后台预加载逻辑
-    if (window.currentSearchScope === 'network' && pageState.value === totalPages) {
+    if (!searchDetailOpen && window.currentSearchScope === 'network' && pageState.value === totalPages) {
         const FETCH_PAGES_STEP = 3;
         const nextNetPage = (window.currentNetworkPage || 1) + FETCH_PAGES_STEP;
 
@@ -1895,7 +2006,9 @@ function renderResults(list) {
             console.log(`[Prefetch] 触及本地末页 (${totalPages})，自动拉取后续 ${FETCH_PAGES_STEP} 页... (Next URL Page: ${nextNetPage})`);
 
             // 延迟一点触发，确保 UI 先更新
-            setTimeout(() => {
+            prefetchTimer = setTimeout(() => {
+                prefetchTimer = null;
+                if (searchDetailOpen) return;
                 doSearch(nextNetPage, true, true).finally(() => {
                     // 完成后清除标志，但不再主动重置，防止同一页重复触发
                 });
@@ -2057,6 +2170,7 @@ window.unobserveLazyImages = function (root = document) {
         downloadArtistAlbumSongs,
         enterAlbum,
         goBackToSearch,
+        isSearchDetailOpen,
         getImgUrl,
         renderResults,
         createMarqueeHtml,

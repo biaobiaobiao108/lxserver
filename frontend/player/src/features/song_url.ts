@@ -689,6 +689,7 @@ async function prefetchNextSong(startFromIndex = null, depth = 0) {
 
     const feature = {
         getSourceTypeText,
+        getSourceName,
         probeUrl,
         prefetchManager,
         resolveSongUrl,

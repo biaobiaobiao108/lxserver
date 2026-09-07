@@ -4,6 +4,7 @@ import path from 'path';
 
 describe('Player Navigation and State Restoration Safety', () => {
     const playerSrcPath = path.join(import.meta.dir, '../frontend/player/src/index.ts');
+    const playbackSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/playback.ts');
     const playerDistPath = path.join(import.meta.dir, '../public/music/app.js');
 
     it('frontend player source should not contain navigation-hijacking _pendingResumeListId', () => {
@@ -23,7 +24,9 @@ describe('Player Navigation and State Restoration Safety', () => {
     });
 
     it('playSong queue fallback does not hijack window.currentViewingListId', () => {
-        const srcContent = fs.readFileSync(playerSrcPath, 'utf8');
+        const srcContent = [playerSrcPath, playbackSrcPath]
+            .map(filePath => fs.readFileSync(filePath, 'utf8'))
+            .join('\n');
         const fallbackSnippetMatch = srcContent.match(/shouldFallback\s*=\s*settings\.switchPlaylistOnSongListPlay\s*===\s*false[\s\S]*?currentIndex\s*=\s*0;[\s\S]*?currentPlayingScope\s*=\s*'local_list';/);
         expect(fallbackSnippetMatch).not.toBeNull();
         if (fallbackSnippetMatch) {
@@ -79,4 +82,3 @@ describe('Update Notification Engine & PostHog Removal', () => {
         expect(content.includes('notification-engine.js')).toBe(false);
     });
 });
-

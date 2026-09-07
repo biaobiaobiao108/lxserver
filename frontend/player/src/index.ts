@@ -27,6 +27,8 @@ import { initSearchTips } from './search_tips';
 import { showInput, showOptions, showSelect } from './player_dialogs';
 import { initPlayerNotifications } from './player_notifications';
 import { loadPlayerFeature } from './player_feature_loader';
+import { setPlayerDrawerOpen } from './features/player_drawer';
+import { initQueueFeature } from './features/queue';
 
 /*
  * Copyright 2026 xcq0607 (https://github.com/xcq0607)
@@ -128,6 +130,27 @@ Object.assign(window, {
     showCustomTimerInput: (...args: any[]) => callSleepTimerFeature('showCustomTimerInput', args),
     applyCustomTimer: (...args: any[]) => callSleepTimerFeature('applyCustomTimer', args),
 });
+
+const queueFeature = initQueueFeature({
+    getPlaylist: () => currentPlaylist,
+    setPlaylist: (playlist) => { currentPlaylist = playlist; },
+    getCurrentIndex: () => currentIndex,
+    setCurrentIndex: (index) => { currentIndex = index; },
+    getAudio: () => audio as HTMLMediaElement | null,
+    playSong: (song, index) => playSong(song, index),
+    savePlaybackState: () => savePlaybackState(),
+    closeMobileSidebar: () => toggleSidebar(),
+    applyMarqueeChecks: () => applyMarqueeChecks(),
+    createMarqueeHtml: (text, className) => createMarqueeHtml(text, className),
+    escapeHtmlText,
+    getImgUrl: (song) => getImgUrl(song),
+    getSourceTag: (source) => getSourceTag(source),
+    getQualityTags: (song) => getQualityTags(song),
+    showInfo,
+    showSuccess,
+    showSelect,
+});
+const { renderQueue } = queueFeature;
 
 // Initialize Unified Search for Global (Favorites/Search)
 window.goToPage = function (page) {
@@ -1262,296 +1285,6 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ==================== 播放队列 (Queue) 逻辑 ====================
-let isQueueRendered = false;
-
-const PLAYER_DRAWER_IDS = ['queue-drawer', 'cache-drawer', 'download-drawer'];
-
-function syncPlayerDrawerOffset() {
-    const footer = document.getElementById('player-footer');
-    if (!footer) return;
-
-    const isHidden = footer.classList.contains('translate-y-[110%]');
-    const footerHeight = isHidden ? 0 : Math.ceil(footer.getBoundingClientRect().height);
-    document.documentElement.style.setProperty('--player-footer-offset', `${footerHeight}px`);
-    syncToastOffsets();
-}
-
-function syncToastOffsets() {
-    const footer = document.getElementById('player-footer');
-    const footerOffset = footer && !footer.classList.contains('translate-y-[110%]')
-        ? Math.ceil(footer.getBoundingClientRect().height)
-        : 0;
-    const toasts = Array.from(document.querySelectorAll<HTMLElement>('.toast-item'));
-    let nextOffset = footerOffset + 12;
-    for (let index = toasts.length - 1; index >= 0; index -= 1) {
-        const toast = toasts[index];
-        toast.style.bottom = `calc(${nextOffset}px + env(safe-area-inset-bottom, 0px))`;
-        toast.dataset.offset = String(nextOffset);
-        nextOffset += (toast.offsetHeight || 60) + 12;
-    }
-}
-
-function setPlayerDrawerOpen(drawerId, open) {
-    PLAYER_DRAWER_IDS.forEach((id) => {
-        const drawer = document.getElementById(id);
-        if (!drawer) return;
-
-        if (open && id === drawerId) {
-            drawer.classList.remove('translate-x-full');
-        } else {
-            drawer.classList.add('translate-x-full');
-        }
-        document.querySelectorAll<HTMLElement>(`[aria-controls="${id}"]`).forEach(trigger => {
-            trigger.setAttribute('aria-expanded', String(open && id === drawerId));
-        });
-    });
-
-    syncPlayerDrawerOffset();
-}
-
-window.setPlayerDrawerOpen = setPlayerDrawerOpen;
-
-function initPlayerDrawerLayout() {
-    const footer = document.getElementById('player-footer');
-    if (!footer) return;
-
-    syncPlayerDrawerOffset();
-
-    if (typeof ResizeObserver !== 'undefined') {
-        new ResizeObserver(syncPlayerDrawerOffset).observe(footer);
-    }
-
-    new MutationObserver(syncPlayerDrawerOffset).observe(footer, {
-        attributes: true,
-        attributeFilter: ['class', 'style'],
-    });
-
-    window.addEventListener('resize', syncPlayerDrawerOffset, { passive: true });
-}
-
-document.addEventListener('DOMContentLoaded', initPlayerDrawerLayout);
-
-function toggleQueueDrawer() {
-    const drawer = document.getElementById('queue-drawer');
-    if (!drawer) return;
-
-    const isHidden = drawer.classList.contains('translate-x-full');
-    if (isHidden) {
-        renderQueue();
-        setPlayerDrawerOpen('queue-drawer', true);
-        // 自动定位当前歌曲
-        setTimeout(() => {
-            scrollToCurrentSongInQueue(false);
-        }, 350); // 等待抽屉打开动画完成
-
-        // Hide sidebar if open on mobile
-        if (window.innerWidth <= 1024) {
-            const sidebar = document.getElementById('main-sidebar');
-            if (sidebar && !sidebar.classList.contains('-translate-x-full')) {
-                toggleSidebar();
-            }
-        }
-    } else {
-        setPlayerDrawerOpen('queue-drawer', false);
-    }
-}
-window.toggleQueueDrawer = toggleQueueDrawer;
-
-/**
- * 定位播放队列中当前播放的歌曲
- * @param {boolean} flash 是否显示闪烁提醒效果
- */
-function scrollToCurrentSongInQueue(flash = true) {
-    const listContainer = document.getElementById('queue-list');
-    if (!listContainer) return;
-
-    // 根据 renderQueue 中的 active 状态类名进行查找
-    const activeItem = listContainer.querySelector('.border-emerald-500');
-    if (activeItem) {
-        activeItem.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-        if (flash) {
-            // 闪烁高亮提醒
-            activeItem.classList.add('ring-2', 'ring-emerald-500', 'ring-inset', 'ring-opacity-50');
-            setTimeout(() => {
-                activeItem.classList.remove('ring-2', 'ring-emerald-500', 'ring-inset', 'ring-opacity-50');
-            }, 1000);
-        }
-    } else if (flash) {
-        showInfo('当前播放歌曲不在队列中或尚未渲染');
-    }
-}
-window.scrollToCurrentSongInQueue = scrollToCurrentSongInQueue;
-
-
-function renderQueue() {
-    const listContainer = document.getElementById('queue-list');
-    const countEl = document.getElementById('queue-count');
-    if (!listContainer) return;
-
-    const badgeEl = document.getElementById('queue-badge-count');
-    const queueLen = currentPlaylist ? currentPlaylist.length : 0;
-    if (badgeEl) {
-        badgeEl.innerText = queueLen > 99 ? '99+' : String(queueLen);
-        badgeEl.classList.toggle('hidden', queueLen === 0);
-    }
-
-    if (!currentPlaylist || currentPlaylist.length === 0) {
-        listContainer.innerHTML = `
-            <div class="flex flex-col items-center justify-center py-20 opacity-30 select-none">
-                <i class="fas fa-music text-4xl mb-4"></i>
-                <p class="text-xs font-bold uppercase tracking-widest">队列为空</p>
-            </div>
-        `;
-        if (countEl) countEl.innerText = '0 SONGS';
-        return;
-    }
-
-    if (countEl) countEl.innerText = `${currentPlaylist.length} SONGS`;
-
-    listContainer.innerHTML = currentPlaylist.map((song, index) => {
-        const isActive = index === currentIndex;
-        return `
-            <div role="button" tabindex="0" aria-label="播放 ${escapeHtmlText(song.name || '未命名歌曲')}"
-                 class="group flex items-center gap-3 p-3 rounded-xl transition-all hover:t-bg-item-hover cursor-pointer relative ${isActive ? 't-bg-item-hover border-l-4 border-emerald-500 pl-2' : ''} ${index > 12 ? 'deferred-list-item' : ''}"
-                 onclick="playSongFromQueue(${index})"
-                 onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); playSongFromQueue(${index}); }">
-                
-                <div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 relative">
-                    <img src="${getImgUrl(song)}" alt="${escapeHtmlText(song.name || '歌曲')}专辑封面" width="40" height="40"
-                         onerror="this.src='/music/assets/logo.svg'"
-                         loading="lazy" decoding="async"
-                         class="w-full h-full object-cover">
-                    ${isActive ? '<div class="absolute inset-0 bg-emerald-500/20 flex items-center justify-center"><div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div></div>' : ''}
-                </div>
-                
-                <div class="flex-1 min-w-0">
-                    ${createMarqueeHtml(song.name, 'text-sm font-bold ' + (isActive ? 'text-emerald-500' : 't-text-main'))}
-                    <div class="flex items-center gap-1 mt-0.5 overflow-hidden whitespace-nowrap">
-                        ${getSourceTag(song.source)}
-                        ${getQualityTags(song)}
-                        ${createMarqueeHtml(song.singer, 'text-[10px] t-text-muted flex-1')}
-                    </div>
-                </div>
-
-                <div class="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                    <button aria-label="从队列移除 ${escapeHtmlText(song.name || '歌曲')}" onclick="event.stopPropagation(); removeFromQueue(${index})" class="p-2 text-gray-400 hover:text-red-500 transition-colors">
-                        <i class="fas fa-trash-alt text-xs"></i>
-                    </button>
-                    <div class="p-2 text-gray-400 cursor-grab active:cursor-grabbing queue-drag-handle">
-                        <i class="fas fa-grip-lines text-xs"></i>
-                    </div>
-                </div>
-            </div>
-        `;
-    }).join('');
-
-    // Initialize/Update Sortable (Supports Mobile Touch)
-    if (typeof Sortable !== 'undefined' && listContainer) {
-        try {
-            const oldSortable = Sortable.get(listContainer);
-            if (oldSortable) oldSortable.destroy();
-        } catch (e) { }
-
-        Sortable.create(listContainer, {
-            animation: 200,
-            handle: '.queue-drag-handle',
-            ghostClass: 'sortable-ghost-solid',
-            chosenClass: 'sortable-chosen-item',
-            dragClass: 'sortable-drag-item',
-            forceFallback: true,
-            fallbackOnBody: true,
-            delay: 100,
-            delayOnTouchOnly: true,
-            touchStartThreshold: 3,
-            onStart: () => {
-                document.body.classList.add('select-none');
-            },
-            onEnd: (evt) => {
-                document.body.classList.remove('select-none');
-                const oldIndex = evt.oldIndex;
-                const newIndex = evt.newIndex;
-                if (oldIndex === newIndex) return;
-
-                // Reorder currentPlaylist
-                const movedItem = currentPlaylist.splice(oldIndex, 1)[0];
-                currentPlaylist.splice(newIndex, 0, movedItem);
-
-                // Update currentIndex if it was affected
-                if (currentIndex === oldIndex) {
-                    currentIndex = newIndex;
-                } else if (oldIndex < currentIndex && newIndex >= currentIndex) {
-                    currentIndex--;
-                } else if (oldIndex > currentIndex && newIndex <= currentIndex) {
-                    currentIndex++;
-                }
-
-                renderQueue();
-                savePlaybackState();
-                showInfo('播放顺序已更新');
-            }
-        });
-    }
-
-    // Update status to show hint if more than 1 item
-    const tip = document.getElementById('queue-tip');
-    if (tip) {
-        if (currentPlaylist.length > 1) tip.classList.remove('hidden');
-        else tip.classList.add('hidden');
-    }
-
-    // Apply dynamic marquee checks for the queue list
-    applyMarqueeChecks();
-}
-
-function playSongFromQueue(index) {
-    if (!currentPlaylist[index]) return;
-    playSong(currentPlaylist[index], index);
-}
-window.playSongFromQueue = playSongFromQueue;
-
-function removeFromQueue(index) {
-    if (!currentPlaylist || index < 0 || index >= currentPlaylist.length) return;
-
-    const removedId = currentPlaylist[index].id;
-    currentPlaylist.splice(index, 1);
-
-    // If we removed the currently playing song's index, we need to adjust currentIndex
-    if (index === currentIndex) {
-        // [Optional] Auto-play next or just stop? Here we just adjust index for next song
-        // Typically people expect it to stay at same index but if it was last, wrap around
-        if (currentPlaylist.length === 0) {
-            currentIndex = -1;
-            try { audio.pause(); } catch (e) { }
-        } else if (currentIndex >= currentPlaylist.length) {
-            currentIndex = 0; // Wrap to start
-        }
-        // [Think] Should we auto-play next? Usually delete means "remove but keep playing current"
-        // But if user clicks delete on current, maybe skip to next.
-        // For now, let's keep playing but adjust index.
-    } else if (index < currentIndex) {
-        currentIndex--;
-    }
-
-    renderQueue();
-    savePlaybackState(); // Save state after removal
-    showSuccess('已从队列移除');
-}
-window.removeFromQueue = removeFromQueue;
-
-async function clearQueue() {
-    if (!currentPlaylist || currentPlaylist.length === 0) return;
-    if (await showSelect('清空队列', '确定要清空当前播放队列吗？', { danger: true })) {
-        currentPlaylist = [];
-        currentIndex = -1;
-        try { audio.pause(); } catch (e) { }
-        renderQueue();
-        savePlaybackState(); // Save empty state
-        showInfo('队列已清空');
-    }
-}
-window.clearQueue = clearQueue;
-
 // --- Native Drag & Drop Handlers (Removed, replaced by SortableJS) ---
 // ===============================================
 

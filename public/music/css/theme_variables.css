@@ -8,75 +8,90 @@
     /* Base Transition */
     --theme-transition: 0.3s ease;
 
-    /* Light Mode Grays (Default) */
-    --bg-main: #f9fafb;
-    /* gray-50 */
+    /* Light Mode Grays (Default NetEase style) */
+    --bg-main: #f6f6f8;
     --bg-panel: #ffffff;
-    /* white */
-    --bg-item-hover: #f3f4f6;
-    /* gray-100 */
-    --bg-header: rgba(255, 255, 255, 0.8);
-    --bg-glass: rgba(255, 255, 255, 0.7);
+    --bg-item-hover: #f0f1f4;
+    --bg-header: rgba(255, 255, 255, 0.95);
+    --bg-glass: rgba(255, 255, 255, 0.85);
 
-    --text-main: #1f2937;
-    /* gray-800 */
-    --text-muted: #4b5563;
-    /* gray-600 */
-    --text-dim: #9ca3af;
-    /* gray-400 */
+    --text-main: #1f2226;
+    --text-muted: #5c626e;
+    --text-dim: #99a0ad;
 
-    --border-main: #f1f1f1;
-    /* gray-100 */
-    --border-dim: #e5e7eb;
-    /* gray-200 */
+    --border-main: #e7e8eb;
+    --border-dim: #d8d9de;
 
-    --shadow-main: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+    --shadow-main: 0 2px 8px 0 rgb(0 0 0 / 0.06), 0 1px 3px 0 rgb(0 0 0 / 0.04);
+
+    /* Default NetEase Red Brand Colors */
+    --c-50: #fef2f2;
+    --c-100: #fee2e2;
+    --c-200: #fecaca;
+    --c-300: #fca5a5;
+    --c-400: #f87171;
+    --c-500: #ec4141;
+    --c-600: #d73535;
+    --c-700: #b91c1c;
+    --c-800: #991b1b;
+    --c-900: #7f1d1d;
+    --c-950: #450a0a;
+    --logo-filter: hue-rotate(210deg) saturate(140%);
 }
 
 /* Dark Mode Overrides */
 :root[data-appearance="dark"] {
-    --bg-main: #111827;
-    /* gray-900 */
-    --bg-panel: #1f2937;
-    /* gray-800 */
-    --bg-item-hover: #374151;
-    /* gray-700 */
-    --bg-header: rgba(17, 24, 39, 0.8);
-    --bg-glass: rgba(31, 41, 55, 0.7);
+    --bg-main: #16161a;
+    --bg-panel: #212127;
+    --bg-item-hover: #2d2e35;
+    --bg-header: rgba(25, 25, 30, 0.95);
+    --bg-glass: rgba(33, 33, 39, 0.85);
 
-    --text-main: #f9fafb;
-    /* gray-50 */
-    --text-muted: #d1d5db;
-    /* gray-300 */
-    --text-dim: #6b7280;
-    /* gray-500 */
+    --text-main: #f0f1f5;
+    --text-muted: #a5aab5;
+    --text-dim: #6d727f;
 
-    --border-main: #374151;
-    /* gray-700 */
-    --border-dim: #4b5563;
-    /* gray-600 */
+    --border-main: #2b2c34;
+    --border-dim: #3a3b45;
 
-    --shadow-main: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+    --shadow-main: 0 4px 12px 0 rgb(0 0 0 / 0.35), 0 2px 4px -2px rgb(0 0 0 / 0.25);
 }
 
 /* System Preference (Default if no data-appearance is set) */
 @media (prefers-color-scheme: dark) {
     :root:not([data-appearance="light"]) {
-        --bg-main: #111827;
-        --bg-panel: #1f2937;
-        --bg-item-hover: #374151;
-        --bg-header: rgba(17, 24, 39, 0.8);
-        --bg-glass: rgba(31, 41, 55, 0.7);
+        --bg-main: #16161a;
+        --bg-panel: #212127;
+        --bg-item-hover: #2d2e35;
+        --bg-header: rgba(25, 25, 30, 0.95);
+        --bg-glass: rgba(33, 33, 39, 0.85);
 
-        --text-main: #f9fafb;
-        --text-muted: #d1d5db;
-        --text-dim: #6b7280;
+        --text-main: #f0f1f5;
+        --text-muted: #a5aab5;
+        --text-dim: #6d727f;
 
-        --border-main: #374151;
-        --border-dim: #4b5563;
+        --border-main: #2b2c34;
+        --border-dim: #3a3b45;
 
-        --shadow-main: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+        --shadow-main: 0 4px 12px 0 rgb(0 0 0 / 0.35), 0 2px 4px -2px rgb(0 0 0 / 0.25);
     }
+}
+
+/* 网易云经典红 (NetEase Red) */
+:root[data-theme="netease"],
+:root:not([data-theme]) {
+    --c-50: #fef2f2;
+    --c-100: #fee2e2;
+    --c-200: #fecaca;
+    --c-300: #fca5a5;
+    --c-400: #f87171;
+    --c-500: #ec4141;
+    --c-600: #d73535;
+    --c-700: #b91c1c;
+    --c-800: #991b1b;
+    --c-900: #7f1d1d;
+    --c-950: #450a0a;
+    --logo-filter: hue-rotate(210deg) saturate(140%);
 }
 
 /* 默认主题: 森之韵 (Forest Rhythm) - Emerald */

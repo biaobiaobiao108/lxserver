@@ -1528,6 +1528,13 @@ function renderQueue() {
     const countEl = document.getElementById('queue-count');
     if (!listContainer) return;
 
+    const badgeEl = document.getElementById('queue-badge-count');
+    const queueLen = currentPlaylist ? currentPlaylist.length : 0;
+    if (badgeEl) {
+        badgeEl.innerText = queueLen > 99 ? '99+' : String(queueLen);
+        badgeEl.classList.toggle('hidden', queueLen === 0);
+    }
+
     if (!currentPlaylist || currentPlaylist.length === 0) {
         listContainer.innerHTML = `
             <div class="flex flex-col items-center justify-center py-20 opacity-30 select-none">
@@ -1694,6 +1701,23 @@ function handleSearchKeyPress(e) {
         doSearch();
     }
 }
+
+function handleHeaderSearchKeyPress(e: KeyboardEvent) {
+    if (e.key === 'Enter') {
+        const headerInput = document.getElementById('header-search-input') as HTMLInputElement | null;
+        const mainInput = document.getElementById('search-input') as HTMLInputElement | null;
+        if (headerInput) {
+            const query = headerInput.value.trim();
+            if (query) {
+                if (mainInput) mainInput.value = query;
+                switchTab('search');
+                if (typeof (window as any).hideSearchSuggestions === 'function') (window as any).hideSearchSuggestions();
+                doSearch();
+            }
+        }
+    }
+}
+(window as any).handleHeaderSearchKeyPress = handleHeaderSearchKeyPress;
 
 /**
  * 快速跳转到搜索页并执行查询
@@ -2163,8 +2187,8 @@ function getQualityTags(item) {
 
     if (hasMaster) tags.push('<span class="flex-shrink-0 px-1 py-0 rounded text-[10px] t-badge-purple border border-purple-200 dark:border-purple-500/30 transition-colors">Master</span>');
     else if (hasAtmos) tags.push('<span class="flex-shrink-0 px-1 py-0 rounded text-[10px] t-badge-blue border border-cyan-200 dark:border-cyan-500/30 transition-colors">Atmos</span>');
-    else if (hasHiRes) tags.push('<span class="flex-shrink-0 px-1 py-0 rounded text-[10px] t-badge-yellow border border-yellow-200 dark:border-yellow-500/30 transition-colors">Hi-Res</span>');
-    else if (hasFlac) tags.push('<span class="flex-shrink-0 px-1 py-0 rounded text-[10px] t-badge-green border border-emerald-200 dark:border-emerald-500/30 transition-colors">无损</span>');
+    else if (hasHiRes) tags.push('<span class="badge-quality-hires flex-shrink-0">Hi-Res</span>');
+    else if (hasFlac) tags.push('<span class="badge-quality-sq flex-shrink-0">SQ</span>');
     else if (has320) tags.push('<span class="flex-shrink-0 px-1 py-0 rounded text-[10px] t-badge-blue border border-blue-200 dark:border-blue-500/30 transition-colors">高品质</span>');
 
     return tags.join('');
@@ -5413,9 +5437,21 @@ async function togglePlay() {
     }
 }
 
-function updatePlayButton(isPlaying) {
+function updatePlayButton(isPlaying: boolean) {
     const btn = document.getElementById('btn-play');
-    btn.innerHTML = isPlaying ? '<i class="fas fa-pause"></i>' : '<i class="fas fa-play ml-1"></i>';
+    if (btn) {
+        btn.innerHTML = isPlaying ? '<i class="fas fa-pause text-sm md:text-base"></i>' : '<i class="fas fa-play ml-0.5 text-sm md:text-base"></i>';
+    }
+    const tonearm = document.getElementById('vinyl-tonearm');
+    if (tonearm) {
+        if (isPlaying) tonearm.classList.add('is-playing');
+        else tonearm.classList.remove('is-playing');
+    }
+    const disc = document.getElementById('vinyl-disc');
+    if (disc) {
+        if (isPlaying) disc.classList.add('is-playing');
+        else disc.classList.remove('is-playing');
+    }
 }
 
 /**

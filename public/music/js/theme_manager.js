@@ -3,11 +3,11 @@
  */
 
 // Available Themes
-const THEMES = ['emerald', 'blue', 'amber', 'violet', 'rose'];
+const THEMES = ['netease', 'emerald', 'blue', 'amber', 'violet', 'rose'];
 
 // Initialize Theme & Appearance
 function initTheme() {
-    const savedTheme = localStorage.getItem('lx_theme') || 'emerald';
+    const savedTheme = localStorage.getItem('lx_theme') || 'netease';
     const savedAppearance = localStorage.getItem('lx_appearance') || 'system';
 
     setTheme(savedTheme, false);

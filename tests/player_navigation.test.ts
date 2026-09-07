@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'bun:test';
+import { describe, it, expect, beforeAll } from 'bun:test';
 import fs from 'fs';
 import path from 'path';
 
@@ -6,6 +6,13 @@ describe('Player Navigation and State Restoration Safety', () => {
     const playerSrcPath = path.join(import.meta.dir, '../frontend/player/src/index.ts');
     const playbackSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/playback.ts');
     const playerDistPath = path.join(import.meta.dir, '../public/music/app.js');
+
+    beforeAll(() => {
+        if (!fs.existsSync(playerDistPath)) {
+            const { execSync } = require('child_process');
+            execSync('bun run build:frontend', { cwd: path.join(import.meta.dir, '..'), stdio: 'ignore' });
+        }
+    });
 
     it('frontend player source should not contain navigation-hijacking _pendingResumeListId', () => {
         const srcContent = fs.readFileSync(playerSrcPath, 'utf8');

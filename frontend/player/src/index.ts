@@ -29,7 +29,6 @@ import { initPlayerNotifications } from './player_notifications';
 import { loadPlayerFeature } from './player_feature_loader';
 import { setPlayerDrawerOpen } from './features/player_drawer';
 import { initQueueFeature } from './features/queue';
-import { initCustomSourcesFeature } from './features/custom_sources';
 import { initPlaylistModalFeature } from './features/playlist_modal';
 import { initCacheFeature } from './features/cache';
 import { initLibraryFeature } from './features/library';
@@ -180,36 +179,48 @@ function refreshComments(...args: any[]) { return callCommentsFeature('refreshCo
 function fetchComments(...args: any[]) { return callCommentsFeature('fetchComments', args); }
 function toggleSongInList(...args: any[]) { return callCommentsFeature('toggleSongInList', args); }
 
-const customSourcesFeature = initCustomSourcesFeature({
-    getCredential,
-    getUserAuthHeaders,
-    getCurrentListData: () => currentListData,
-    getSettings: () => settings,
-    isUserLoggedIn,
-    handleAdminAuth,
-    updateSetting,
-    createMarqueeHtml: (text, className) => createMarqueeHtml(text, className),
-    applyMarqueeChecks: () => applyMarqueeChecks(),
-    escapeHtmlText,
-    showInput,
-    showSelect,
-    showSuccess,
-    showInfo,
-    showError,
-});
-const {
-    loadCustomSources,
-    renderCustomSources,
-    handleFileUpload,
-    handleUrlImport,
-    openCustomSourceModal,
-    closeCustomSourceModal,
-    switchCustomSourceMode,
-    toggleSource,
-    deleteSource,
-    reloadSource,
-    togglePublicSourcesSetting,
-} = customSourcesFeature;
+function loadCustomSourcesFeature() {
+    return loadPlayerFeature(
+        'custom-sources',
+        () => import('./features/custom_sources').then(({ initCustomSourcesFeature }) => initCustomSourcesFeature({
+            getCredential,
+            getUserAuthHeaders,
+            getCurrentListData: () => currentListData,
+            getSettings: () => settings,
+            isUserLoggedIn,
+            handleAdminAuth,
+            updateSetting,
+            createMarqueeHtml: (text, className) => createMarqueeHtml(text, className),
+            applyMarqueeChecks: () => applyMarqueeChecks(),
+            escapeHtmlText,
+            showInput,
+            showSelect,
+            showSuccess,
+            showInfo,
+            showError,
+        })),
+        '正在加载自定义音源管理...'
+    );
+}
+
+function callCustomSourcesFeature(name: string, args: any[] = []) {
+    return loadCustomSourcesFeature().then((feature) => {
+        const handler = (feature as any)[name];
+        return typeof handler === 'function' ? handler(...args) : undefined;
+    });
+}
+
+function loadCustomSources(...args: any[]) { return callCustomSourcesFeature('loadCustomSources', args); }
+function renderCustomSources(...args: any[]) { return callCustomSourcesFeature('renderCustomSources', args); }
+function handleFileUpload(...args: any[]) { return callCustomSourcesFeature('handleFileUpload', args); }
+function handleUrlImport(...args: any[]) { return callCustomSourcesFeature('handleUrlImport', args); }
+function openCustomSourceModal(...args: any[]) { return callCustomSourcesFeature('openCustomSourceModal', args); }
+function closeCustomSourceModal(...args: any[]) { return callCustomSourcesFeature('closeCustomSourceModal', args); }
+function switchCustomSourceMode(...args: any[]) { return callCustomSourcesFeature('switchCustomSourceMode', args); }
+function toggleSource(...args: any[]) { return callCustomSourcesFeature('toggleSource', args); }
+function deleteSource(...args: any[]) { return callCustomSourcesFeature('deleteSource', args); }
+function reloadSource(...args: any[]) { return callCustomSourcesFeature('reloadSource', args); }
+function togglePublicSourcesSetting(...args: any[]) { return callCustomSourcesFeature('togglePublicSourcesSetting', args); }
 
 const playlistModalFeature = initPlaylistModalFeature({
     getCurrentPlayingSong: () => currentPlayingSong,

@@ -496,22 +496,33 @@ html, body {
     }
 }
 
+/* Floating overlay scrollbars */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+}
+
+[data-appearance='dark'] * {
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
 ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-    background: #f1f1f1;
+    background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 9999px;
+    transition: background 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
+    background: rgba(16, 185, 129, 0.6);
 }
 
 /* Glassmorphism utilities */
@@ -594,7 +605,7 @@ html, body {
 
 .player-safe-drawer .custom-scrollbar {
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
+    scrollbar-gutter: auto;
 }
 
 .player-safe-drawer button {
@@ -1432,7 +1443,8 @@ aside {
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-    width: 5px;
+    width: 6px;
+    height: 6px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -1440,12 +1452,21 @@ aside {
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-    background: rgba(0, 0, 0, 0.1);
-    border-radius: 10px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 9999px;
+    transition: background 0.2s ease;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-    background: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.6);
+}
+
+[data-appearance='dark'] .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+[data-appearance='dark'] .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(16, 185, 129, 0.6);
 }
 
 /* Detail Title multi-line support */
@@ -2787,7 +2808,7 @@ aside {
 
 .player-track-grid--network,
 .player-track-grid--local {
-    scrollbar-gutter: stable;
+    scrollbar-gutter: auto;
 }
 
 .player-track-grid--local {
@@ -2920,7 +2941,7 @@ aside {
 #lb-songs-list,
 #sl-detail-list,
 #lm-list-container {
-    scrollbar-gutter: stable;
+    scrollbar-gutter: auto;
     overscroll-behavior: contain;
 }
 

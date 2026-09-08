@@ -271,15 +271,16 @@ i {
 
 /* Global overrides for dark mode compatibility */
 [data-appearance='dark'] ::-webkit-scrollbar-track {
-    background: #1f2937;
+    background: transparent;
 }
 
 [data-appearance='dark'] ::-webkit-scrollbar-thumb {
-    background: #4b5563;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 9999px;
 }
 
 [data-appearance='dark'] ::-webkit-scrollbar-thumb:hover {
-    background: #6b7280;
+    background: rgba(16, 185, 129, 0.6);
 }
 
 /* 强制适配文本类输入元素 (支持模式切换与自动跟随系统) */

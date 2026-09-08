@@ -101,6 +101,7 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(css).toContain('min-inline-size: 0');
         expect(css).toContain('max-inline-size: 100dvw');
         expect(css).toContain('env(safe-area-inset-bottom');
+        expect(css).toContain('-webkit-backdrop-filter: none !important');
         expect(css).not.toContain('#player-footer > .flex-1 > div:first-child');
         expect(css).not.toContain('#player-footer > .flex-1 > div:last-child #play-mode-btn');
     });

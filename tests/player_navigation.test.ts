@@ -226,13 +226,13 @@ describe('Player Navigation and State Restoration Safety', () => {
         const css = fs.readFileSync(playerCssPath, 'utf8');
         const distContent = fs.readFileSync(playerDistPath, 'utf8');
 
-        expect(searchContent).toContain('id="artist-detail-view" class="artist-detail-view flex flex-1 min-h-0 flex-col overflow-hidden"');
+        expect(searchContent).toContain('id="artist-detail-view" class="artist-detail-view flex flex-1 min-h-0 flex-col overflow-y-auto custom-scrollbar"');
         expect(searchContent).toContain('container.classList.add(\'artist-detail-active\');');
         expect(searchContent).toContain('container.classList.remove(\'artist-detail-active\');');
         expect(searchContent).toContain("tabsBar.classList.remove('mt-8', 'mt-1');");
         expect(css).toContain('#search-results.artist-detail-active');
         expect(css).toContain('#search-results.artist-detail-active > .artist-detail-view');
-        expect(css).toContain('#search-results.artist-detail-active #artist-detail-content');
+        expect(css).toContain('#search-results.artist-detail-active #artist-tabs-bar');
         expect(css).toContain('overflow-y: auto;');
         expect(css).toContain('#search-pagination-bar.hidden');
         expect(css).toContain('display: none !important;');

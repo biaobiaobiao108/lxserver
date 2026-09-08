@@ -92,7 +92,7 @@ export function initQueueFeature(context: QueueFeatureContext) {
             const isActive = index === currentIndex;
             return `
                 <div role="button" tabindex="0" aria-label="播放 ${context.escapeHtmlText(song.name || '未命名歌曲')}"
-                     class="group flex items-center gap-3 p-3 rounded-xl transition-all hover:t-bg-item-hover cursor-pointer relative ${isActive ? 't-bg-item-hover border-l-4 border-emerald-500 pl-2' : ''} ${index > 12 ? 'deferred-list-item' : ''}"
+                     class="group flex items-center gap-3 p-3 rounded-xl transition-all hover:t-bg-item-hover cursor-pointer relative border ${isActive ? 'bg-emerald-500/10 dark:bg-emerald-500/15 border-emerald-500/25 shadow-sm' : 'border-transparent'} ${index > 12 ? 'deferred-list-item' : ''}"
                      data-event-click-action="playSongFromQueue" data-event-click-args="[${index}]"
                      data-event-keydown-action="playSongFromQueue" data-event-keydown-args="[${index}]" data-event-keys="Enter, " data-event-target-self="true" data-event-prevent="true">
                     <div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 relative">

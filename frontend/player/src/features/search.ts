@@ -1090,8 +1090,8 @@ function renderArtistHeader(info, activeTab, order) {
     container.classList.add('artist-detail-active');
 
     let headerHtml = `
-        <div id="artist-detail-view" class="artist-detail-view flex flex-1 min-h-0 flex-col overflow-hidden">
-        <div id="artist-detail-header" class="relative ${headerPadding} is-folded t-bg-panel/50 border-b t-border-main transition-all duration-500 ease-in-out overflow-hidden group/header" style="${isArtistFolded ? 'min-height: ' + (isMobile ? '0px' : '90px') + ';' : ''}">
+        <div id="artist-detail-view" class="artist-detail-view flex flex-1 min-h-0 flex-col overflow-y-auto custom-scrollbar">
+        <div id="artist-detail-header" class="relative ${headerPadding} ${isArtistFolded ? 'is-folded' : ''} t-bg-panel/50 border-b t-border-main transition-all duration-500 ease-in-out overflow-hidden group/header" style="${isArtistFolded ? 'min-height: ' + (isMobile ? '0px' : '90px') + ';' : ''}">
             <!-- Small Absolute Back Button -->
             <button data-event-click-action="goBackToSearch" class="absolute top-2 left-2 md:top-4 md:left-4 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-emerald-500/80 hover:bg-emerald-500 text-white transition-all z-30 shadow-md active:scale-90" title="返回搜索">
                 <i class="fas fa-arrow-left"></i>
@@ -1135,36 +1135,36 @@ function renderArtistHeader(info, activeTab, order) {
                     </div>
                 </div>
             </div>
-            
-            <div id="artist-tabs-bar" class="artist-detail-tabs-bar flex items-center justify-between ${tabsClass} border-t t-border-main transition-all duration-500 relative z-40" style="min-height: 40px; height: 40px;">
-                <div class="artist-tabs-group flex items-center gap-8">
-                    <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, &quot;songs&quot;]"
-                            class="artist-tab text-sm font-bold transition-all relative ${activeTab === 'songs' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
-                        所有歌曲
-                        ${activeTab === 'songs' ? '<div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 rounded-full"></div>' : ''}
-                    </button>
-                    <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, &quot;albums&quot;]"
-                            class="artist-tab text-sm font-bold transition-all relative ${activeTab === 'albums' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
-                        所有专辑
-                        ${activeTab === 'albums' ? '<div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 rounded-full"></div>' : ''}
-                    </button>
-                </div>
-                
-                ${activeTab === 'songs' ? `
-                <div class="artist-tabs-sort flex items-center p-1 t-bg-main rounded-lg border t-border-main shadow-sm relative z-50">
-                    <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;hot&quot;, &quot;songs&quot;]"
-                            class="px-4 py-1 text-xs font-bold rounded-md transition-all ${order === 'hot' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
-                        热门
-                    </button>
-                    <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;time&quot;, &quot;songs&quot;]"
-                            class="px-4 py-1 text-xs font-bold rounded-md transition-all ${order === 'time' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
-                        最新
-                    </button>
-                </div>
-                ` : ''}
-            </div>
         </div>
-        <div id="artist-detail-content" class="player-track-list-content flex-1 overflow-y-auto p-2 md:p-4">
+        
+        <div id="artist-tabs-bar" class="artist-detail-tabs-bar flex items-center justify-between sticky top-0 z-30 px-3 md:px-6 py-2 t-bg-main border-b t-border-main shadow-sm transition-all duration-300 ${tabsClass}" style="min-height: 40px; height: 40px;">
+            <div class="artist-tabs-group flex items-center gap-6 md:gap-8">
+                <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, &quot;songs&quot;]"
+                        class="artist-tab text-sm font-bold transition-all relative py-1 ${activeTab === 'songs' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
+                    所有歌曲
+                    ${activeTab === 'songs' ? '<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500 rounded-full"></div>' : ''}
+                </button>
+                <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, &quot;albums&quot;]"
+                        class="artist-tab text-sm font-bold transition-all relative py-1 ${activeTab === 'albums' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
+                    所有专辑
+                    ${activeTab === 'albums' ? '<div class="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500 rounded-full"></div>' : ''}
+                </button>
+            </div>
+            
+            ${activeTab === 'songs' ? `
+            <div class="artist-tabs-sort flex items-center p-0.5 t-bg-panel rounded-lg border t-border-main shadow-sm relative z-30">
+                <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;hot&quot;, &quot;songs&quot;]"
+                        class="px-3 py-1 text-xs font-bold rounded-md transition-all ${order === 'hot' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
+                    热门
+                </button>
+                <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;time&quot;, &quot;songs&quot;]"
+                        class="px-3 py-1 text-xs font-bold rounded-md transition-all ${order === 'time' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
+                    最新
+                </button>
+            </div>
+            ` : ''}
+        </div>
+        <div id="artist-detail-content" class="player-track-list-content flex-1 p-2 md:p-4">
             <div class="flex items-center justify-center py-10">
                 <i class="fas fa-spinner fa-spin text-2xl text-emerald-500"></i>
             </div>
@@ -1357,7 +1357,7 @@ function renderArtistSongsUI(list, page) {
 
     let html = `
         <!-- 表头 -->
-        ${renderTrackListHeader({ extraClass: 'px-3 py-1.5 sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm' })}
+        ${renderTrackListHeader({ extraClass: 'px-3 py-1.5 sticky top-[40px] z-20 rounded-t-xl overflow-hidden shadow-sm' })}
 
         <div class="space-y-1 mt-2">
             ${indexedDisplayList.map((obj, displayIndex) => {

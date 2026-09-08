@@ -28,7 +28,8 @@ export function ensureMarkedLoaded() {
 }
 
 export function ensureVisualizerLoaded() {
-    return loadLazyScript('js/visualizer.js', 'musicVisualizer');
+    return loadLazyScript('js/wave.js', 'Wave')
+        .then(() => loadLazyScript('js/visualizer.js', 'musicVisualizer'));
 }
 
 export function ensureLeaderboardLoaded() {

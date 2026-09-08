@@ -286,8 +286,50 @@ type SearchDetailHistoryState = {
     tab?: string;
 };
 
+function syncSearchDetailHeaderVisibility() {
+    const header = document.getElementById('search-results-header');
+    if (header) header.classList.toggle('hidden', searchDetailOpen);
+}
+
 function setSearchDetailOpen(value: boolean) {
     searchDetailOpen = value;
+    syncSearchDetailHeaderVisibility();
+}
+
+function renderTrackListHeader({ includeBackToolbar = false, extraClass = '' } = {}) {
+    const backToolbar = includeBackToolbar ? `
+        <div class="player-detail-list-toolbar flex items-center gap-2 px-1 pt-1">
+            <button type="button" data-event-click-action="goBackToSearch"
+                class="list-header-back t-text-muted hover:t-text-main hover:t-bg-track rounded-lg transition-colors"
+                title="返回列表" aria-label="返回列表">
+                <i class="fas fa-arrow-left text-xs" aria-hidden="true"></i>
+                <span class="text-xs font-medium">返回列表</span>
+            </button>
+        </div>
+    ` : '';
+
+    return `${backToolbar}
+        <div class="player-track-grid player-track-grid--network player-track-grid--header ${extraClass} border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
+            <div class="player-track-index list-header-leading">
+                <div class="list-header-actions" role="group" aria-label="列表操作">
+                    <button data-event-click-action="toggleBatchMode" data-list-action="batch"
+                        class="list-header-action"
+                        title="多选操作" aria-label="多选操作" aria-pressed="${window.batchMode ? 'true' : 'false'}">
+                        <i class="fas fa-tasks" aria-hidden="true"></i>
+                    </button>
+                    <button data-event-click-action="ListSearch.toggleBar" data-list-action="search"
+                        class="list-header-action"
+                        title="搜索当前列表" aria-label="搜索当前列表">
+                        <i class="fas fa-search" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="player-track-title">歌曲标题</div>
+            <div class="player-track-artist text-right md:text-left">歌手</div>
+            <div class="player-track-album">专辑</div>
+            <div class="player-track-duration text-center md:text-left">时长</div>
+            <div class="player-track-actions text-right">操作</div>
+        </div>`;
 }
 
 //搜索歌曲
@@ -932,8 +974,6 @@ async function enterArtist(id, source = 'wy', order = 'hot', tab = 'songs', isBa
     window.currentArtistTab = tab;
     const request = beginArtistRequest();
     const resultsContainer = document.getElementById('search-results');
-    const header = document.getElementById('search-results-header');
-    if (header) header.classList.add('hidden');
 
     // 只有在没有缓存或者 ID 变化时才获取详情
     if (!currentArtistInfo || String(currentArtistInfo.id) !== String(id) || currentArtistInfo.source !== source) {
@@ -1252,28 +1292,8 @@ function renderArtistSongsUI(list, page) {
 
     let html = `
         <!-- 表头 -->
-        <div class="player-track-grid player-track-grid--network player-track-grid--header px-3 py-1.5 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm list-results-header">
-            <div class="player-track-index list-header-leading">
-                <div class="list-header-actions" role="group" aria-label="列表操作">
-                    <button data-event-click-action="toggleBatchMode" data-list-action="batch"
-                        class="list-header-action"
-                        title="多选操作" aria-label="多选操作" aria-pressed="${window.batchMode ? 'true' : 'false'}">
-                        <i class="fas fa-tasks" aria-hidden="true"></i>
-                    </button>
-                    <button data-event-click-action="ListSearch.toggleBar" data-list-action="search"
-                        class="list-header-action"
-                        title="搜索当前列表" aria-label="搜索当前列表">
-                        <i class="fas fa-search" aria-hidden="true"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="player-track-title">歌曲标题</div>
-            <div class="player-track-artist text-right md:text-left">歌手</div>
-            <div class="player-track-album">专辑</div>
-            <div class="player-track-duration text-center md:text-left">时长</div>
-            <div class="player-track-actions text-right">操作</div>
-        </div>
-        
+        ${renderTrackListHeader({ extraClass: 'px-3 py-1.5 sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm' })}
+
         <div class="space-y-1 mt-2">
             ${indexedDisplayList.map((obj, displayIndex) => {
         const { item, originalIndex: index } = obj;
@@ -1843,10 +1863,9 @@ function getImgUrl(item) {
 function renderResults(list) {
     const container = document.getElementById('search-results');
     const header = document.getElementById('search-results-header');
-    if (header) header.classList.remove('hidden');
     // 搜索歌曲时恢复底部分页栏显示
     const paginationBar = document.getElementById('search-pagination-bar');
-    if (paginationBar) paginationBar.classList.remove('hidden');
+    if (paginationBar) paginationBar.classList.toggle('hidden', searchDetailOpen);
     // 重置歌手详情分页（进入歌曲搜索视图时清空）
     window.artistSongsPage = 1;
 
@@ -1857,13 +1876,16 @@ function renderResults(list) {
 
     // Update Header
     if (header) {
-        header.classList.remove('hidden');
-    }
-    if (header) {
+        header.classList.toggle('hidden', searchDetailOpen);
         header.classList.toggle('player-track-grid--no-album', !showAlbum);
     }
 
-    container.innerHTML = '';
+    container.innerHTML = searchDetailOpen
+        ? renderTrackListHeader({
+            includeBackToolbar: true,
+            extraClass: `${showAlbum ? '' : 'player-track-grid--no-album '}px-3 py-1.5 rounded-t-2xl shadow-sm`,
+        })
+        : '';
 
     // [Fix] 确保每个歌曲都有唯一的 ID，防止批量操作时因为 ID 缺失(undefined)导致只能选中一个
     // 很多源(如酷狗、咪咕)返回的原始数据可能只有 hash 或 copyrightsId 而没有 id 字段
@@ -1878,7 +1900,9 @@ function renderResults(list) {
     window.viewingPlaylist = list;
 
     if (!list || list.length === 0) {
-        container.innerHTML = '<div class="text-center t-text-muted p-8">未找到相关结果</div>';
+        const emptyState = '<div class="text-center t-text-muted p-8">未找到相关结果</div>';
+        if (searchDetailOpen) container.insertAdjacentHTML('beforeend', emptyState);
+        else container.innerHTML = emptyState;
         updatePaginationInfo(0, 0, 0, 1, 1);
         return;
     }

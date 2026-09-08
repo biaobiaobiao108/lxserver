@@ -117,6 +117,26 @@ describe('Player Navigation and State Restoration Safety', () => {
         }
     });
 
+    it('search detail views keep one local track header and preserve navigation', () => {
+        const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
+        const css = fs.readFileSync(playerCssPath, 'utf8');
+
+        expect(searchContent).toContain('function syncSearchDetailHeaderVisibility');
+        expect(searchContent).toContain('header.classList.toggle(\'hidden\', searchDetailOpen)');
+        expect(searchContent).toContain('function renderTrackListHeader');
+        expect(searchContent).toContain('includeBackToolbar: true');
+        expect(searchContent).toContain('data-event-click-action="goBackToSearch"');
+        expect(searchContent).toContain('renderTrackListHeader({ extraClass:');
+        expect(searchContent).toContain('container.insertAdjacentHTML(\'beforeend\', emptyState)');
+        expect(searchContent).toContain('paginationBar.classList.toggle(\'hidden\', searchDetailOpen)');
+        expect(css).toContain('#search-results-header.hidden');
+        expect(css).toContain('display: none !important');
+        expect(css).toContain('.player-detail-list-toolbar');
+        expect(css).toContain('scrollbar-gutter: stable');
+        expect(css).toContain('flex: 0 0 14rem');
+        expect(css).toContain('min-inline-size: 14rem');
+    });
+
     it('mobile player footer uses explicit rows and keeps every control touchable', () => {
         const playerHtmlPath = path.join(import.meta.dir, '../public/music/index.html');
         const html = fs.readFileSync(playerHtmlPath, 'utf8');

@@ -937,6 +937,25 @@ type ArtistRequestContext = {
 
 let artistRequestSerial = 0;
 let artistRequestController: AbortController | null = null;
+let artistSongsUsesServerPagination = false;
+let artistSongsTotal = 0;
+let artistSongsPageSize = 20;
+const artistSongsPageCache = new Map<number, any[]>();
+
+function getArtistSongsPageSize() {
+    if (settings?.itemsPerPage === 'all') return 100;
+    const configured = Number.parseInt(settings?.itemsPerPage || '20', 10);
+    return Math.min(100, Math.max(1, Number.isFinite(configured) ? configured : 20));
+}
+
+function resetArtistSongsCache() {
+    artistSongsUsesServerPagination = false;
+    artistSongsTotal = 0;
+    artistSongsPageSize = getArtistSongsPageSize();
+    artistSongsPageCache.clear();
+    window.currentArtistSongsCache = null;
+    window.artistSongsPage = 1;
+}
 
 function beginArtistRequest(): ArtistRequestContext {
     artistRequestController?.abort();
@@ -985,12 +1004,12 @@ async function enterArtist(id, source = 'wy', order = 'hot', tab = 'songs', isBa
     const isDifferentArtist = String(currentArtistId || '') !== String(id) || currentArtistSource !== source;
     const isDifferentOrder = previousArtistOrder !== order;
     if (isDifferentArtist || (tab === 'songs' && isDifferentOrder)) {
-        window.currentArtistSongsCache = null;
-        window.artistSongsPage = 1;
+        resetArtistSongsCache();
         if (window.ListSearch) window.ListSearch.resetState();
     }
     if (isDifferentArtist) {
         window.currentArtistAlbumsCache = null;
+        artistAlbumsPage = 1;
     }
 
     currentArtistId = id;
@@ -1001,9 +1020,18 @@ async function enterArtist(id, source = 'wy', order = 'hot', tab = 'songs', isBa
     window.currentArtistTab = tab;
     const request = beginArtistRequest();
     const resultsContainer = document.getElementById('search-results');
+    const needsArtistInfo = !currentArtistInfo
+        || String(currentArtistInfo.id) !== String(id)
+        || currentArtistInfo.source !== source;
+    // 详情资料和当前标签数据互不依赖；并行发起可消除一次完整网络往返。
+    const pendingContent = needsArtistInfo
+        ? (tab === 'songs'
+            ? loadArtistSongs(id, source, order, false, request, window.artistSongsPage || 1)
+            : loadArtistAlbums(id, source, false, request))
+        : null;
 
     // 只有在没有缓存或者 ID 变化时才获取详情
-    if (!currentArtistInfo || String(currentArtistInfo.id) !== String(id) || currentArtistInfo.source !== source) {
+    if (needsArtistInfo) {
         // 如果还没有头部，显示加载
         if (!document.getElementById('artist-detail-header')) {
             resultsContainer.innerHTML = '<div class="flex items-center justify-center h-full"><i class="fas fa-spinner fa-spin text-4xl text-emerald-500"></i></div>';
@@ -1031,9 +1059,15 @@ async function enterArtist(id, source = 'wy', order = 'hot', tab = 'songs', isBa
     renderArtistHeader(currentArtistInfo, tab, order);
 
     // 加载具体内容
-    if (tab === 'songs') {
-        await loadArtistSongs(id, source, order, false, request);
-    } else if (tab === 'albums') {
+    if (pendingContent) {
+        await pendingContent;
+        if (!isArtistRequestCurrent(request, id, source, tab, tab === 'songs' ? order : null)) return;
+    }
+    const contentStillLoading = document.querySelector('#artist-detail-content .fa-spinner') !== null;
+    if (tab === 'songs' && (!pendingContent || contentStillLoading)) {
+        // 请求可能比歌手资料更早完成，此时内容容器还不存在；缓存命中会立即补绘。
+        await loadArtistSongs(id, source, order, false, request, window.artistSongsPage || 1);
+    } else if (tab === 'albums' && (!pendingContent || contentStillLoading)) {
         await loadArtistAlbums(id, source, false, request);
     }
 
@@ -1248,12 +1282,22 @@ function toggleArtistFold() {
 }
 window.toggleArtistFold = toggleArtistFold;
 
-async function loadArtistSongs(id, source, order, forceFetch = false, requestContext: ArtistRequestContext | null = null) {
+async function loadArtistSongs(
+    id,
+    source,
+    order,
+    forceFetch = false,
+    requestContext: ArtistRequestContext | null = null,
+    requestedPage = window.artistSongsPage || 1,
+) {
     const request = requestContext || beginArtistRequest();
+    const page = Math.max(1, Number.parseInt(String(requestedPage), 10) || 1);
+    const cachedPage = artistSongsPageCache.get(page);
     // Check if we can use cache to speed up UI transitions (like batch mode toggle)
-    if (!forceFetch && window.currentArtistSongsCache && window.currentArtistId === id && window.currentArtistOrder === order && window.currentArtistSource === source) {
+    if (!forceFetch && cachedPage && String(window.currentArtistId) === String(id) && window.currentArtistOrder === order && window.currentArtistSource === source) {
         if (!isArtistRequestCurrent(request, id, source, 'songs', order)) return;
-        renderArtistSongsUI(window.currentArtistSongsCache);
+        window.currentArtistSongsCache = cachedPage;
+        renderArtistSongsUI(cachedPage, page);
         return;
     }
 
@@ -1261,29 +1305,44 @@ async function loadArtistSongs(id, source, order, forceFetch = false, requestCon
     renderArtistSongsLoading();
 
     try {
-        const res = await fetch(`${API_BASE}/artistSongs?id=${id}&source=${source}&order=${order}`, {
+        const pageSize = getArtistSongsPageSize();
+        const query = new URLSearchParams({
+            id: String(id),
+            source: String(source),
+            order: String(order),
+            page: String(page),
+            limit: String(pageSize),
+        });
+        const res = await fetch(`${API_BASE}/artistSongs?${query.toString()}`, {
             signal: request.controller.signal,
         });
         if (!res.ok) throw new Error('Failed to fetch songs');
-        const list = await res.json();
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : (Array.isArray(data?.list) ? data.list : []);
 
         if (!isArtistRequestCurrent(request, id, source, 'songs', order)) return;
 
         // [Fix] 唯一 ID
         list.forEach((item, idx) => {
             if (!item.id || item.id === 'undefined') {
-                item.id = item.songmid || item.songId || item.hash || item.copyrightId || item.mid || item.mediaMid || `art_${id}_${idx}`;
+                item.id = item.songmid || item.songId || item.hash || item.copyrightId || item.mid || item.mediaMid || `art_${id}_${page}_${idx}`;
             }
         });
 
-        // 缓存当前结果
+        // 只缓存已访问页，避免高产歌手一次性传输和解析上千首歌曲。
+        artistSongsUsesServerPagination = !Array.isArray(data);
+        artistSongsPageSize = Number(data?.limit) || pageSize;
+        artistSongsTotal = artistSongsUsesServerPagination
+            ? Math.max(Number(data?.total) || 0, (page - 1) * artistSongsPageSize + list.length)
+            : list.length;
+        artistSongsPageCache.set(page, list);
         window.currentArtistSongsCache = list;
         window.currentArtistId = id;
         window.currentArtistSource = source;
         window.currentArtistOrder = order;
-        window.artistSongsPage = 1; // 重置到第1页
+        window.artistSongsPage = page;
 
-        renderArtistSongsUI(list, 1);
+        renderArtistSongsUI(list, page);
     } catch (e) {
         if (e?.name === 'AbortError' || !isArtistRequestCurrent(request, id, source, 'songs', order)) return;
         showError(`加载歌曲失败: ${e.message}`);
@@ -1318,13 +1377,16 @@ function getArtistSongsPageMetrics(list) {
     const displayList = window.ListSearch
         ? window.ListSearch.getDisplayList(list)
         : list.map((item, index) => ({ item, originalIndex: index }));
-    const totalItems = displayList.length;
-    let itemsPerPage = (settings && settings.itemsPerPage === 'all')
-        ? totalItems
-        : parseInt((settings && settings.itemsPerPage) || 20);
+    const serverPageIsFiltered = artistSongsUsesServerPagination && displayList.length !== list.length;
+    const totalItems = artistSongsUsesServerPagination && !serverPageIsFiltered
+        ? artistSongsTotal
+        : displayList.length;
+    let itemsPerPage = artistSongsUsesServerPagination && !serverPageIsFiltered
+        ? artistSongsPageSize
+        : ((settings && settings.itemsPerPage === 'all') ? totalItems : parseInt((settings && settings.itemsPerPage) || 20));
     if (!itemsPerPage || itemsPerPage <= 0) itemsPerPage = 20;
     const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
-    return { displayList, itemsPerPage, totalItems, totalPages };
+    return { displayList, itemsPerPage, totalItems, totalPages, usesServerPagination: artistSongsUsesServerPagination && !serverPageIsFiltered };
 }
 
 function renderArtistSongsUI(list, page) {
@@ -1339,7 +1401,7 @@ function renderArtistSongsUI(list, page) {
     }
 
     // 前端分页逻辑，分页数量与列表搜索后的可见结果保持一致
-    const { displayList, itemsPerPage, totalItems, totalPages } = getArtistSongsPageMetrics(list);
+    const { displayList, itemsPerPage, totalItems, totalPages, usesServerPagination } = getArtistSongsPageMetrics(list);
 
     // 使用传入的 page 或者全局 artistSongsPage，默认第1页
     if (page !== undefined) window.artistSongsPage = page;
@@ -1349,12 +1411,13 @@ function renderArtistSongsUI(list, page) {
     const artistPage = window.artistSongsPage;
     const startIndex = (artistPage - 1) * itemsPerPage;
     const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
-    const indexedDisplayList = displayList.slice(startIndex, endIndex);
+    const indexedDisplayList = usesServerPagination ? displayList : displayList.slice(startIndex, endIndex);
 
     let html = `
         <div class="space-y-1">
             ${indexedDisplayList.map((obj, displayIndex) => {
-        const { item, originalIndex: index } = obj;
+        const { item, originalIndex: playlistIndex } = obj;
+        const index = usesServerPagination ? startIndex + playlistIndex : playlistIndex;
         const itemIdValue = String(item.id ?? '');
         const itemId = escapeHtmlText(itemIdValue);
         const itemIdArg = safeInlineString(itemIdValue);
@@ -1382,8 +1445,8 @@ function renderArtistSongsUI(list, page) {
                 <div role="button" tabindex="0" aria-label="${window.batchMode ? `${selectionLabel} ${itemName}` : `播放 ${itemName}`}" ${selectionAttributes}
                      data-selection-state="${isSelected ? 'selected' : 'unselected'}"
                      class="${rowClass}" style="--player-motion-index: ${Math.min(displayIndex, 7)};" data-song-id="${itemId}"
-                     data-event-click-action="search-row-activate" data-event-click-args="[${itemIdArg}, ${index}]"
-                     data-event-keydown-action="search-row-activate" data-event-keydown-args="[${itemIdArg}, ${index}]" data-event-keys="Enter, " data-event-target-self="true" data-event-prevent="true">
+                     data-event-click-action="search-row-activate" data-event-click-args="[${itemIdArg}, ${playlistIndex}]"
+                     data-event-keydown-action="search-row-activate" data-event-keydown-args="[${itemIdArg}, ${playlistIndex}]" data-event-keys="Enter, " data-event-target-self="true" data-event-prevent="true">
                     <!-- Index -->
                     <div class="player-track-index text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
                         ${window.batchMode ? `
@@ -1433,7 +1496,7 @@ function renderArtistSongsUI(list, page) {
 
                     <!-- Actions -->
                     <div class="player-track-actions flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors" title="播放" data-event-click-action="playFromView" data-event-click-args="[${index}]" data-event-stop="true">
+                        <button class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors" title="播放" data-event-click-action="playFromView" data-event-click-args="[${playlistIndex}]" data-event-stop="true">
                             <i class="fas fa-play w-3.5 h-3.5"></i>
                         </button>
                         <button class="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors" title="下载" data-event-click-action="downloadSong" data-event-click-args="[${safeInlineJson(item)}]" data-event-stop="true">
@@ -1480,9 +1543,13 @@ window.renderArtistSongsUI = renderArtistSongsUI;
 
 // 歌手详情页内部翻页函数
 function artistSongsPrevPage() {
+    if (!window.artistSongsPage || window.artistSongsPage <= 1) return;
+    if (artistSongsUsesServerPagination) {
+        void loadArtistSongs(window.currentArtistId, window.currentArtistSource || 'wy', window.currentArtistOrder || 'hot', false, null, window.artistSongsPage - 1);
+        return;
+    }
     const list = window.currentArtistSongsCache;
     if (!list) return;
-    if (!window.artistSongsPage || window.artistSongsPage <= 1) return;
     renderArtistSongsUI(list, window.artistSongsPage - 1);
 }
 function artistSongsNextPage() {
@@ -1490,6 +1557,10 @@ function artistSongsNextPage() {
     if (!list) return;
     const { totalPages } = getArtistSongsPageMetrics(list);
     if ((window.artistSongsPage || 1) >= totalPages) return;
+    if (artistSongsUsesServerPagination) {
+        void loadArtistSongs(window.currentArtistId, window.currentArtistSource || 'wy', window.currentArtistOrder || 'hot', false, null, (window.artistSongsPage || 1) + 1);
+        return;
+    }
     renderArtistSongsUI(list, (window.artistSongsPage || 1) + 1);
 }
 function artistSongsGoToPage() {
@@ -1502,6 +1573,10 @@ function artistSongsGoToPage() {
     if (!Number.isFinite(requestedPage)) return;
 
     const targetPage = Math.min(totalPages, Math.max(1, requestedPage));
+    if (artistSongsUsesServerPagination) {
+        void loadArtistSongs(window.currentArtistId, window.currentArtistSource || 'wy', window.currentArtistOrder || 'hot', false, null, targetPage);
+        return;
+    }
     renderArtistSongsUI(list, targetPage);
 }
 window.artistSongsPrevPage = artistSongsPrevPage;
@@ -1510,6 +1585,9 @@ window.artistSongsGoToPage = artistSongsGoToPage;
 
 const ARTIST_ALBUM_PAGE_SIZE = 50;
 const ARTIST_ALBUM_MAX_PAGES = 100;
+const ARTIST_ALBUM_FETCH_CONCURRENCY = 4;
+const ARTIST_ALBUM_RENDER_PAGE_SIZE = 30;
+let artistAlbumsPage = 1;
 
 function renderArtistAlbumsLoading(loaded = 0, total = 0) {
     const content = document.getElementById('artist-detail-content');
@@ -1532,17 +1610,17 @@ async function fetchAllArtistAlbums(id, source, signal, onProgress) {
     const albums = [];
     const albumKeys = new Set();
     let total = 0;
-
-    for (let page = 1; page <= ARTIST_ALBUM_MAX_PAGES; page++) {
+    const fetchPage = async (page) => {
         const query = new URLSearchParams({ id: String(id), source, page: String(page) });
         const res = await fetch(API_BASE + '/artistAlbums?' + query.toString(), { signal });
         if (!res.ok) throw new Error('Failed to fetch artist albums page ' + page);
-
         const data = await res.json();
-        const pageList = Array.isArray(data.list) ? data.list : [];
-        const previousCount = albums.length;
-        total = Math.max(total, Number(data.total) || 0);
-
+        return {
+            list: Array.isArray(data.list) ? data.list : [],
+            total: Number(data.total) || 0,
+        };
+    };
+    const appendPage = (pageList, page) => {
         pageList.forEach((album, index) => {
             const albumId = album.id ?? album.mid;
             const key = albumId !== undefined && albumId !== null && albumId !== ''
@@ -1552,9 +1630,41 @@ async function fetchAllArtistAlbums(id, source, signal, onProgress) {
             albumKeys.add(key);
             albums.push({ ...album, source: album.source || source });
         });
-
         if (typeof onProgress === 'function') onProgress(albums.length, total);
+    };
 
+    const firstPage = await fetchPage(1);
+    total = firstPage.total;
+    appendPage(firstPage.list, 1);
+    if (firstPage.list.length < ARTIST_ALBUM_PAGE_SIZE || (total > 0 && albums.length >= total)) {
+        return { list: albums, total: total || albums.length };
+    }
+
+    if (total > 0) {
+        const lastPage = Math.min(ARTIST_ALBUM_MAX_PAGES, Math.ceil(total / ARTIST_ALBUM_PAGE_SIZE));
+        const pageResults = new Map();
+        let nextPage = 2;
+        const workers = Array.from({ length: Math.min(ARTIST_ALBUM_FETCH_CONCURRENCY, lastPage - 1) }, async () => {
+            while (nextPage <= lastPage) {
+                const page = nextPage++;
+                pageResults.set(page, await fetchPage(page));
+            }
+        });
+        await Promise.all(workers);
+        for (let page = 2; page <= lastPage; page++) {
+            const result = pageResults.get(page);
+            if (result) appendPage(result.list, page);
+        }
+        return { list: albums, total: total || albums.length };
+    }
+
+    // 个别音源不返回 total；此时保守地顺序探测，避免并发请求无效页。
+    for (let page = 2; page <= ARTIST_ALBUM_MAX_PAGES; page++) {
+        const result = await fetchPage(page);
+        const previousCount = albums.length;
+        appendPage(result.list, page);
+        total = Math.max(total, result.total);
+        const pageList = result.list;
         const reachedTotal = total > 0 && albums.length >= total;
         const pageExhausted = pageList.length < ARTIST_ALBUM_PAGE_SIZE;
         const noNewAlbums = albums.length === previousCount;
@@ -1588,9 +1698,10 @@ async function loadArtistAlbums(id, source, forceFetch = false, requestContext: 
 
         window.currentArtistAlbumsCache = list;
         window.currentArtistAlbumsTotal = data.total;
+        artistAlbumsPage = 1;
 
         if (window.currentArtistTab === 'albums') {
-            renderArtistAlbumsUI(list);
+            renderArtistAlbumsUI(list, 1);
         }
     } catch (e) {
         if (e?.name === 'AbortError' || !isArtistRequestCurrent(request, id, source, 'albums')) return;
@@ -1599,7 +1710,7 @@ async function loadArtistAlbums(id, source, forceFetch = false, requestContext: 
     }
 }
 
-function renderArtistAlbumsUI(list) {
+function renderArtistAlbumsUI(list, requestedPage = artistAlbumsPage) {
     const content = document.getElementById('artist-detail-content');
     if (!content) return;
 
@@ -1609,9 +1720,14 @@ function renderArtistAlbumsUI(list) {
     }
 
     const artistName = currentArtistInfo?.name || '';
+    const totalPages = Math.max(1, Math.ceil(list.length / ARTIST_ALBUM_RENDER_PAGE_SIZE));
+    artistAlbumsPage = Math.min(totalPages, Math.max(1, Number(requestedPage) || 1));
+    const startIndex = (artistAlbumsPage - 1) * ARTIST_ALBUM_RENDER_PAGE_SIZE;
+    const visibleAlbums = list.slice(startIndex, startIndex + ARTIST_ALBUM_RENDER_PAGE_SIZE);
     const html = `
         <div class="artist-albums-grid p-2 md:p-4 animate-in fade-in duration-300">
-            ${list.map((album, index) => {
+            ${visibleAlbums.map((album, visibleIndex) => {
+                const index = startIndex + visibleIndex;
                 const albumId = album.id ?? album.mid;
                 const albumSource = album.source || window.currentArtistSource || 'wy';
                 const albumName = album.name || '未知专辑';
@@ -1645,6 +1761,18 @@ function renderArtistAlbumsUI(list) {
             `;
             }).join('')}
         </div>
+        ${totalPages > 1 ? `
+        <div class="player-pagination-bar artist-albums-pagination border-t t-border-main t-bg-main">
+            <button type="button" data-event-click-action="artistAlbumsGoToPage" data-event-click-args="[${artistAlbumsPage - 1}]"
+                class="player-pagination-button t-text-muted hover:t-text-main" ${artistAlbumsPage <= 1 ? 'disabled' : ''}>
+                <i class="fas fa-chevron-left" aria-hidden="true"></i><span class="hidden sm:inline">上一页</span>
+            </button>
+            <span class="player-pagination-info t-text-muted">第 ${artistAlbumsPage} / ${totalPages} 页 (${list.length} 张)</span>
+            <button type="button" data-event-click-action="artistAlbumsGoToPage" data-event-click-args="[${artistAlbumsPage + 1}]"
+                class="player-pagination-button t-text-muted hover:t-text-main" ${artistAlbumsPage >= totalPages ? 'disabled' : ''}>
+                <span class="hidden sm:inline">下一页</span><i class="fas fa-chevron-right" aria-hidden="true"></i>
+            </button>
+        </div>` : ''}
     `;
     content.innerHTML = html;
     animateArtistDetailContent(content);
@@ -1676,6 +1804,14 @@ function renderArtistAlbumsUI(list) {
     });
 }
 window.renderArtistAlbumsUI = renderArtistAlbumsUI;
+
+function artistAlbumsGoToPage(page) {
+    const list = window.currentArtistAlbumsCache;
+    if (!Array.isArray(list)) return;
+    renderArtistAlbumsUI(list, page);
+    document.getElementById('artist-detail-view')?.scrollTo({ top: 0, behavior: 'smooth' });
+}
+window.artistAlbumsGoToPage = artistAlbumsGoToPage;
 
 async function downloadArtistAlbumSongs(album, button) {
     if (typeof window.batchDownloadSongs !== 'function') {

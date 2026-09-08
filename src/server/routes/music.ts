@@ -218,16 +218,34 @@ export const createMusicRouter = (): Router => {
     const id = ctx.query.get('id')
     const source = ctx.query.get('source') || 'wy'
     const order = ctx.query.get('order') || 'hot'
+    const requestedPage = ctx.query.get('page')
+    const requestedLimit = ctx.query.get('limit')
     if (!id) return ctx.text('Missing id', 400)
     try {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.extendDetail?.getArtistSongs) throw new Error(`Source ${source} does not support artist songs`)
+
+      // Web Player 按页读取，避免进入高产歌手详情时串行抓取并传输上千首歌曲。
+      // 未传分页参数时仍保留旧的全量数组响应，兼容现有 API 调用方。
+      if (requestedPage !== null || requestedLimit !== null) {
+        const page = boundedInt(requestedPage, 1, 1, 1000)
+        const limit = boundedInt(requestedLimit, 50, 1, 100)
+        const data = await sourceApi.extendDetail.getArtistSongs(id, page, limit, order)
+        const list = Array.isArray(data?.list) ? data.list : []
+        return ctx.json({
+          list,
+          total: Math.max(Number(data?.total) || 0, list.length),
+          page,
+          limit,
+        })
+      }
+
       const PAGE_SIZE = 100
       const configuredMaxPages = Number((global.lx.config as any)?.['artist.maxFetchPages'])
       const MAX_PAGES = Number.isFinite(configuredMaxPages) && configuredMaxPages > 0
         ? Math.min(Math.floor(configuredMaxPages), 100)
         : 20
       let allSongs: any[] = []
-      const sourceApi = getBuiltinSource(source)
-      if (!sourceApi?.extendDetail?.getArtistSongs) throw new Error(`Source ${source} does not support artist songs`)
       for (let p = 1; p <= MAX_PAGES; p++) {
         const data = await sourceApi.extendDetail.getArtistSongs(id, p, PAGE_SIZE, order)
         const pageList: any[] = data.list || []

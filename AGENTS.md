@@ -69,7 +69,7 @@ lxserver/
 
 ### Git 规范（强制要求）
 - **每次实现一个新功能或者修复一个 bug 并验证通过后，必须执行一次 `git commit`**。
-- 提交信息必须规范清晰，遵循语义化格式（如 `feat:`, `fix:`, `refactor:`, `test:`, `docs:` 等）。
+- 提交信息必须规范清晰，遵循语义化格式（如 `feat:`, `fix:`, `refactor:`, `test:`, `docs:` 等），并且用中文。
 
 ### 工具链规范
 - **全栈纯 Bun**：本项目为纯 Bun 工程，**严禁**使用 `npm`, `yarn`, `pnpm` 或 `node` 执行安装与启动。

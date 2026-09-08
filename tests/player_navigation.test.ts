@@ -183,6 +183,31 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(html).toContain('overflow-y-auto no-scrollbar');
     });
 
+    it('artist and favorite detail paths bound initial network and DOM work', () => {
+        const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
+        const libraryContent = fs.readFileSync(librarySrcPath, 'utf8');
+        const musicRoutes = fs.readFileSync(path.join(import.meta.dir, '../src/server/routes/music.ts'), 'utf8');
+
+        expect(searchContent).toContain('const pendingContent = needsArtistInfo');
+        expect(searchContent).toContain('page: String(page)');
+        expect(searchContent).toContain('limit: String(pageSize)');
+        expect(searchContent).toContain('const artistSongsPageCache = new Map<number, any[]>()');
+        expect(searchContent).toContain('data-event-click-args="[${itemIdArg}, ${playlistIndex}]"');
+        expect(searchContent).toContain('const ARTIST_ALBUM_RENDER_PAGE_SIZE = 30;');
+        expect(searchContent).toContain('const visibleAlbums = list.slice(startIndex, startIndex + ARTIST_ALBUM_RENDER_PAGE_SIZE);');
+        expect(searchContent).toContain('const ARTIST_ALBUM_FETCH_CONCURRENCY = 4;');
+
+        expect(libraryContent).toContain('const LIBRARY_RENDER_PAGE_SIZE: Record<LibraryKind, number>');
+        expect(libraryContent).toContain('visibleList: list.slice(startIndex, startIndex + pageSize)');
+        expect(libraryContent).toContain('data-event-click-action="libraryGoToPage"');
+
+        expect(musicRoutes).toContain("const requestedPage = ctx.query.get('page')");
+        expect(musicRoutes).toContain("const requestedLimit = ctx.query.get('limit')");
+        expect(musicRoutes).toContain('if (requestedPage !== null || requestedLimit !== null)');
+        expect(musicRoutes).toContain('const limit = boundedInt(requestedLimit, 50, 1, 100)');
+        expect(musicRoutes).toContain('// 未传分页参数时仍保留旧的全量数组响应');
+    });
+
     it('search favorite controls do not activate their parent detail cards', () => {
         const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
         const singerSection = searchContent.match(/function renderSingerResults[\s\S]*?function renderAlbumResults/)?.[0] ?? '';

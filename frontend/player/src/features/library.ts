@@ -63,6 +63,41 @@ window.getActiveLibraryList = getActiveLibraryList;
 window.libraryBatchSelected = new Set();
 window.libraryBatchMode = false; // 'artist' | 'album' | false
 
+const LIBRARY_RENDER_PAGE_SIZE: Record<LibraryKind, number> = {
+    artists: 56,
+    albums: 30,
+};
+const libraryViewState: Record<LibraryKind, { page: number; list: any[] }> = {
+    artists: { page: 1, list: [] },
+    albums: { page: 1, list: [] },
+};
+
+function getLibraryPage(kind: LibraryKind, list: any[], requestedPage?: number) {
+    const pageSize = LIBRARY_RENDER_PAGE_SIZE[kind];
+    const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+    const page = Math.min(totalPages, Math.max(1, Number(requestedPage ?? libraryViewState[kind].page) || 1));
+    libraryViewState[kind] = { page, list };
+    const startIndex = (page - 1) * pageSize;
+    return { page, totalPages, visibleList: list.slice(startIndex, startIndex + pageSize) };
+}
+
+function renderLibraryPagination(kind: LibraryKind, page: number, totalPages: number, total: number) {
+    if (totalPages <= 1) return '';
+    const label = kind === 'artists' ? '位' : '张';
+    return `
+        <div class="player-pagination-bar library-pagination border-t t-border-main t-bg-main">
+            <button type="button" data-event-click-action="libraryGoToPage" data-event-click-args="[&quot;${kind}&quot;, ${page - 1}]"
+                class="player-pagination-button t-text-muted hover:t-text-main" ${page <= 1 ? 'disabled' : ''}>
+                <i class="fas fa-chevron-left" aria-hidden="true"></i><span class="hidden sm:inline">上一页</span>
+            </button>
+            <span class="player-pagination-info t-text-muted">第 ${page} / ${totalPages} 页 (${total} ${label})</span>
+            <button type="button" data-event-click-action="libraryGoToPage" data-event-click-args="[&quot;${kind}&quot;, ${page + 1}]"
+                class="player-pagination-button t-text-muted hover:t-text-main" ${page >= totalPages ? 'disabled' : ''}>
+                <span class="hidden sm:inline">下一页</span><i class="fas fa-chevron-right" aria-hidden="true"></i>
+            </button>
+        </div>`;
+}
+
 /** 从后端加载两个 library 文件（自动感知公开收藏状态） */
 async function loadLibraryData() {
     libraryLoadController?.abort();
@@ -463,7 +498,7 @@ window.reloadLibraryData = reloadLibraryData;
  * 渲染收藏歌手列表（带批量操作支持）
  * 直接复用搜索结果容器
  */
-function renderLibraryArtists(list) {
+function renderLibraryArtists(list, requestedPage?: number) {
     const container = document.getElementById('search-results');
     container.classList.remove('artist-detail-active');
     const header = document.getElementById('search-results-header');
@@ -485,6 +520,7 @@ function renderLibraryArtists(list) {
         return;
     }
 
+    const { page, totalPages, visibleList } = getLibraryPage('artists', list, requestedPage);
     container.classList.add('lib-view-active');
     container.innerHTML = `
         <div class="lib-sticky-header sticky top-0 z-20 t-bg-main">
@@ -508,10 +544,11 @@ function renderLibraryArtists(list) {
                 </button>
             </div>
         </div>
-        <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 md:gap-4 p-3 md:p-6" id="lib-artist-grid"></div>`;
+        <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 md:gap-4 p-3 md:p-6" id="lib-artist-grid"></div>
+        ${renderLibraryPagination('artists', page, totalPages, list.length)}`;
 
     const grid = container.querySelector('#lib-artist-grid');
-    list.forEach(singer => {
+    visibleList.forEach(singer => {
         const singerId = String(singer.id ?? '');
         const singerSource = String(singer.source || 'wy');
         const singerName = String(singer.name || '未命名歌手');
@@ -553,7 +590,7 @@ function renderLibraryArtists(list) {
 window.renderLibraryArtists = renderLibraryArtists;
 
 /** 渲染收藏专辑列表（带批量操作支持） */
-function renderLibraryAlbums(list) {
+function renderLibraryAlbums(list, requestedPage?: number) {
     const container = document.getElementById('search-results');
     container.classList.remove('artist-detail-active');
     const header = document.getElementById('search-results-header');
@@ -575,6 +612,7 @@ function renderLibraryAlbums(list) {
         return;
     }
 
+    const { page, totalPages, visibleList } = getLibraryPage('albums', list, requestedPage);
     container.classList.add('lib-view-active');
     container.innerHTML = `
         <div class="lib-sticky-header sticky top-0 z-20 t-bg-main">
@@ -601,10 +639,11 @@ function renderLibraryAlbums(list) {
                 </button>
             </div>
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 p-6" id="lib-album-grid"></div>`;
+        <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 p-6" id="lib-album-grid"></div>
+        ${renderLibraryPagination('albums', page, totalPages, list.length)}`;
 
     const grid = container.querySelector('#lib-album-grid');
-    list.forEach(item => {
+    visibleList.forEach(item => {
         const albumId = String(item.id ?? '');
         const albumSource = String(item.source || 'wy');
         const albumName = String(item.name || '未命名专辑');
@@ -657,6 +696,15 @@ function renderLibraryAlbums(list) {
     });
 }
 window.renderLibraryAlbums = renderLibraryAlbums;
+
+function libraryGoToPage(kind: LibraryKind, page: number) {
+    if (kind !== 'artists' && kind !== 'albums') return;
+    const list = libraryViewState[kind].list;
+    if (kind === 'artists') renderLibraryArtists(list, page);
+    else renderLibraryAlbums(list, page);
+    document.getElementById('search-results')?.scrollTo({ top: 0, behavior: 'smooth' });
+}
+window.libraryGoToPage = libraryGoToPage;
 
 /** 点击侧边栏"收藏歌手"，切换到展示视图 */
 async function handleArtistLibraryClick() {
@@ -909,6 +957,7 @@ window.removeLibraryAlbum = removeLibraryAlbum;
         isAlbumFavorited,
         renderLibraryArtists,
         renderLibraryAlbums,
+        libraryGoToPage,
         handleArtistLibraryClick,
         handleAlbumLibraryClick,
         enterLibraryArtistBatch,

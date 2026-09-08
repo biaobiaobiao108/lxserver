@@ -78,6 +78,7 @@ export const deleteUserDataFromDatabase = (userName: string): void => {
     db.run('DELETE FROM snapshots WHERE user_name = ?', [userName])
     db.run('DELETE FROM snapshot_meta WHERE user_name = ?', [userName])
     db.run('DELETE FROM user_settings WHERE user_name = ?', [userName])
+    db.run('DELETE FROM user_sessions WHERE user_name = ?', [userName])
     db.run('DELETE FROM cache_index WHERE user_name = ?', [userName])
     db.run('DELETE FROM devices WHERE user_name = ?', [userName])
     db.run('DELETE FROM users WHERE name = ?', [userName])

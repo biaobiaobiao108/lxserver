@@ -138,6 +138,28 @@ export const persistentTokenMeta = new Map<string, {
 /** lastUsed 防抖写盘队列：username → debounce timer */
 const persistentTokenSaveQueue = new Map<string, ReturnType<typeof setTimeout>>()
 
+/** Revoke all credentials and pending token writes when an account is removed. */
+export const revokeUserAuth = (username: string): void => {
+  getDb().run('DELETE FROM user_sessions WHERE user_name = ?', [username])
+  for (const [token, session] of userSessions) {
+    if (session.username === username) userSessions.delete(token)
+  }
+  for (const [token, owner] of persistentTokens) {
+    if (owner !== username) continue
+    persistentTokens.delete(token)
+    persistentTokenMeta.delete(token)
+  }
+  const timer = persistentTokenSaveQueue.get(username)
+  if (timer) clearTimeout(timer)
+  persistentTokenSaveQueue.delete(username)
+}
+
+const isActiveUser = (username: string): boolean => {
+  if (global.lx?.config?.users?.some(user => user.name === username)) return true
+  revokeUserAuth(username)
+  return false
+}
+
 /** 触发防抖写盘，10s 内的高频更新只写一次 */
 const scheduleSaveTokenConfig = (username: string) => {
   if (persistentTokenSaveQueue.has(username)) clearTimeout(persistentTokenSaveQueue.get(username)!)
@@ -254,7 +276,7 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
     // 1. Session Token 验证
     const session = userSessions.get(token)
     if (session && Date.now() - session.createdAt <= USER_SESSION_TTL) {
-      return session.username
+      return isActiveUser(session.username) ? session.username : null
     }
     if (session) {
       userSessions.delete(token)
@@ -266,6 +288,7 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
         'SELECT user_name, created_at FROM user_sessions WHERE session_hash = ?'
       ).get(hashUserSession(token))
       if (persisted && Date.now() - persisted.created_at <= USER_SESSION_TTL) {
+        if (!isActiveUser(persisted.user_name)) return null
         userSessions.set(token, {
           username: persisted.user_name,
           createdAt: persisted.created_at,
@@ -280,6 +303,7 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
     // 2. 持久化 API Token 验证
     const persistentUsername = persistentTokens.get(token)
     if (persistentUsername) {
+      if (!isActiveUser(persistentUsername)) return null
       const meta = persistentTokenMeta.get(token)
       if (meta) {
         if (meta.disabled) {

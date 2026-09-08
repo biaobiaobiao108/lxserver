@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { Router, type HttpContext } from '../core'
 import { verifyAdminAuth } from '../auth'
-import { verifyUserAuth } from './auth'
+import { verifyUserAuth, revokeUserAuth } from './auth'
 import {
   getUserSpace,
   getUserDirname,
@@ -50,6 +50,7 @@ const saveUsers = () => {
     const existingUsers = db.query<{ name: string }, []>('SELECT name FROM users').all()
     for (const u of existingUsers) {
       if (!currentNames.has(u.name) && u.name !== '_open') {
+        revokeUserAuth(u.name)
         deleteUserDataFromDatabase(u.name)
       }
     }
@@ -175,6 +176,7 @@ export const createUserRouter = (): Router => {
         await new Promise(r => setTimeout(r, 500))
         try {
           migrateUserData(name, newName)
+          revokeUserAuth(name)
           user.name = newName
           if (password) user.password = password
           saveUsers()

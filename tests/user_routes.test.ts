@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { closeDb, getDb, initDatabase } from '@/database'
-import { getUserSpace, releaseUserSpace, syncUsersToDatabase } from '@/user'
+import { getUserDirname, getUserSpace, releaseUserSpace, syncUsersToDatabase } from '@/user'
 import { createUserRouter } from '@/server/routes/user'
-import { userSessions } from '@/server/routes/auth'
+import { createAuthRouter, persistentTokens, persistentTokenMeta, revokeUserAuth, saveUserTokenConfig, userSessions, verifyUserAuth } from '@/server/routes/auth'
 
 describe('User snapshot permissions', () => {
   let previousLx: typeof global.lx
@@ -86,5 +89,104 @@ describe('User snapshot permissions', () => {
       expect(await getUserSpace(owner).listManage.getSnapshot('original')).toBeNull()
     }
     expect((await router.handle(snapshotRequest('upload', 'another_user', userHeaders))).status).toBe(403)
+  })
+})
+
+describe('Deleted account credentials', () => {
+  let previousLx: typeof global.lx
+  let tempDir: string
+  const username = 'deleted_account'
+  const apiToken = 'deleted-account-api-token'
+  const adminHeaders = { 'x-frontend-auth': 'account-admin', 'content-type': 'application/json' }
+
+  beforeEach(() => {
+    previousLx = global.lx
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-account-test-'))
+    closeDb()
+    initDatabase(':memory:')
+    global.lx = {
+      dataPath: tempDir,
+      userPath: tempDir,
+      config: {
+        users: [{ name: username, password: 'old-password' }],
+        'frontend.password': 'account-admin',
+      },
+    } as typeof global.lx
+    syncUsersToDatabase(global.lx.config.users)
+  })
+
+  afterEach(() => {
+    revokeUserAuth(username)
+    releaseUserSpace(username, true)
+    closeDb()
+    global.lx = previousLx
+    // Only these files/directories are created by the account routes in this fixture.
+    const userDir = path.join(tempDir, getUserDirname(username))
+    if (fs.existsSync(userDir)) fs.rmdirSync(userDir)
+    const usersFile = path.join(tempDir, 'users.json')
+    if (fs.existsSync(usersFile)) fs.unlinkSync(usersFile)
+    fs.rmdirSync(tempDir)
+  })
+
+  test('deleting and recreating an account does not revive old sessions or API tokens', async () => {
+    const auth = createAuthRouter()
+    const login = await auth.handle(new Request('http://localhost/api/user/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username, password: 'old-password' }),
+    }))
+    expect(login.status).toBe(200)
+    const cookie = login.headers.get('set-cookie')!.split(';')[0]
+    const sessionToken = (await login.json()).token
+    const cookieRequest = new Request('http://localhost/api/user/auth/verify', { headers: { cookie } })
+    expect(verifyUserAuth(cookieRequest)).toBe(username)
+    saveUserTokenConfig(username, { enabled: true, tokens: [{
+      token: apiToken, name: 'test', createdAt: Date.now(), expiresAt: null,
+    }] })
+    const tokenRequest = new Request('http://localhost/api/user/auth/verify', { headers: { 'x-user-token': apiToken } })
+    expect(verifyUserAuth(tokenRequest)).toBe(username)
+
+    const users = createUserRouter()
+    const deleted = await users.handle(new Request('http://localhost/api/users', {
+      method: 'DELETE', headers: adminHeaders, body: JSON.stringify({ name: username }),
+    }))
+    expect(deleted.status).toBe(200)
+    expect(userSessions.has(sessionToken)).toBe(false)
+    expect(persistentTokens.has(apiToken)).toBe(false)
+    expect(persistentTokenMeta.has(apiToken)).toBe(false)
+    expect(getDb().query('SELECT * FROM user_sessions WHERE user_name = ?').all(username)).toEqual([])
+    expect(verifyUserAuth(cookieRequest)).toBeNull()
+    expect(verifyUserAuth(tokenRequest)).toBeNull()
+
+    // A pending lastUsed write must not recreate the deleted account's token settings.
+    await Bun.sleep(10_100)
+    expect(getDb().query('SELECT * FROM user_settings WHERE user_name = ?').all(username)).toEqual([])
+
+    const recreated = await users.handle(new Request('http://localhost/api/users', {
+      method: 'POST', headers: adminHeaders, body: JSON.stringify({ name: username, password: 'new-password' }),
+    }))
+    expect(recreated.status).toBe(200)
+    expect(verifyUserAuth(cookieRequest)).toBeNull()
+    expect(verifyUserAuth(tokenRequest)).toBeNull()
+    userSessions.clear()
+    expect(verifyUserAuth(cookieRequest)).toBeNull()
+    expect((await auth.handle(new Request('http://localhost/api/user/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username, password: 'new-password' }),
+    }))).status).toBe(200)
+  }, 15_000)
+
+  test('authentication rejects cached and persisted sessions for users removed from configuration', async () => {
+    const login = await createAuthRouter().handle(new Request('http://localhost/api/user/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username, password: 'old-password' }),
+    }))
+    const cookie = login.headers.get('set-cookie')!.split(';')[0]
+    const request = new Request('http://localhost/api/user/auth/verify', { headers: { cookie } })
+    userSessions.set('cached-removed-account', { username, createdAt: Date.now() })
+    userSessions.delete((await login.json()).token)
+    global.lx.config.users = []
+    expect(verifyUserAuth(request)).toBeNull()
+    expect(userSessions.has('cached-removed-account')).toBe(false)
+    expect(getDb().query('SELECT * FROM user_sessions WHERE user_name = ?').all(username)).toEqual([])
   })
 })

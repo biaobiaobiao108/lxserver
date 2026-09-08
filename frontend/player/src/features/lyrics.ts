@@ -54,6 +54,8 @@ export function initLyricFeature(context: LyricFeatureContext) {
     const startToggleLyricsBtnTimer = context.startToggleLyricsBtnTimer;
     const SCROLL_LOCK_DURATION = context.scrollLockDuration;
 let lyricHistoryClosePending = false;
+let lyricRequestController: AbortController | null = null;
+let lyricRequestSerial = 0;
 
 function toggleLyrics(fromPopState = false) {
     if (!fromPopState && state.isLyricViewOpen) {
@@ -186,6 +188,12 @@ async function fetchLyric(song, quality = null) {
         }
         return;
     }
+    lyricRequestController?.abort();
+    const requestController = new AbortController();
+    lyricRequestController = requestController;
+    const requestSerial = ++lyricRequestSerial;
+    const isCurrentRequest = () => requestSerial === lyricRequestSerial && !requestController.signal.aborted;
+
     state.lastLyricSongId = currentLyricKey;
 
     document.getElementById('lyric-content').innerHTML = '<p class="t-text-muted text-lg animate-pulse">正在加载歌词...</p>';
@@ -222,9 +230,11 @@ async function fetchLyric(song, quality = null) {
     if (settings.enableServerLyricCache !== false) {
         try {
             const serverCacheUrl = `${API_BASE}/cache/lyric?source=${source}&songmid=${songmid}&songId=${encodeURIComponent(song.id || '')}&name=${encodeURIComponent(song.name || '')}&singer=${encodeURIComponent(song.singer || '')}`;
-            const scRes = await fetch(serverCacheUrl, { headers });
+            const scRes = await fetch(serverCacheUrl, { headers, signal: requestController.signal });
+            if (!isCurrentRequest()) return;
             if (scRes.ok) {
                 const scData = await scRes.json();
+                if (!isCurrentRequest()) return;
                 if (scData.success && scData.data) {
                     state.currentRawLrc = scData.data.lyric || scData.data.lrc || '';
                     state.currentRawTlrc = scData.data.tlyric || '';
@@ -246,7 +256,9 @@ async function fetchLyric(song, quality = null) {
                 }
             }
         } catch (e) {
-            console.warn('[Lyric] 读取服务器端缓存失败:', e);
+            if (e?.name !== 'AbortError' && isCurrentRequest()) {
+                console.warn('[Lyric] 读取服务器端缓存失败:', e);
+            }
         }
     }
 
@@ -268,13 +280,14 @@ async function fetchLyric(song, quality = null) {
 
         const url = `${API_BASE}/lyric?${params.toString()}`;
         // [优化] 使用低优先级 fetch 获取歌词，避免阻塞主进程加载和 PWA 安装按钮出现
-        const res = await fetch(url, { headers, priority: 'low' });
+        const res = await fetch(url, { headers, priority: 'low', signal: requestController.signal });
 
         if (!res.ok) {
             throw new Error(`Fetch lyric failed: ${res.status}`);
         }
 
         const data = await res.json();
+        if (!isCurrentRequest()) return;
         state.currentRawLrc = data.lyric || data.lrc || '';
         state.currentRawTlrc = data.tlyric || '';
         state.currentRawRlrc = data.rlyric || '';
@@ -307,6 +320,7 @@ async function fetchLyric(song, quality = null) {
                 try {
                     fetch(`${API_BASE}/cache/lyric`, {
                         method: 'POST',
+                        signal: requestController.signal,
                         headers: {
                             ...headers,
                             'Content-Type': 'application/json'
@@ -320,7 +334,11 @@ async function fetchLyric(song, quality = null) {
                                 lxlyric: state.currentRawKlrc
                             }
                         })
-                    }).catch(e => console.warn('[Lyric] 上传服务端缓存失败:', e));
+                    }).catch(e => {
+                        if (e?.name !== 'AbortError' && isCurrentRequest()) {
+                            console.warn('[Lyric] 上传服务端缓存失败:', e);
+                        }
+                    });
                 } catch (e) { }
             }
         }
@@ -335,6 +353,7 @@ async function fetchLyric(song, quality = null) {
         applyLyricUpdate();
 
     } catch (e) {
+        if (e?.name === 'AbortError' || !isCurrentRequest()) return;
         console.error(`[Lyric] Failed (${source}_${songmid}):`, e);
         renderLyric([], `暂无歌词 (${source}: ${songmid})`);
     }

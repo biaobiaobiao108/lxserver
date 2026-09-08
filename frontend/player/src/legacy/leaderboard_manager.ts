@@ -23,6 +23,10 @@ window.LeaderboardManager = (function () {
     };
 
     let initialized = false;
+    let boardsRequestController = null;
+    let songsRequestController = null;
+    let boardsRequestSerial = 0;
+    let songsRequestSerial = 0;
 
     // ==================== 初始化 ====================
 
@@ -43,6 +47,10 @@ window.LeaderboardManager = (function () {
     // ==================== 数据加载 ====================
 
     async function loadBoards(source) {
+        boardsRequestController?.abort();
+        songsRequestController?.abort();
+        const requestSerial = ++boardsRequestSerial;
+        boardsRequestController = new AbortController();
         state.source = source;
         state.boards = [];
         state.currentBangid = null;
@@ -53,8 +61,9 @@ window.LeaderboardManager = (function () {
         showBoardsLoading(true);
 
         try {
-            const res = await fetch(`${API_BASE}/boards?source=${source}`);
+            const res = await fetch(`${API_BASE}/boards?source=${encodeURIComponent(source)}`, { signal: boardsRequestController.signal });
             const data = await res.json();
+            if (requestSerial !== boardsRequestSerial || state.source !== source) return;
             if (data.error) throw new Error(data.error);
             state.boards = data.list || [];
             renderBoards(state.boards);
@@ -63,17 +72,23 @@ window.LeaderboardManager = (function () {
                 selectBoard(state.boards[0].bangid, state.boards[0].name);
             }
         } catch (e) {
+            if (e?.name === 'AbortError' || requestSerial !== boardsRequestSerial) return;
             console.error('[Leaderboard] loadBoards failed:', e);
             document.getElementById('lb-boards-list').innerHTML =
                 `<div class="p-4 text-red-500 text-sm">加载失败: ${e.message}</div>`;
         } finally {
-            showBoardsLoading(false);
+            if (requestSerial === boardsRequestSerial) showBoardsLoading(false);
         }
     }
 
     async function loadSongs(bangid, source, page = 1) {
+        songsRequestController?.abort();
+        const requestSerial = ++songsRequestSerial;
+        songsRequestController = new AbortController();
         state.loading = true;
         state.page = page;
+
+        if (requestSerial !== songsRequestSerial || state.currentBangid !== bangid || state.source !== source) return;
 
         const container = document.getElementById('lb-songs-list');
         if (page === 1) {
@@ -85,9 +100,10 @@ window.LeaderboardManager = (function () {
         }
 
         try {
-            const url = `${API_BASE}/list?source=${source}&bangid=${encodeURIComponent(bangid)}&page=${page}`;
-            const res = await fetch(url);
+            const url = `${API_BASE}/list?source=${encodeURIComponent(source)}&bangid=${encodeURIComponent(bangid)}&page=${page}`;
+            const res = await fetch(url, { signal: songsRequestController.signal });
             const data = await res.json();
+            if (requestSerial !== songsRequestSerial || state.currentBangid !== bangid || state.source !== source) return;
             if (data.error) throw new Error(data.error);
 
             if (page === 1) {
@@ -136,10 +152,11 @@ window.LeaderboardManager = (function () {
             renderSongs(state.songs);
             renderPagination();
         } catch (e) {
+            if (e?.name === 'AbortError' || requestSerial !== songsRequestSerial) return;
             console.error('[Leaderboard] loadSongs failed:', e);
             container.innerHTML = `<div class="text-center text-red-500 p-10">加载失败: ${e.message}</div>`;
         } finally {
-            state.loading = false;
+            if (requestSerial === songsRequestSerial) state.loading = false;
         }
     }
 

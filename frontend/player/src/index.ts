@@ -459,7 +459,6 @@ const {
     artistSongsPrevPage,
     artistSongsNextPage,
     renderArtistAlbumsLoading,
-    fetchAllArtistAlbums,
     loadArtistAlbums,
     renderArtistAlbumsUI,
     downloadArtistAlbumSongs,
@@ -583,6 +582,7 @@ bindPlayerEvents();
 
 window.networkListUpdateMap = new Set();
 let networkListAutoCheckTimer = null;
+let networkListCheckInFlight = false;
 
 function parseNetworkListAutoCheckInterval(value) {
     const minIntervalMs = 30 * 1000;
@@ -625,6 +625,10 @@ function setupNetworkListAutoCheck() {
 }
 
 async function checkNetworkListUpdates(manual = false) {
+    // 定时器间隔可能短于网络响应时间；禁止同一批歌单检查重叠，避免重复请求。
+    if (networkListCheckInFlight) return;
+    networkListCheckInFlight = true;
+    try {
     if (!currentListData || !Array.isArray(currentListData.userList) || currentListData.userList.length === 0) {
         if (manual && window.showToast) showToast('info', '当前没有可检查的网络歌单', 3000);
         return;
@@ -686,6 +690,9 @@ async function checkNetworkListUpdates(manual = false) {
         }
     } else if (changedLists.length > 0 && window.showToast) {
         showToast('info', `检测到 ${changedLists.length} 个网络歌单有更新`, 5000);
+    }
+    } finally {
+        networkListCheckInFlight = false;
     }
 }
 

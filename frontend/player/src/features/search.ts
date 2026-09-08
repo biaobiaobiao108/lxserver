@@ -1010,6 +1010,9 @@ async function enterArtist(id, source = 'wy', order = 'hot', tab = 'songs', isBa
     if (isDifferentArtist) {
         window.currentArtistAlbumsCache = null;
         artistAlbumsPage = 1;
+        artistAlbumsTotal = 0;
+        artistAlbumsUsesServerPagination = false;
+        artistAlbumsPageCache.clear();
     }
 
     currentArtistId = id;
@@ -1584,17 +1587,19 @@ window.artistSongsNextPage = artistSongsNextPage;
 window.artistSongsGoToPage = artistSongsGoToPage;
 
 const ARTIST_ALBUM_PAGE_SIZE = 50;
-const ARTIST_ALBUM_MAX_PAGES = 100;
-const ARTIST_ALBUM_FETCH_CONCURRENCY = 4;
-const ARTIST_ALBUM_RENDER_PAGE_SIZE = 30;
+// 音源接口本身按 50 张专辑分页；详情页一次只渲染/请求一页。
+const ARTIST_ALBUM_RENDER_PAGE_SIZE = ARTIST_ALBUM_PAGE_SIZE;
 let artistAlbumsPage = 1;
+let artistAlbumsTotal = 0;
+let artistAlbumsUsesServerPagination = false;
+const artistAlbumsPageCache = new Map<number, any[]>();
 
 function renderArtistAlbumsLoading(loaded = 0, total = 0) {
     const content = document.getElementById('artist-detail-content');
     if (!content) return;
     const progressText = loaded > 0
-        ? '正在加载全部专辑，已读取 ' + loaded + (total > 0 ? '/' + total : '') + ' 张...'
-        : '正在加载全部专辑...';
+        ? '正在加载专辑第 ' + loaded + (total > 0 ? '/' + total : '') + ' 张...'
+        : '正在加载专辑...';
     const wrapper = document.createElement('div');
     const icon = document.createElement('i');
     const label = document.createElement('span');
@@ -1606,81 +1611,14 @@ function renderArtistAlbumsLoading(loaded = 0, total = 0) {
     content.replaceChildren(wrapper);
 }
 
-async function fetchAllArtistAlbums(id, source, signal, onProgress) {
-    const albums = [];
-    const albumKeys = new Set();
-    let total = 0;
-    const fetchPage = async (page) => {
-        const query = new URLSearchParams({ id: String(id), source, page: String(page) });
-        const res = await fetch(API_BASE + '/artistAlbums?' + query.toString(), { signal });
-        if (!res.ok) throw new Error('Failed to fetch artist albums page ' + page);
-        const data = await res.json();
-        return {
-            list: Array.isArray(data.list) ? data.list : [],
-            total: Number(data.total) || 0,
-        };
-    };
-    const appendPage = (pageList, page) => {
-        pageList.forEach((album, index) => {
-            const albumId = album.id ?? album.mid;
-            const key = albumId !== undefined && albumId !== null && albumId !== ''
-                ? source + ':' + albumId
-                : source + ':page:' + page + ':index:' + index;
-            if (albumKeys.has(key)) return;
-            albumKeys.add(key);
-            albums.push({ ...album, source: album.source || source });
-        });
-        if (typeof onProgress === 'function') onProgress(albums.length, total);
-    };
-
-    const firstPage = await fetchPage(1);
-    total = firstPage.total;
-    appendPage(firstPage.list, 1);
-    if (firstPage.list.length < ARTIST_ALBUM_PAGE_SIZE || (total > 0 && albums.length >= total)) {
-        return { list: albums, total: total || albums.length };
-    }
-
-    if (total > 0) {
-        const lastPage = Math.min(ARTIST_ALBUM_MAX_PAGES, Math.ceil(total / ARTIST_ALBUM_PAGE_SIZE));
-        const pageResults = new Map();
-        let nextPage = 2;
-        const workers = Array.from({ length: Math.min(ARTIST_ALBUM_FETCH_CONCURRENCY, lastPage - 1) }, async () => {
-            while (nextPage <= lastPage) {
-                const page = nextPage++;
-                pageResults.set(page, await fetchPage(page));
-            }
-        });
-        await Promise.all(workers);
-        for (let page = 2; page <= lastPage; page++) {
-            const result = pageResults.get(page);
-            if (result) appendPage(result.list, page);
-        }
-        return { list: albums, total: total || albums.length };
-    }
-
-    // 个别音源不返回 total；此时保守地顺序探测，避免并发请求无效页。
-    for (let page = 2; page <= ARTIST_ALBUM_MAX_PAGES; page++) {
-        const result = await fetchPage(page);
-        const previousCount = albums.length;
-        appendPage(result.list, page);
-        total = Math.max(total, result.total);
-        const pageList = result.list;
-        const reachedTotal = total > 0 && albums.length >= total;
-        const pageExhausted = pageList.length < ARTIST_ALBUM_PAGE_SIZE;
-        const noNewAlbums = albums.length === previousCount;
-        if (pageList.length === 0 || reachedTotal || pageExhausted || noNewAlbums) break;
-    }
-
-    return { list: albums, total: total || albums.length };
-}
-
-
-
-async function loadArtistAlbums(id, source, forceFetch = false, requestContext: ArtistRequestContext | null = null) {
+async function loadArtistAlbums(id, source, forceFetch = false, requestContext: ArtistRequestContext | null = null, requestedPage = artistAlbumsPage || 1) {
     const request = requestContext || beginArtistRequest();
-    if (!forceFetch && window.currentArtistAlbumsCache && String(window.currentArtistId) === String(id) && window.currentArtistSource === source) {
+    const page = Math.max(1, Number.parseInt(String(requestedPage), 10) || 1);
+    const cachedPage = artistAlbumsPageCache.get(page);
+    if (!forceFetch && cachedPage && String(window.currentArtistId) === String(id) && window.currentArtistSource === source) {
         if (!isArtistRequestCurrent(request, id, source, 'albums')) return;
-        renderArtistAlbumsUI(window.currentArtistAlbumsCache);
+        window.currentArtistAlbumsCache = cachedPage;
+        renderArtistAlbumsUI(cachedPage, page);
         return;
     }
 
@@ -1688,20 +1626,22 @@ async function loadArtistAlbums(id, source, forceFetch = false, requestContext: 
     renderArtistAlbumsLoading();
 
     try {
-        const data = await fetchAllArtistAlbums(id, source, request.controller.signal, (loaded, total) => {
-            if (isArtistRequestCurrent(request, id, source, 'albums')) {
-                renderArtistAlbumsLoading(loaded, total);
-            }
-        });
-        const list = data.list;
+        const query = new URLSearchParams({ id: String(id), source: String(source), page: String(page) });
+        const res = await fetch(API_BASE + '/artistAlbums?' + query.toString(), { signal: request.controller.signal });
+        if (!res.ok) throw new Error('Failed to fetch artist albums page ' + page);
+        const data = await res.json();
+        const list = (Array.isArray(data.list) ? data.list : []).map(album => ({ ...album, source: album.source || source }));
         if (!isArtistRequestCurrent(request, id, source, 'albums')) return;
 
+        artistAlbumsUsesServerPagination = true;
+        artistAlbumsTotal = Math.max(Number(data.total) || 0, (page - 1) * ARTIST_ALBUM_PAGE_SIZE + list.length);
+        artistAlbumsPageCache.set(page, list);
         window.currentArtistAlbumsCache = list;
-        window.currentArtistAlbumsTotal = data.total;
-        artistAlbumsPage = 1;
+        window.currentArtistAlbumsTotal = artistAlbumsTotal;
+        artistAlbumsPage = page;
 
         if (window.currentArtistTab === 'albums') {
-            renderArtistAlbumsUI(list, 1);
+            renderArtistAlbumsUI(list, page);
         }
     } catch (e) {
         if (e?.name === 'AbortError' || !isArtistRequestCurrent(request, id, source, 'albums')) return;
@@ -1720,10 +1660,12 @@ function renderArtistAlbumsUI(list, requestedPage = artistAlbumsPage) {
     }
 
     const artistName = currentArtistInfo?.name || '';
-    const totalPages = Math.max(1, Math.ceil(list.length / ARTIST_ALBUM_RENDER_PAGE_SIZE));
+    const usesServerPagination = artistAlbumsUsesServerPagination;
+    const totalItems = usesServerPagination ? artistAlbumsTotal : list.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / ARTIST_ALBUM_RENDER_PAGE_SIZE));
     artistAlbumsPage = Math.min(totalPages, Math.max(1, Number(requestedPage) || 1));
     const startIndex = (artistAlbumsPage - 1) * ARTIST_ALBUM_RENDER_PAGE_SIZE;
-    const visibleAlbums = list.slice(startIndex, startIndex + ARTIST_ALBUM_RENDER_PAGE_SIZE);
+    const visibleAlbums = usesServerPagination ? list : list.slice(startIndex, startIndex + ARTIST_ALBUM_RENDER_PAGE_SIZE);
     const html = `
         <div class="artist-albums-grid p-2 md:p-4 animate-in fade-in duration-300">
             ${visibleAlbums.map((album, visibleIndex) => {
@@ -1733,7 +1675,7 @@ function renderArtistAlbumsUI(list, requestedPage = artistAlbumsPage) {
                 const albumName = album.name || '未知专辑';
                 const favorited = isAlbumFavorited(albumId, albumSource);
                 return `
-                <div class="artist-album-card player-motion-item group flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20" style="--player-motion-index: ${Math.min(index, 7)};" data-album-index="${index}">
+                <div class="artist-album-card player-motion-item group flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20" style="--player-motion-index: ${Math.min(index, 7)};" data-album-index="${visibleIndex}">
                     <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative bg-gray-100 dark:bg-gray-800">
                         <img src="${escapeHtmlText(getImgUrl(album))}" alt="${escapeHtmlText(albumName)}封面" width="320" height="320" loading="lazy" decoding="async"
                              data-event-error-action="fallback-image"
@@ -1744,10 +1686,10 @@ function renderArtistAlbumsUI(list, requestedPage = artistAlbumsPage) {
                              </div>
                         </div>
                         <div class="absolute top-1.5 right-1.5 flex gap-1.5">
-                            <button type="button" class="artist-album-download-btn w-8 h-8 rounded-full bg-black/45 hover:bg-emerald-500 text-white flex items-center justify-center opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all shadow-sm disabled:opacity-60 disabled:cursor-wait" data-album-index="${index}" title="下载本专辑全部歌曲">
+                            <button type="button" class="artist-album-download-btn w-8 h-8 rounded-full bg-black/45 hover:bg-emerald-500 text-white flex items-center justify-center opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all shadow-sm disabled:opacity-60 disabled:cursor-wait" data-album-index="${visibleIndex}" title="下载本专辑全部歌曲">
                                 <i class="fas fa-download text-xs"></i>
                             </button>
-                            <button type="button" class="artist-album-favorite-btn w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/45 hover:bg-rose-500 text-white opacity-100 sm:opacity-0 group-hover:opacity-100'}" data-album-index="${index}" title="${favorited ? '取消收藏' : '收藏专辑'}">
+                            <button type="button" class="artist-album-favorite-btn w-8 h-8 rounded-full flex items-center justify-center transition-all shadow-sm ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/45 hover:bg-rose-500 text-white opacity-100 sm:opacity-0 group-hover:opacity-100'}" data-album-index="${visibleIndex}" title="${favorited ? '取消收藏' : '收藏专辑'}">
                                 <i class="fas fa-heart text-xs"></i>
                             </button>
                         </div>
@@ -1767,7 +1709,7 @@ function renderArtistAlbumsUI(list, requestedPage = artistAlbumsPage) {
                 class="player-pagination-button t-text-muted hover:t-text-main" ${artistAlbumsPage <= 1 ? 'disabled' : ''}>
                 <i class="fas fa-chevron-left" aria-hidden="true"></i><span class="hidden sm:inline">上一页</span>
             </button>
-            <span class="player-pagination-info t-text-muted">第 ${artistAlbumsPage} / ${totalPages} 页 (${list.length} 张)</span>
+            <span class="player-pagination-info t-text-muted">第 ${artistAlbumsPage} / ${totalPages} 页 (${totalItems} 张)</span>
             <button type="button" data-event-click-action="artistAlbumsGoToPage" data-event-click-args="[${artistAlbumsPage + 1}]"
                 class="player-pagination-button t-text-muted hover:t-text-main" ${artistAlbumsPage >= totalPages ? 'disabled' : ''}>
                 <span class="hidden sm:inline">下一页</span><i class="fas fa-chevron-right" aria-hidden="true"></i>
@@ -1779,21 +1721,21 @@ function renderArtistAlbumsUI(list, requestedPage = artistAlbumsPage) {
 
     content.querySelectorAll('.artist-album-card').forEach(card => {
         card.addEventListener('click', () => {
-            const album = list[Number(card.dataset.albumIndex)];
+            const album = visibleAlbums[Number(card.dataset.albumIndex)];
             if (album) enterAlbum(album.id ?? album.mid, album.source || window.currentArtistSource || 'wy');
         });
     });
     content.querySelectorAll('.artist-album-download-btn').forEach(button => {
         button.addEventListener('click', async event => {
             event.stopPropagation();
-            const album = list[Number(button.dataset.albumIndex)];
+            const album = visibleAlbums[Number(button.dataset.albumIndex)];
             if (album) await downloadArtistAlbumSongs(album, button);
         });
     });
     content.querySelectorAll('.artist-album-favorite-btn').forEach(button => {
         button.addEventListener('click', async event => {
             event.stopPropagation();
-            const album = list[Number(button.dataset.albumIndex)];
+            const album = visibleAlbums[Number(button.dataset.albumIndex)];
             if (!album) return;
             const albumId = album.id ?? album.mid;
             const albumSource = album.source || window.currentArtistSource || 'wy';
@@ -1808,7 +1750,12 @@ window.renderArtistAlbumsUI = renderArtistAlbumsUI;
 function artistAlbumsGoToPage(page) {
     const list = window.currentArtistAlbumsCache;
     if (!Array.isArray(list)) return;
-    renderArtistAlbumsUI(list, page);
+    const targetPage = Math.max(1, Number(page) || 1);
+    if (artistAlbumsUsesServerPagination && !artistAlbumsPageCache.has(targetPage)) {
+        void loadArtistAlbums(window.currentArtistId, window.currentArtistSource || 'wy', false, null, targetPage);
+        return;
+    }
+    renderArtistAlbumsUI(artistAlbumsUsesServerPagination ? artistAlbumsPageCache.get(targetPage) || list : list, targetPage);
     document.getElementById('artist-detail-view')?.scrollTo({ top: 0, behavior: 'smooth' });
 }
 window.artistAlbumsGoToPage = artistAlbumsGoToPage;
@@ -2457,7 +2404,6 @@ window.unobserveLazyImages = function (root = document) {
         artistSongsPrevPage,
         artistSongsNextPage,
         renderArtistAlbumsLoading,
-        fetchAllArtistAlbums,
         loadArtistAlbums,
         renderArtistAlbumsUI,
         downloadArtistAlbumSongs,

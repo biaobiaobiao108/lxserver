@@ -7,6 +7,7 @@ describe('Player Navigation and State Restoration Safety', () => {
     const playbackSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/playback.ts');
     const searchSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/search.ts');
     const librarySrcPath = path.join(import.meta.dir, '../frontend/player/src/features/library.ts');
+    const lyricsSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/lyrics.ts');
     const customSelectSrcPath = path.join(import.meta.dir, '../frontend/player/src/custom_select.ts');
     const playerCssPath = path.join(import.meta.dir, '../public/music/css/app.css');
     const playerDistPath = path.join(import.meta.dir, '../public/music/app.js');
@@ -193,9 +194,10 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(searchContent).toContain('limit: String(pageSize)');
         expect(searchContent).toContain('const artistSongsPageCache = new Map<number, any[]>()');
         expect(searchContent).toContain('data-event-click-args="[${itemIdArg}, ${playlistIndex}]"');
-        expect(searchContent).toContain('const ARTIST_ALBUM_RENDER_PAGE_SIZE = 30;');
-        expect(searchContent).toContain('const visibleAlbums = list.slice(startIndex, startIndex + ARTIST_ALBUM_RENDER_PAGE_SIZE);');
-        expect(searchContent).toContain('const ARTIST_ALBUM_FETCH_CONCURRENCY = 4;');
+        expect(searchContent).toContain('const ARTIST_ALBUM_RENDER_PAGE_SIZE = ARTIST_ALBUM_PAGE_SIZE;');
+        expect(searchContent).toContain('const artistAlbumsPageCache = new Map<number, any[]>()');
+        expect(searchContent).toContain("page: String(page) });");
+        expect(searchContent).toContain('if (artistAlbumsUsesServerPagination && !artistAlbumsPageCache.has(targetPage))');
 
         expect(libraryContent).toContain('const LIBRARY_RENDER_PAGE_SIZE: Record<LibraryKind, number>');
         expect(libraryContent).toContain('visibleList: list.slice(startIndex, startIndex + pageSize)');
@@ -206,6 +208,16 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(musicRoutes).toContain('if (requestedPage !== null || requestedLimit !== null)');
         expect(musicRoutes).toContain('const limit = boundedInt(requestedLimit, 50, 1, 100)');
         expect(musicRoutes).toContain('// 未传分页参数时仍保留旧的全量数组响应');
+    });
+
+    it('lyric loading cancels stale requests when playback changes quickly', () => {
+        const lyricsContent = fs.readFileSync(lyricsSrcPath, 'utf8');
+
+        expect(lyricsContent).toContain('let lyricRequestController: AbortController | null = null;');
+        expect(lyricsContent).toContain('lyricRequestController?.abort();');
+        expect(lyricsContent).toContain('const isCurrentRequest = () => requestSerial === lyricRequestSerial');
+        expect(lyricsContent).toContain('signal: requestController.signal');
+        expect(lyricsContent).toContain("if (e?.name === 'AbortError' || !isCurrentRequest()) return;");
     });
 
     it('search favorite controls do not activate their parent detail cards', () => {

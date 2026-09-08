@@ -36,6 +36,12 @@ export function createSongListManager(context: SongListManagerContext) {
         total: 0,
         limit: 30
     };
+    let tagsRequestController = null;
+    let listRequestController = null;
+    let detailRequestController = null;
+    let tagsRequestSerial = 0;
+    let listRequestSerial = 0;
+    let detailRequestSerial = 0;
 
     // Initialize
     async function init() {
@@ -283,9 +289,13 @@ export function createSongListManager(context: SongListManagerContext) {
 
     async function loadTags() {
         const source = currentState.source;
+        tagsRequestController?.abort();
+        const requestSerial = ++tagsRequestSerial;
+        tagsRequestController = new AbortController();
         try {
-            const res = await fetch(`${API_BASE}/songList/tags?source=${source}`);
+            const res = await fetch(`${API_BASE}/songList/tags?source=${encodeURIComponent(source)}`, { signal: tagsRequestController.signal });
             const data = await res.json();
+            if (requestSerial !== tagsRequestSerial || currentState.source !== source) return;
             currentState.tags = data.tags || [];
             currentState.hotTags = data.hotTags || [];
             currentState.sortList = data.sortList || [];
@@ -295,11 +305,15 @@ export function createSongListManager(context: SongListManagerContext) {
             renderSortTabs();
             renderTags();
         } catch (e) {
+            if (e?.name === 'AbortError' || requestSerial !== tagsRequestSerial) return;
             console.error('[SongList] Load tags failed:', e);
         }
     }
 
     async function loadList(page = 1) {
+        listRequestController?.abort();
+        const requestSerial = ++listRequestSerial;
+        listRequestController = new AbortController();
         currentState.page = page;
         const { source, tagId, sortId } = currentState;
         const container = document.getElementById('songlist-container');
@@ -312,9 +326,10 @@ export function createSongListManager(context: SongListManagerContext) {
         `;
 
         try {
-            const url = `${API_BASE}/songList/list?source=${source}&tagId=${encodeURIComponent(tagId)}&sortId=${encodeURIComponent(sortId)}&page=${page}`;
-            const res = await fetch(url);
+            const url = `${API_BASE}/songList/list?source=${encodeURIComponent(source)}&tagId=${encodeURIComponent(tagId)}&sortId=${encodeURIComponent(sortId)}&page=${page}`;
+            const res = await fetch(url, { signal: listRequestController.signal });
             const data = await res.json();
+            if (requestSerial !== listRequestSerial || currentState.page !== page) return;
 
             currentState.list = data.list || [];
             currentState.total = data.total || 0;
@@ -323,12 +338,16 @@ export function createSongListManager(context: SongListManagerContext) {
             renderList();
             updatePaginationUI();
         } catch (e) {
+            if (e?.name === 'AbortError' || requestSerial !== listRequestSerial) return;
             console.error('[SongList] Load list failed:', e);
             container.innerHTML = `<div class="col-span-full py-20 text-center text-red-500">加载失败: ${e.message}</div>`;
         }
     }
 
     async function loadDetail(id, source, page = 1) {
+        detailRequestController?.abort();
+        const requestSerial = ++detailRequestSerial;
+        detailRequestController = new AbortController();
         detailState.id = id;
         detailState.source = source;
         detailState.page = page;
@@ -378,9 +397,10 @@ export function createSongListManager(context: SongListManagerContext) {
 
 
         try {
-            const url = `${API_BASE}/songList/detail?source=${source}&id=${encodeURIComponent(id)}&page=${page}`;
-            const res = await fetch(url);
+            const url = `${API_BASE}/songList/detail?source=${encodeURIComponent(source)}&id=${encodeURIComponent(id)}&page=${page}`;
+            const res = await fetch(url, { signal: detailRequestController.signal });
             const data = await res.json();
+            if (requestSerial !== detailRequestSerial || detailState.id !== id || detailState.source !== source || detailState.page !== page) return;
 
             detailState.info = data.info;
 
@@ -414,6 +434,7 @@ export function createSongListManager(context: SongListManagerContext) {
 
             renderDetail();
         } catch (e) {
+            if (e?.name === 'AbortError' || requestSerial !== detailRequestSerial) return;
             console.error('[SongList] Load detail failed:', e);
             if (page === 1) {
                 listContainer.innerHTML = `<div class="text-center text-red-500 p-10">加载失败: ${e.message}</div>`;
@@ -765,6 +786,8 @@ export function createSongListManager(context: SongListManagerContext) {
             loadDetail(id, source);
         },
         closeDetail: function () {
+            detailRequestController?.abort();
+            detailRequestSerial++;
             if (window.ListSearch && window.ListSearch.state.id === 'songlist') {
                 window.ListSearch.resetState();
             }

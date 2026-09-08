@@ -1,6 +1,8 @@
-﻿import { describe, it, expect, beforeEach, afterAll } from 'bun:test'
+import { describe, it, expect, beforeEach, afterEach } from 'bun:test'
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
+import { randomUUID } from 'crypto'
 import { initDatabase, getDb, closeDb } from '../src/database'
 import { syncUsersToDatabase } from '../src/user/data'
 
@@ -18,11 +20,11 @@ describe('Database (bun:sqlite) Structured Storage', () => {
         users: [{ name: 'testuser', password: 'pwd', maxSnapshotNum: 5, 'list.addMusicLocationType': 'bottom' }],
       },
     }
-    testDbPath = path.join(dataDir, 'test_unit_' + Date.now() + '.db')
+    testDbPath = path.join(dataDir, `lx-test-${randomUUID()}.db`)
     initDatabase(testDbPath)
   })
 
-  afterAll(() => {
+  afterEach(() => {
     closeDb()
     try {
       if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath)

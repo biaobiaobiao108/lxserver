@@ -51,7 +51,7 @@
                 </button>
             </div>
 
-            <nav class="flex-1 min-w-0 py-3 overflow-y-auto custom-scrollbar">
+            <nav class="flex-1 min-w-0 py-3 overflow-y-auto no-scrollbar">
                 <!-- 发现音乐 -->
                 <div class="netease-nav-category">发现音乐</div>
                 <div class="space-y-0.5">
@@ -350,7 +350,7 @@
                         </div>
                         <!-- Header -->
                         <div id="search-results-header"
-                            class="player-track-grid player-track-grid--network player-track-grid--header px-3 py-1.5 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
+                            class="player-track-list-header player-track-grid player-track-grid--network player-track-grid--header px-3 py-1.5 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
                             <div class="player-track-index list-header-leading">
                                 <button id="search-back-btn" data-event-click-action="goBackToSearch"
                                     class="hidden list-header-back text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
@@ -433,7 +433,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div id="search-results" class="flex-1 overflow-y-auto p-2 space-y-1 pb-20">
+                        <div id="search-results" class="player-track-list-content flex-1 overflow-y-auto px-0 py-2 space-y-1 pb-20">
                             <!-- Items will be injected here -->
                             <div class="flex flex-col items-center justify-center h-full t-text-muted space-y-4">
                                 <i class="fas fa-music text-6xl opacity-20"></i>
@@ -442,20 +442,20 @@
                         </div>
                         <!-- Pagination -->
                         <div id="search-pagination-bar"
-                            class="h-14 md:h-12 border-t t-border-main flex items-center justify-between px-3 md:px-6 t-bg-main flex-shrink-0">
+                            class="player-pagination-bar border-t t-border-main t-bg-main flex-shrink-0">
                             <button data-event-click-action="prevPage"
-                                class="text-gray-500 hover:text-emerald-600 disabled:opacity-30 transition-colors text-sm flex items-center gap-1">
+                                class="player-pagination-button text-gray-500 hover:text-emerald-600 disabled:opacity-30 transition-colors text-sm flex items-center gap-1">
                                 <i class="fas fa-chevron-left text-[10px]"></i> <span
                                     class="hidden sm:inline">上一页</span>
                             </button>
 
                             <div
-                                class="flex flex-col sm:flex-row items-center gap-1 sm:gap-4 flex-1 justify-center min-w-0 mx-2">
+                                class="player-pagination-center flex flex-col sm:flex-row items-center gap-1 sm:gap-4 flex-1 justify-center min-w-0 mx-2">
                                 <span id="pagination-info"
                                     class="text-[10px] md:text-xs t-text-muted font-mono whitespace-nowrap">第 1 / 1
                                     页</span>
                                 <div id="page-jump-container"
-                                    class="flex items-center gap-1.5 bg-gray-500/5 px-2 py-0.5 rounded-lg border t-border-main">
+                                    class="player-pagination-jump flex items-center gap-1.5 bg-gray-500/5 px-2 py-0.5 rounded-lg border t-border-main">
                                     <input id="jump-page-input" type="number" min="1"
                                         aria-label="跳转到页码"
                                         class="w-10 h-6 text-xs text-center bg-transparent focus:outline-none t-text-main"
@@ -469,7 +469,7 @@
                             </div>
 
                             <button data-event-click-action="nextPage"
-                                class="text-gray-500 hover:text-emerald-600 disabled:opacity-30 transition-colors text-sm flex items-center gap-1">
+                                class="player-pagination-button text-gray-500 hover:text-emerald-600 disabled:opacity-30 transition-colors text-sm flex items-center gap-1">
                                 <span class="hidden sm:inline">下一页</span> <i
                                     class="fas fa-chevron-right text-[10px]"></i>
                             </button>
@@ -557,14 +557,16 @@
                         </div>
 
                         <!-- Pagination -->
-                        <div id="songlist-pagination" class="mt-10 mb-20 flex items-center justify-center gap-6">
+                        <div id="songlist-pagination" class="player-pagination-bar border-t t-border-main t-bg-main">
                             <button data-songlist-action="change-page" data-delta="-1" id="btn-songlist-prev"
-                                class="px-6 py-2 t-bg-panel border t-border-main rounded-xl hover:text-emerald-500 disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-2 shadow-sm font-medium">
+                                class="player-pagination-button px-6 py-2 t-bg-panel border t-border-main rounded-xl hover:text-emerald-500 disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-2 shadow-sm font-medium">
                                 <i class="fas fa-chevron-left text-xs"></i> 上一页
                             </button>
-                            <span id="songlist-page-info" class="text-sm font-mono font-bold t-text-main">第 1 页</span>
+                            <div class="player-pagination-center">
+                                <span id="songlist-page-info" class="player-pagination-info text-sm font-mono font-bold t-text-main">第 1 页</span>
+                            </div>
                             <button data-songlist-action="change-page" data-delta="1" id="btn-songlist-next"
-                                class="px-6 py-2 t-bg-panel border t-border-main rounded-xl hover:text-emerald-500 disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-2 shadow-sm font-medium">
+                                class="player-pagination-button px-6 py-2 t-bg-panel border t-border-main rounded-xl hover:text-emerald-500 disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-2 shadow-sm font-medium">
                                 下一页 <i class="fas fa-chevron-right text-xs"></i>
                             </button>
                         </div>
@@ -717,7 +719,7 @@
                             <!-- List Section -->
                             <div class="flex-1 flex flex-col overflow-hidden">
                                 <div
-                                    class="player-track-grid player-track-grid--network player-track-grid--header px-3 py-1.5 border-b t-border-main t-bg-main text-gray-500 text-xs font-bold uppercase tracking-wider list-results-header">
+                                    class="player-track-list-header player-track-grid player-track-grid--network player-track-grid--header px-3 py-1.5 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
                                     <div class="player-track-index list-header-leading">
                                         <div class="list-header-actions" role="group" aria-label="列表操作">
                                             <button data-event-click-action="toggleBatchMode" data-list-action="batch"
@@ -732,7 +734,7 @@
                                             </button>
                                         </div>
                                     </div>
-                                    <div class="player-track-title">歌曲</div>
+                                    <div class="player-track-title">歌曲标题</div>
                                     <div class="player-track-artist">歌手</div>
                                     <div class="player-track-album">专辑</div>
                                     <div class="player-track-duration text-right">时长</div>
@@ -740,7 +742,7 @@
                                 </div>
 
                                 <div id="sl-detail-list" role="list"
-                                    class="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar pb-20">
+                                    class="player-track-list-content flex-1 overflow-y-auto px-0 py-2 space-y-1 custom-scrollbar pb-20">
                                     <!-- Song items -->
                                 </div>
                             </div>
@@ -907,23 +909,22 @@
 
                             <!-- 列表表头 -->
                             <div
-                                class="player-track-grid player-track-grid--network player-track-grid--header flex-shrink-0 px-3 py-2 border-b t-border-main t-bg-panel/80 text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">
-                                <div class="player-track-index text-center flex items-center justify-center gap-1">
-                                    <span>#</span>
-                                    <div class="flex items-center gap-0.5 md:gap-1 ml-0.5">
+                                class="player-track-list-header player-track-grid player-track-grid--network player-track-grid--header flex-shrink-0 px-3 py-1.5 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
+                                <div class="player-track-index list-header-leading">
+                                    <div class="list-header-actions" role="group" aria-label="列表操作">
                                         <button data-event-click-action="toggleLbBatchMode"
-                                            class="text-[10px] md:text-xs text-emerald-600 hover:text-emerald-700"
-                                            title="批量操作">
-                                            <i class="fas fa-tasks"></i>
+                                            class="list-header-action"
+                                            title="批量操作" aria-label="批量操作">
+                                            <i class="fas fa-tasks" aria-hidden="true"></i>
                                         </button>
                                         <button data-event-click-action="lbToggleListSearch"
-                                            class="text-[10px] md:text-xs text-emerald-600 hover:text-emerald-700 ml-0.5"
-                                            title="过滤歌曲">
-                                            <i class="fas fa-search"></i>
+                                            class="list-header-action"
+                                            title="过滤歌曲" aria-label="过滤歌曲">
+                                            <i class="fas fa-search" aria-hidden="true"></i>
                                         </button>
                                     </div>
                                 </div>
-                                <div class="player-track-title">歌曲</div>
+                                <div class="player-track-title">歌曲标题</div>
                                 <div class="player-track-artist">歌手</div>
                                 <div class="player-track-album">专辑</div>
                                 <div class="player-track-duration text-right">时长</div>
@@ -931,7 +932,7 @@
                             </div>
 
                             <!-- 歌曲列表 -->
-                            <div id="lb-songs-list" class="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar pb-20">
+                            <div id="lb-songs-list" class="player-track-list-content flex-1 overflow-y-auto px-0 py-2 space-y-1 custom-scrollbar pb-20">
                                 <!-- 歌曲行由 JS 注入 -->
                                 <div class="flex flex-col items-center justify-center py-20 t-text-muted">
                                     <i class="fas fa-chart-bar text-5xl mb-4 opacity-20"></i>
@@ -941,15 +942,16 @@
 
                             <!-- 分页 -->
                             <div id="lb-pagination"
-                                class="flex-shrink-0 flex items-center justify-center gap-2 md:gap-4 py-3 border-t t-border-main t-bg-panel/80">
+                                class="player-pagination-bar border-t t-border-main t-bg-panel/80 flex-shrink-0">
                                 <button id="lb-btn-prev" data-event-click-action="leaderboardChangePage" data-event-click-args="[-1]" disabled
-                                    class="px-2 md:px-4 py-1.5 text-xs md:text-sm t-bg-main border t-border-main rounded-lg hover:t-bg-track disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                    class="player-pagination-button px-2 md:px-4 py-1.5 text-xs md:text-sm t-bg-main border t-border-main rounded-lg hover:t-bg-track disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                                     <i class="fas fa-chevron-left md:mr-1"></i><span class="hidden sm:inline">上一页</span>
                                 </button>
-                                <span id="lb-page-info" class="text-[10px] md:text-sm t-text-muted font-medium">第 1
-                                    页</span>
+                                <div class="player-pagination-center">
+                                    <span id="lb-page-info" class="player-pagination-info text-[10px] md:text-sm t-text-muted font-medium">第 1 页</span>
+                                </div>
                                 <button id="lb-btn-next" data-event-click-action="leaderboardChangePage" data-event-click-args="[1]" disabled
-                                    class="px-2 md:px-4 py-1.5 text-xs md:text-sm t-bg-main border t-border-main rounded-lg hover:t-bg-track disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                    class="player-pagination-button px-2 md:px-4 py-1.5 text-xs md:text-sm t-bg-main border t-border-main rounded-lg hover:t-bg-track disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                                     <span class="hidden sm:inline">下一页</span><i
                                         class="fas fa-chevron-right md:ml-1"></i>
                                 </button>
@@ -1319,17 +1321,17 @@
 
                     <!-- Header Row -->
                     <div
-                        class="player-track-grid player-track-grid--local player-track-grid--header p-3 md:p-2 border t-border-main t-bg-main text-gray-500 text-[10px] sm:text-xs font-bold uppercase tracking-wider shrink-0 mt-2 rounded-t-xl">
-                        <div class="player-track-index text-center font-mono flex items-center justify-center">
-                            <div class="flex items-center gap-1">
+                        class="player-track-list-header player-track-grid player-track-grid--local player-track-grid--header px-3 py-1.5 border t-border-main t-bg-main text-gray-500 text-sm font-medium shrink-0 rounded-t-xl list-results-header">
+                        <div class="player-track-index list-header-leading">
+                            <div class="list-header-actions" role="group" aria-label="列表操作">
                                 <span>#</span>
                                 <button data-event-click-action="LocalMusicManager.toggleBatchMode"
-                                    class="text-[10px] text-emerald-600 hover:text-emerald-700" title="批量操作">
-                                    <i class="fas fa-tasks"></i>
+                                    class="list-header-action" title="批量操作" aria-label="批量操作">
+                                    <i class="fas fa-tasks" aria-hidden="true"></i>
                                 </button>
                             </div>
                         </div>
-                        <div class="player-track-title">歌曲</div>
+                        <div class="player-track-title">歌曲标题</div>
                         <div class="player-track-artist">歌手</div>
                         <div class="player-track-album">专辑</div>
                         <div class="player-track-source">来源/信息</div>
@@ -1338,21 +1340,23 @@
 
                     <!-- List Area -->
                     <div id="lm-list-container"
-                        class="flex-1 overflow-y-auto p-2 space-y-1 custom-scrollbar pb-20 rounded-b-xl border border-t-0 t-border-main t-bg-panel">
+                        class="player-track-list-content flex-1 overflow-y-auto px-0 py-2 space-y-1 custom-scrollbar pb-20 rounded-b-xl border border-t-0 t-border-main t-bg-panel">
                         <div class="text-center py-20 text-gray-500 animate-fade-in">
                             <i class="fas fa-circle-notch fa-spin text-4xl mb-4 text-emerald-500"></i>
                             <p class="font-bold tracking-wider">正在加载本地音乐...</p>
                         </div>
                     </div>
                     <div id="lm-pagination"
-                        class="flex-shrink-0 flex items-center justify-center gap-2 md:gap-4 py-2 border-x border-b t-border-main rounded-b-xl t-bg-panel/80 hidden">
+                        class="player-pagination-bar border-x border-b t-border-main rounded-b-xl t-bg-panel/80 flex-shrink-0 hidden">
                         <button id="lm-page-prev" data-event-click-action="LocalMusicManager.changePage" data-event-click-args="[-1]"
-                            class="px-2 md:px-4 py-1.5 text-xs md:text-sm t-bg-main border t-border-main rounded-lg hover:t-bg-track disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                            class="player-pagination-button px-2 md:px-4 py-1.5 text-xs md:text-sm t-bg-main border t-border-main rounded-lg hover:t-bg-track disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                             <i class="fas fa-chevron-left md:mr-1"></i><span class="hidden sm:inline">上一页</span>
                         </button>
-                        <span id="lm-page-info" class="text-[10px] md:text-sm t-text-muted font-medium">第 1 / 1 页</span>
+                        <div class="player-pagination-center">
+                            <span id="lm-page-info" class="player-pagination-info text-[10px] md:text-sm t-text-muted font-medium">第 1 / 1 页</span>
+                        </div>
                         <button id="lm-page-next" data-event-click-action="LocalMusicManager.changePage" data-event-click-args="[1]"
-                            class="px-2 md:px-4 py-1.5 text-xs md:text-sm t-bg-main border t-border-main rounded-lg hover:t-bg-track disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                            class="player-pagination-button px-2 md:px-4 py-1.5 text-xs md:text-sm t-bg-main border t-border-main rounded-lg hover:t-bg-track disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                             <span class="hidden sm:inline">下一页</span><i class="fas fa-chevron-right md:ml-1"></i>
                         </button>
                     </div>

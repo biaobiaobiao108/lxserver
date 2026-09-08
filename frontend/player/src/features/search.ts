@@ -309,7 +309,7 @@ function renderTrackListHeader({ includeBackToolbar = false, extraClass = '' } =
     ` : '';
 
     return `${backToolbar}
-        <div class="player-track-grid player-track-grid--network player-track-grid--header ${extraClass} border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
+        <div class="player-track-list-header player-track-grid player-track-grid--network player-track-grid--header ${extraClass} border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
             <div class="player-track-index list-header-leading">
                 <div class="list-header-actions" role="group" aria-label="列表操作">
                     <button data-event-click-action="toggleBatchMode" data-list-action="batch"
@@ -1041,7 +1041,7 @@ function renderArtistHeader(info, activeTab, order) {
     const nameTransform = isArtistFolded
         ? (isMobile ? 'translate(40px, -30px) scale(0.65)' : 'translate(30px, 0px) scale(0.65)')
         : 'translate(0, 0) scale(1)';
-    const tabsClass = isArtistFolded ? 'mt-1' : 'mt-8';
+    const tabsClass = isArtistFolded ? 'mt-1' : '';
 
     let headerHtml = `
         <div id="artist-detail-header" class="relative ${headerPadding} is-folded t-bg-panel/50 border-b t-border-main transition-all duration-500 ease-in-out overflow-hidden group/header" style="${isArtistFolded ? 'min-height: ' + (isMobile ? '0px' : '90px') + ';' : ''}">
@@ -1090,34 +1090,34 @@ function renderArtistHeader(info, activeTab, order) {
             </div>
             
             <div id="artist-tabs-bar" class="artist-detail-tabs-bar flex items-center justify-between ${tabsClass} border-t t-border-main transition-all duration-500 relative z-40" style="min-height: 40px; height: 40px;">
-                <div class="flex gap-8">
+                <div class="artist-tabs-group flex items-center gap-8">
                     <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, &quot;songs&quot;]"
-                            class="pb-2 text-sm font-bold transition-all relative ${activeTab === 'songs' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
+                            class="artist-tab text-sm font-bold transition-all relative ${activeTab === 'songs' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
                         所有歌曲
                         ${activeTab === 'songs' ? '<div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 rounded-full"></div>' : ''}
                     </button>
                     <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, &quot;albums&quot;]"
-                            class="pb-2 text-sm font-bold transition-all relative ${activeTab === 'albums' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
+                            class="artist-tab text-sm font-bold transition-all relative ${activeTab === 'albums' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
                         所有专辑
                         ${activeTab === 'albums' ? '<div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 rounded-full"></div>' : ''}
                     </button>
                 </div>
                 
                 ${activeTab === 'songs' ? `
-                <div class="flex p-1 mb-1 t-bg-main rounded-lg border t-border-main shadow-sm relative z-50">
+                <div class="artist-tabs-sort flex items-center p-1 t-bg-main rounded-lg border t-border-main shadow-sm relative z-50">
                     <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;hot&quot;, &quot;songs&quot;]"
-                            class="px-4 py-1.5 text-xs font-bold rounded-md transition-all ${order === 'hot' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
+                            class="px-4 py-1 text-xs font-bold rounded-md transition-all ${order === 'hot' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
                         热门
                     </button>
                     <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;time&quot;, &quot;songs&quot;]"
-                            class="px-4 py-1.5 text-xs font-bold rounded-md transition-all ${order === 'time' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
+                            class="px-4 py-1 text-xs font-bold rounded-md transition-all ${order === 'time' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
                         最新
                     </button>
                 </div>
                 ` : ''}
             </div>
         </div>
-        <div id="artist-detail-content" class="flex-1 overflow-y-auto p-2 md:p-4">
+        <div id="artist-detail-content" class="player-track-list-content flex-1 overflow-y-auto p-2 md:p-4">
             <div class="flex items-center justify-center py-10">
                 <i class="fas fa-spinner fa-spin text-2xl text-emerald-500"></i>
             </div>
@@ -1272,6 +1272,19 @@ function animateArtistDetailContent(content: HTMLElement) {
     }, 240);
 }
 
+function getArtistSongsPageMetrics(list) {
+    const displayList = window.ListSearch
+        ? window.ListSearch.getDisplayList(list)
+        : list.map((item, index) => ({ item, originalIndex: index }));
+    const totalItems = displayList.length;
+    let itemsPerPage = (settings && settings.itemsPerPage === 'all')
+        ? totalItems
+        : parseInt((settings && settings.itemsPerPage) || 20);
+    if (!itemsPerPage || itemsPerPage <= 0) itemsPerPage = 20;
+    const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+    return { displayList, itemsPerPage, totalItems, totalPages };
+}
+
 function renderArtistSongsUI(list, page) {
     const content = document.getElementById('artist-detail-content');
     if (!content) return;
@@ -1283,11 +1296,8 @@ function renderArtistSongsUI(list, page) {
         return;
     }
 
-    // 前端分页逻辑
-    const totalItems = list.length;
-    let itemsPerPage = (settings && settings.itemsPerPage === 'all') ? totalItems : parseInt((settings && settings.itemsPerPage) || 20);
-    if (!itemsPerPage || itemsPerPage <= 0) itemsPerPage = 20;
-    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    // 前端分页逻辑，分页数量与列表搜索后的可见结果保持一致
+    const { displayList, itemsPerPage, totalItems, totalPages } = getArtistSongsPageMetrics(list);
 
     // 使用传入的 page 或者全局 artistSongsPage，默认第1页
     if (page !== undefined) window.artistSongsPage = page;
@@ -1295,12 +1305,9 @@ function renderArtistSongsUI(list, page) {
     if (window.artistSongsPage > totalPages) window.artistSongsPage = totalPages;
 
     const artistPage = window.artistSongsPage;
-    const startIndex = (pageState.value - 1) * itemsPerPage;
+    const startIndex = (artistPage - 1) * itemsPerPage;
     const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
-
-    // Apply filtering logic from ListSearch
-    const fullIndexedList = window.ListSearch ? window.ListSearch.getDisplayList(list) : list.map((item, index) => ({ item, originalIndex: index }));
-    const indexedDisplayList = fullIndexedList.slice(startIndex, endIndex);
+    const indexedDisplayList = displayList.slice(startIndex, endIndex);
 
     let html = `
         <!-- 表头 -->
@@ -1400,15 +1407,27 @@ function renderArtistSongsUI(list, page) {
         </div>
 
         <!-- 歌手详情内部分页控件 -->
-        <div class=" mt-2 flex-shrink-0">
-            <button data-event-click-action="artistSongsPrevPage"
-                class="text-gray-500 hover:text-emerald-600 disabled:opacity-30 transition-colors ${pageState.value <= 1 ? 'opacity-30 pointer-events-none' : ''}">
-                <i class="fas fa-chevron-left"></i> 上一页
+        <div class="player-pagination-bar artist-songs-pagination border-t t-border-main t-bg-main">
+            <button type="button" data-event-click-action="artistSongsPrevPage"
+                class="player-pagination-button t-text-muted hover:t-text-main"
+                ${artistPage <= 1 ? 'disabled' : ''}>
+                <i class="fas fa-chevron-left" aria-hidden="true"></i><span class="hidden sm:inline">上一页</span>
             </button>
-            <span class="text-xs t-text-muted font-mono">显示 ${startIndex + 1}-${endIndex} 首，共 ${totalItems} 首</span>
-            <button data-event-click-action="artistSongsNextPage"
-                class="text-gray-500 hover:text-emerald-600 disabled:opacity-30 transition-colors ${pageState.value >= totalPages ? 'opacity-30 pointer-events-none' : ''}">
-                下一页 <i class="fas fa-chevron-right"></i>
+            <div class="player-pagination-center">
+                <span id="artist-songs-page-info" class="player-pagination-info t-text-muted">第 ${artistPage} / ${totalPages} 页 (${totalItems} 首)</span>
+                <div class="player-pagination-jump">
+                    <label for="artist-songs-page-input" class="sr-only">跳转到歌手歌曲页码</label>
+                    <input id="artist-songs-page-input" type="number" min="1" max="${totalPages}" inputmode="numeric" enterkeyhint="go"
+                        value="${artistPage}" aria-label="跳转到歌手歌曲页码"
+                        data-event-keydown-action="artistSongsGoToPage" data-event-key="Enter">
+                    <span aria-hidden="true"></span>
+                    <button type="button" data-event-click-action="artistSongsGoToPage">跳转</button>
+                </div>
+            </div>
+            <button type="button" data-event-click-action="artistSongsNextPage"
+                class="player-pagination-button t-text-muted hover:t-text-main"
+                ${artistPage >= totalPages ? 'disabled' : ''}>
+                <span class="hidden sm:inline">下一页</span><i class="fas fa-chevron-right" aria-hidden="true"></i>
             </button>
         </div>
     `;
@@ -1430,15 +1449,25 @@ function artistSongsPrevPage() {
 function artistSongsNextPage() {
     const list = window.currentArtistSongsCache;
     if (!list) return;
-    const totalItems = list.length;
-    let itemsPerPage = (settings && settings.itemsPerPage === 'all') ? totalItems : parseInt((settings && settings.itemsPerPage) || 20);
-    if (!itemsPerPage || itemsPerPage <= 0) itemsPerPage = 20;
-    const totalPages = Math.ceil(totalItems / itemsPerPage);
+    const { totalPages } = getArtistSongsPageMetrics(list);
     if ((window.artistSongsPage || 1) >= totalPages) return;
     renderArtistSongsUI(list, (window.artistSongsPage || 1) + 1);
 }
+function artistSongsGoToPage() {
+    const list = window.currentArtistSongsCache;
+    const input = document.getElementById('artist-songs-page-input') as HTMLInputElement | null;
+    if (!list || !input) return;
+
+    const { totalPages } = getArtistSongsPageMetrics(list);
+    const requestedPage = Number.parseInt(input.value, 10);
+    if (!Number.isFinite(requestedPage)) return;
+
+    const targetPage = Math.min(totalPages, Math.max(1, requestedPage));
+    renderArtistSongsUI(list, targetPage);
+}
 window.artistSongsPrevPage = artistSongsPrevPage;
 window.artistSongsNextPage = artistSongsNextPage;
+window.artistSongsGoToPage = artistSongsGoToPage;
 
 const ARTIST_ALBUM_PAGE_SIZE = 50;
 const ARTIST_ALBUM_MAX_PAGES = 100;

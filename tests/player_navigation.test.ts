@@ -97,6 +97,8 @@ describe('Player Navigation and State Restoration Safety', () => {
 
         expect(html).toContain('class="playlist-card-grid"');
         expect(html).toContain('class="w-56 shrink-0');
+        expect(html).toContain('class="player-track-list-content flex-1');
+        expect(html).toContain('class="player-pagination-bar');
         expect(css).toContain('--player-track-index-size: 5rem');
         expect(css).toContain('--player-track-action-size: 5rem');
         expect(css).toContain('grid-template-columns: var(--player-track-index-size) minmax(0, 1fr) minmax(var(--player-track-action-size), max-content)');
@@ -108,7 +110,10 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(css).toContain('flex-wrap: nowrap');
         expect(css).toContain('white-space: nowrap');
         expect(css).toContain('#search-results-header');
-        expect(css).toContain('margin-inline: 0.5rem');
+        expect(css).toContain('.player-track-list-content');
+        expect(css).toContain('margin-inline: 0;');
+        expect(css).toContain('.player-pagination-bar');
+        expect(css).toContain('block-size: 3rem');
         expect(html).toContain('player-track-grid--header');
         expect(css).toContain('.favorite-sidebar-item.active-sub-item');
         for (const source of rendererSources) {
@@ -147,6 +152,7 @@ describe('Player Navigation and State Restoration Safety', () => {
 
     it('artist detail tabs and album cards keep stable, non-overlapping layout', () => {
         const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
+        const html = fs.readFileSync(path.join(import.meta.dir, '../public/music/index.html'), 'utf8');
         const css = fs.readFileSync(playerCssPath, 'utf8');
         const artistSongsSection = searchContent.match(/function renderArtistSongsUI[\s\S]*?window\.renderArtistSongsUI/)?.[0] ?? '';
 
@@ -154,7 +160,14 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(artistSongsSection).not.toContain('group-hover:block');
         expect(searchContent).toContain('class="artist-detail-tabs-bar flex items-center');
         expect(searchContent).toContain('style="min-height: 40px; height: 40px;"');
+        expect(searchContent).toContain("const tabsClass = isArtistFolded ? 'mt-1' : '';");
+        expect(searchContent).toContain('class="artist-tabs-group flex items-center');
         expect(searchContent).toContain('class="artist-albums-grid p-2 md:p-4');
+        expect(artistSongsSection).toContain('getArtistSongsPageMetrics');
+        expect(artistSongsSection).toContain('const startIndex = (artistPage - 1) * itemsPerPage;');
+        expect(artistSongsSection).toContain('player-pagination-bar');
+        expect(searchContent).toContain('player-track-list-header player-track-grid player-track-grid--network');
+        expect(artistSongsSection).not.toContain('pageState.value');
         expect(css).toContain('#artist-tabs-bar');
         expect(css).toContain('block-size: 2.5rem');
         expect(css).toContain('align-items: center');
@@ -165,6 +178,24 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(css).toContain('#main-sidebar nav::-webkit-scrollbar');
         expect(css).toContain('scrollbar-width: none');
         expect(css).toContain('scrollbar-gutter: auto');
+        expect(html).toContain('overflow-y-auto no-scrollbar');
+    });
+
+    it('all player list surfaces use the same header and pagination boundaries', () => {
+        const html = fs.readFileSync(path.join(import.meta.dir, '../public/music/index.html'), 'utf8');
+        const css = fs.readFileSync(playerCssPath, 'utf8');
+
+        const sharedHeaders = html.match(/player-track-list-header player-track-grid/g) ?? [];
+        expect(sharedHeaders.length).toBeGreaterThanOrEqual(4);
+        for (const id of ['search-pagination-bar', 'songlist-pagination', 'lb-pagination', 'lm-pagination']) {
+            const element = html.match(new RegExp(`id="${id}"[\\s\\S]{0,240}`))?.[0] ?? '';
+            expect(element).toContain('player-pagination-bar');
+        }
+        expect(css).toContain('inline-size: 100%;');
+        expect(css).toContain('padding-inline: 0 !important;');
+        expect(css).toContain('.player-pagination-center');
+        expect(css).toContain('.player-pagination-button');
+        expect(css).toContain('.player-pagination-center {\n        flex-direction: row;');
     });
 
     it('player motion is progressive, directional, and reduced-motion aware', () => {

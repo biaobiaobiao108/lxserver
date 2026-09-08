@@ -1,8 +1,8 @@
 import './legacy/quality';
 import './legacy/idb_store';
 import './legacy/user_sync';
-import './legacy/batch_pagination';
-import './legacy/single_song_ops';
+import { handleBatchSelect } from './legacy/batch_pagination';
+import { downloadSong } from './legacy/single_song_ops';
 import './legacy/list_search';
 import './legacy/pwa';
 import './legacy/theme_manager';
@@ -49,6 +49,12 @@ import { initLyricFeature } from './features/lyrics';
 import { initSearchFeature } from './features/search';
 import { initPlaybackFeature, type PlaybackState } from './features/playback';
 import { initSyncFeature, type SyncState } from './features/sync';
+import { DownloadManager } from './legacy/download_manager';
+import { createSongListManager, type SongListManagerApi } from './legacy/songlist_manager';
+import {
+    registerDownloadManager,
+    registerSongListManager,
+} from './player_services';
 
 /*
  * Copyright 2026 xcq0607 (https://github.com/xcq0607)
@@ -78,6 +84,9 @@ type PlayerAuthBridge = {
 let playerAuthBridge: PlayerAuthBridge | null = null;
 const getPlayerUserAuthHeaders = () => playerAuthBridge?.getUserAuthHeaders() ?? {};
 const isPlayerUserLoggedIn = () => playerAuthBridge?.isUserLoggedIn() ?? false;
+
+let songListManager: SongListManagerApi;
+let downloadManager: DownloadManager;
 
 function getCredential(key: string): string | null {
     const current = credentialStorage.getItem(key);
@@ -316,6 +325,7 @@ function loadCacheFeature() {
             showError,
             escapeHtmlText,
             defaultSettings: DEFAULT_SETTINGS,
+            getDownloadStatusHtml: (icon, message, loading) => downloadManager.getStatusHtml(icon, message, loading),
         })),
         '正在加载缓存管理...'
     );
@@ -533,6 +543,14 @@ try {
     console.error('[Settings] 加载设置失败:', e);
 }
 window.settings = settings; // 显式挂载到 window
+
+// Player-owned managers are regular modules. Their DOM events are delegated by
+// the modules themselves, so HTML does not need global manager proxies.
+songListManager = createSongListManager({ downloadSong, handleBatchSelect });
+registerSongListManager(songListManager);
+downloadManager = new DownloadManager();
+registerDownloadManager(downloadManager);
+
 window.networkListUpdateMap = new Set();
 let networkListAutoCheckTimer = null;
 
@@ -1045,10 +1063,8 @@ document.addEventListener('DOMContentLoaded', () => {
         hotSearchLimitInput.value = (settings.hotSearchLimit !== undefined && settings.hotSearchLimit !== null) ? settings.hotSearchLimit : 20;
     }
 
-    // Initialize SongList Manager
-    if (window.SongListManager) {
-        window.SongListManager.init();
-    }
+    // Initialize Song List module after the DOM is ready.
+    songListManager.init();
 
     // Initialize Lyric Font Size UI
     const lyricFontSizeSlider = document.getElementById('lyric-font-size-slider');
@@ -2869,7 +2885,7 @@ document.addEventListener('keydown', (e) => {
             if (typeof toggleCacheDrawer === 'function') toggleCacheDrawer();
             break;
         case 'KeyJ':
-            if (typeof toggleDownloadDrawer === 'function') toggleDownloadDrawer();
+            downloadManager.toggleDrawer();
             break;
     }
 });
@@ -3033,9 +3049,7 @@ const SETTINGS_UI_MAP = {
         type: 'value',
         normalize: normalizeDownloadConcurrency,
         action: (v) => {
-            if (window.SystemDownloadManager) {
-                window.SystemDownloadManager.updateMaxConcurrent(v);
-            }
+            downloadManager.updateMaxConcurrent(v);
         }
     },
     enableRemaster: {
@@ -4042,8 +4056,8 @@ function formatSongToLxMusicStandard(item) {
 
 function collectCurrentSongList() {
     const activeListData = isUserLoggedIn() ? (window.myPersonalListData || currentListData) : currentListData;
-    if (!activeListData || typeof window.SongListManager === 'undefined') return;
-    const detail = window.SongListManager.getCurrentDetail();
+    if (!activeListData) return;
+    const detail = songListManager.getCurrentDetail();
     if (!detail || !detail.id || !detail.list || detail.list.length === 0) {
         if (window.showToast) window.showToast('error', '歌单数据不完整或为空');
         return;
@@ -4203,9 +4217,7 @@ async function handleJumpToOriginalList(listId, event) {
     }
 
     // 3. Open Detail view via SongListManager
-    if (window.SongListManager && window.SongListManager.openDetail) {
-        window.SongListManager.openDetail(list.sourceListId, list.source);
-    }
+    songListManager.openDetail(list.sourceListId, list.source);
 }
 
 

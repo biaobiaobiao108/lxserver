@@ -1,11 +1,10 @@
 // @ts-nocheck
-// This legacy-compatible module is compiled as an isolated browser bundle.
 /**
  * Download Manager for LX Server Web Frontend
  * Manages parallel downloads, progress tracking, pausing, resuming, retries using Fetch + ReadableStream.
  */
 
-class DownloadManager {
+export class DownloadManager {
     constructor() {
         this.tasks = []; // Queue of tasks
         this.maxConcurrent = this.normalizeConcurrency(window.settings?.downloadConcurrency);
@@ -40,10 +39,63 @@ class DownloadManager {
             this.listContainer.addEventListener('scroll', () => this.scheduleScrollRender());
         }
 
+        this.bindEvents();
+
         // Restore tasks from sessionStorage
         this.restoreTasks();
         setTimeout(() => this.syncServerConcurrency(), 300);
         setTimeout(() => this.syncServerQueue(true), 500);
+    }
+
+    bindEvents() {
+        document.addEventListener('click', (event) => {
+            const target = event.target;
+            const element = target instanceof Element ? target.closest('[data-download-action]') : null;
+            if (!element) return;
+
+            const action = element.dataset.downloadAction;
+            const taskId = element.dataset.taskId;
+            if (taskId || action === 'retry-lyric') event.stopPropagation();
+
+            switch (action) {
+                case 'toggle':
+                    this.toggleDrawer();
+                    break;
+                case 'open':
+                    if (this.drawer?.classList.contains('translate-x-full')) this.toggleDrawer();
+                    break;
+                case 'pause':
+                    if (taskId) this.pauseTask(taskId);
+                    break;
+                case 'resume':
+                    if (taskId) this.resumeTask(taskId);
+                    break;
+                case 'delete':
+                    if (taskId) this.deleteTask(taskId);
+                    break;
+                case 'retry-lyric':
+                    if (taskId) this.retryLyric(taskId);
+                    break;
+                case 'retry-all-lyrics':
+                    this.retryAllLyrics();
+                    break;
+                case 'pause-all':
+                    this.pauseAll();
+                    break;
+                case 'resume-all':
+                    this.resumeAll();
+                    break;
+                case 'retry-all-failed':
+                    this.retryAllFailed();
+                    break;
+                case 'clear-completed':
+                    this.clearCompleted();
+                    break;
+                case 'clear-all':
+                    this.clearAll();
+                    break;
+            }
+        });
     }
 
     async mapWithConcurrency(items, limit, mapper) {
@@ -1546,7 +1598,7 @@ class DownloadManager {
 
             if (!isServerTask && !task.nativeDownloadDispatched) {
                 actionBtnHTML = `
-                    <button onclick="window.SystemDownloadManager.pauseTask('${task.id}')" class="w-8 h-8 rounded-full border border-yellow-200 text-yellow-500 hover:bg-yellow-50 flex items-center justify-center transition-colors shadow-sm" title="暂停">
+                    <button data-download-action="pause" data-task-id="${task.id}" class="w-8 h-8 rounded-full border border-yellow-200 text-yellow-500 hover:bg-yellow-50 flex items-center justify-center transition-colors shadow-sm" title="暂停">
                         <i class="fas fa-pause text-xs"></i>
                     </button>
                 `;
@@ -1559,7 +1611,7 @@ class DownloadManager {
             statusBg = 'bg-yellow-100 text-yellow-600';
             statusText = '已暂停';
             actionBtnHTML = `
-                <button onclick="window.SystemDownloadManager.resumeTask('${task.id}')" class="w-8 h-8 rounded-full border border-emerald-200 text-emerald-500 hover:bg-emerald-50 flex items-center justify-center transition-colors shadow-sm" title="继续">
+                <button data-download-action="resume" data-task-id="${task.id}" class="w-8 h-8 rounded-full border border-emerald-200 text-emerald-500 hover:bg-emerald-50 flex items-center justify-center transition-colors shadow-sm" title="继续">
                     <i class="fas fa-play text-xs"></i>
                 </button>
             `;
@@ -1567,7 +1619,7 @@ class DownloadManager {
             statusBg = 'bg-red-100 text-red-600';
             statusText = task.retryCount > 0 && task.retryCount < task.maxRetries ? `重试 (${task.retryCount})` : '失败';
             actionBtnHTML = `
-                <button onclick="window.SystemDownloadManager.resumeTask('${task.id}')" class="w-8 h-8 rounded-full border border-red-200 text-red-500 hover:bg-red-50 flex items-center justify-center transition-colors shadow-sm" title="重试">
+                <button data-download-action="resume" data-task-id="${task.id}" class="w-8 h-8 rounded-full border border-red-200 text-red-500 hover:bg-red-50 flex items-center justify-center transition-colors shadow-sm" title="重试">
                     <i class="fas fa-redo text-xs"></i>
                 </button>
             `;
@@ -1579,7 +1631,7 @@ class DownloadManager {
             statusText = isServerTask ? '云端排队' : '等待中';
             if (!isServerTask) {
                 actionBtnHTML = `
-                    <button onclick="window.SystemDownloadManager.pauseTask('${task.id}')" class="w-8 h-8 rounded-full border border-yellow-200 text-yellow-500 hover:bg-yellow-50 flex items-center justify-center transition-colors shadow-sm" title="暂停">
+                    <button data-download-action="pause" data-task-id="${task.id}" class="w-8 h-8 rounded-full border border-yellow-200 text-yellow-500 hover:bg-yellow-50 flex items-center justify-center transition-colors shadow-sm" title="暂停">
                         <i class="fas fa-pause text-xs"></i>
                     </button>
                 `;
@@ -1589,13 +1641,13 @@ class DownloadManager {
         // Always show delete button mostly
         if (task.status !== 'downloading' || isServerTask) {
             actionBtnHTML += `
-                <button onclick="window.SystemDownloadManager.deleteTask('${task.id}')" class="w-8 h-8 rounded-full border border-red-100 text-red-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors ml-1 shadow-sm" title="移除任务">
+                <button data-download-action="delete" data-task-id="${task.id}" class="w-8 h-8 rounded-full border border-red-100 text-red-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors ml-1 shadow-sm" title="移除任务">
                     <i class="fas fa-trash-alt text-xs"></i>
                 </button>
             `;
         } else {
             actionBtnHTML += `
-                <button onclick="window.SystemDownloadManager.deleteTask('${task.id}')" class="w-8 h-8 rounded-full border border-red-100 text-red-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors ml-1 shadow-sm" title="取消下载">
+                <button data-download-action="delete" data-task-id="${task.id}" class="w-8 h-8 rounded-full border border-red-100 text-red-400 hover:bg-red-50 hover:text-red-500 flex items-center justify-center transition-colors ml-1 shadow-sm" title="取消下载">
                     <i class="fas fa-times text-xs"></i>
                 </button>
             `;
@@ -1639,7 +1691,7 @@ class DownloadManager {
                                 ${task.hasLyric === true ? `
                                     <span class="text-[9px] bg-emerald-500 text-white px-1 rounded h-3.5 flex items-center shadow-sm" title="歌词已同步">LRC</span>
                                 ` : task.hasLyric === false ? `
-                                    <div onclick="event.stopPropagation(); window.SystemDownloadManager.retryLyric('${task.id}')" class="text-[9px] bg-red-400 hover:bg-red-500 text-white px-1 rounded h-3.5 flex items-center gap-0.5 cursor-pointer shadow-sm transition-colors" title="歌词缺失，点击重试">
+                                    <div data-download-action="retry-lyric" data-task-id="${task.id}" class="text-[9px] bg-red-400 hover:bg-red-500 text-white px-1 rounded h-3.5 flex items-center gap-0.5 cursor-pointer shadow-sm transition-colors" title="歌词缺失，点击重试">
                                         <span>LRC+</span>
                                         <i class="fas fa-redo-alt text-[7px]"></i>
                                     </div>
@@ -1734,22 +1786,3 @@ class DownloadManager {
         if (typeof applyMarqueeChecks === 'function') applyMarqueeChecks();
     }
 }
-
-// Global UI Toggles for Download Drawer
-window.toggleDownloadDrawer = function () {
-    if (window.SystemDownloadManager) {
-        window.SystemDownloadManager.toggleDrawer();
-    }
-};
-
-window.openDownloadManager = function () {
-    if (window.SystemDownloadManager) {
-        if (window.SystemDownloadManager.drawer.classList.contains('translate-x-full')) {
-            window.SystemDownloadManager.toggleDrawer();
-        }
-    }
-};
-
-// Initialize globally
-window.SystemDownloadManager = new DownloadManager();
-

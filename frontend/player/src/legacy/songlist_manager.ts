@@ -1,11 +1,17 @@
 // @ts-nocheck
-// This legacy-compatible module is compiled as an isolated browser bundle.
 /**
  * Song List Manager for LX Music Web
  * Handles fetching, rendering and interactions for the "Song List" (Playlist) feature.
  */
 
-window.SongListManager = (function () {
+export type SongListManagerApi = ReturnType<typeof createSongListManager>;
+export type SongListManagerContext = {
+    downloadSong: (song: any) => unknown;
+    handleBatchSelect: (songId: string, isChecked: boolean) => void;
+};
+
+export function createSongListManager(context: SongListManagerContext) {
+    const manager = (function () {
     const API_BASE = '/api/music';
     let currentState = {
         source: 'wy',
@@ -34,6 +40,7 @@ window.SongListManager = (function () {
     // Initialize
     async function init() {
         console.log('[SongList] Initializing...');
+        bindEvents();
 
         // 优先从缓存读取
         const cachedSource = localStorage.getItem('songlist-source');
@@ -57,6 +64,131 @@ window.SongListManager = (function () {
                 }
             }
         });
+    }
+
+    let eventsBound = false;
+
+    function getActionTarget(event) {
+        const target = event.target;
+        return target instanceof Element ? target.closest('[data-songlist-action]') : null;
+    }
+
+    function handleAction(event, element) {
+        const action = element.dataset.songlistAction;
+        const data = element.dataset;
+
+        switch (action) {
+            case 'toggle-tags':
+                manager.toggleTagSelector();
+                break;
+            case 'search':
+                manager.search();
+                break;
+            case 'open-detail':
+                manager.openDetail(data.id || '', data.source || currentState.source);
+                break;
+            case 'select-tag':
+                manager.selectTag(data.tagId || '', data.tagName || '全部分类');
+                break;
+            case 'change-sort':
+                manager.changeSort(data.sort || '');
+                break;
+            case 'change-page':
+                manager.changePage(Number(data.delta || 0));
+                break;
+            case 'toggle-header':
+                toggleSlDetailHeader();
+                break;
+            case 'row':
+                manager.handleRowClick(Number(data.index));
+                break;
+            case 'batch-select':
+                event.stopPropagation();
+                context.handleBatchSelect(data.songId || '', element.checked);
+                break;
+            case 'play':
+                event.stopPropagation();
+                manager.playSong(Number(data.index));
+                break;
+            case 'download':
+                event.stopPropagation();
+                context.downloadSong(manager.getCurrentDetail().list[Number(data.index)]);
+                break;
+            case 'close-detail':
+                manager.closeDetail();
+                break;
+            case 'play-all':
+                manager.playAll();
+                break;
+            case 'open-external':
+                manager.openExternalListModal();
+                break;
+            case 'close-external':
+                manager.closeExternalListModal();
+                break;
+            case 'open-external-list':
+                manager.handleOpenExternalList();
+                break;
+            case 'open-qq':
+                manager.openQQInputModal();
+                break;
+            case 'close-qq':
+                manager.closeQQInputModal();
+                break;
+            case 'submit-qq':
+                manager.handleQQSubmit();
+                break;
+            case 'close-user-playlist':
+                manager.closeUserPlaylistModal();
+                break;
+            case 'select-user-playlist':
+                manager.selectUserPlaylist(data.id || '');
+                break;
+            case 'toggle-description':
+                toggleSongListDesc();
+                break;
+            default:
+                return;
+        }
+
+        if (element.matches('a[href^="javascript:"]')) event.preventDefault();
+    }
+
+    function bindEvents() {
+        if (eventsBound) return;
+        eventsBound = true;
+
+        document.addEventListener('click', (event) => {
+            const element = getActionTarget(event);
+            if (element) handleAction(event, element);
+
+            const popup = document.getElementById('tag-selector-popup');
+            const btn = document.getElementById('tag-selector-btn');
+            if (popup && btn && !popup.classList.contains('hidden') &&
+                !popup.contains(event.target) && !btn.contains(event.target)) {
+                toggleTagSelector(false);
+            }
+        });
+        document.addEventListener('keydown', (event) => {
+            const element = getActionTarget(event);
+            if (!element || !['Enter', ' '].includes(event.key)) return;
+            if (element.matches('input, select, textarea') && element.dataset.songlistAction !== 'search') return;
+            event.preventDefault();
+            handleAction(event, element);
+        });
+        document.addEventListener('change', (event) => {
+            const element = getActionTarget(event);
+            if (!element) return;
+            if (element.dataset.songlistAction === 'change-source') manager.changeSource();
+            if (element.dataset.songlistAction === 'external-source-change') manager.onExternalSourceChange();
+        });
+        document.addEventListener('error', (event) => {
+            const image = event.target;
+            if (!(image instanceof HTMLImageElement) || image.dataset.fallbackImage === 'used') return;
+            image.dataset.fallbackImage = 'used';
+            image.src = '/music/assets/logo.svg';
+            image.classList.add('is-placeholder');
+        }, true);
     }
 
     // --- UI Helpers ---
@@ -96,7 +228,7 @@ window.SongListManager = (function () {
             // Default select current source
             document.getElementById('external-list-source').value = currentState.source;
             // Trigger entry check
-            window.SongListManager.onExternalSourceChange();
+            manager.onExternalSourceChange();
         } else {
             content.classList.remove('scale-100', 'opacity-100');
             content.classList.add('scale-95', 'opacity-0');
@@ -261,7 +393,7 @@ window.SongListManager = (function () {
             // Initialize Unified Search for this context only on first load
             if (page === 1) {
                 window.ListSearch.init('songlist', {
-                    renderCallback: () => window.SongListManager.renderDetail(),
+                    renderCallback: () => manager.renderDetail(),
                     getList: () => detailState.list
                 });
             } else if (window.ListSearch && window.ListSearch.state.active && window.ListSearch.state.id === 'songlist') {
@@ -288,7 +420,7 @@ window.SongListManager = (function () {
         html += `<div class="mb-6">
             <h4 class="text-xs font-bold t-text-muted uppercase tracking-wider mb-3">默认</h4>
             <div class="flex flex-wrap gap-2">
-                <button onclick="window.SongListManager.selectTag('', '全部分类')" 
+                    <button data-songlist-action="select-tag" data-tag-id="" data-tag-name="全部分类"
                     class="px-3 py-1.5 rounded-lg text-sm transition-all ${currentState.tagId === '' ? 'active-option' : 't-bg-main hover:t-bg-track'}">全部分类</button>
             </div>
         </div>`;
@@ -299,7 +431,7 @@ window.SongListManager = (function () {
                 <h4 class="text-xs font-bold t-text-muted uppercase tracking-wider mb-3">热门标签</h4>
                 <div class="flex flex-wrap gap-2">
                     ${currentState.hotTags.map(tag => `
-                        <button onclick="window.SongListManager.selectTag('${tag.id}', '${tag.name}')" 
+                        <button data-songlist-action="select-tag" data-tag-id="${tag.id}" data-tag-name="${tag.name}"
                             class="px-3 py-1.5 rounded-lg text-sm transition-all ${currentState.tagId === tag.id ? 'active-option' : 't-bg-main hover:t-bg-track'}">${tag.name}</button>
                     `).join('')}
                 </div>
@@ -312,7 +444,7 @@ window.SongListManager = (function () {
                 <h4 class="text-xs font-bold t-text-muted uppercase tracking-wider mb-3">${cat.name}</h4>
                 <div class="flex flex-wrap gap-2">
                     ${cat.list.map(tag => `
-                        <button onclick="window.SongListManager.selectTag('${tag.id}', '${tag.name}')" 
+                        <button data-songlist-action="select-tag" data-tag-id="${tag.id}" data-tag-name="${tag.name}"
                             class="px-3 py-1.5 rounded-lg text-sm transition-all ${currentState.tagId === tag.id ? 'active-option' : 't-bg-main hover:t-bg-track'}">${tag.name}</button>
                     `).join('')}
                 </div>
@@ -331,12 +463,11 @@ window.SongListManager = (function () {
 
         container.innerHTML = currentState.list.map(item => `
             <div role="button" tabindex="0" aria-label="打开歌单 ${item.name || ''}" class="group cursor-pointer"
-                 onclick="window.SongListManager.openDetail('${item.id}', '${currentState.source}')"
-                 onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.SongListManager.openDetail('${item.id}', '${currentState.source}'); }">
+                 data-songlist-action="open-detail" data-id="${item.id}" data-source="${currentState.source}">
                 <div class="relative aspect-square overflow-hidden rounded-2xl shadow-md transition-all group-hover:shadow-xl group-hover:-translate-y-1">
                     <img data-src="${item.img || '/music/assets/logo.svg'}" src="/music/assets/logo.svg" alt="${item.name || '歌单'}封面" width="320" height="320" loading="lazy" decoding="async"
-                         class="lazy-image w-full h-full object-cover dynamic-logo is-placeholder" 
-                         onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');">
+                         class="lazy-image w-full h-full object-cover dynamic-logo is-placeholder"
+                         data-fallback-image="pending">
                     <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <div class="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-lg transform scale-50 group-hover:scale-100 transition-transform duration-300">
                             <i class="fas fa-play ml-1"></i>
@@ -374,7 +505,7 @@ window.SongListManager = (function () {
         }
 
         container.innerHTML = options.map(opt => `
-            <button onclick="window.SongListManager.changeSort('${opt.id}')" 
+            <button data-songlist-action="change-sort" data-sort="${opt.id}"
                 id="sort-${opt.id}"
                 class="px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${String(currentState.sortId) === String(opt.id) ? 'active-option' : 't-text-muted hover:t-bg-main'}">${opt.name}</button>
         `).join('');
@@ -478,8 +609,7 @@ window.SongListManager = (function () {
             <div id="sl-row-${index}" role="button" tabindex="0" aria-label="${window.batchMode ? `${selectionLabel} ${song.name || '未命名歌曲'}` : `播放 ${song.name || '未命名歌曲'}`}" ${selectionAttributes}
                  data-selection-state="${isSelected ? 'selected' : 'unselected'}"
                  class="${rowClass}" data-song-id="${String(song.id)}"
-                 onclick="window.SongListManager.handleRowClick(${index})"
-                 onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.SongListManager.handleRowClick(${index}); }">
+                 data-songlist-action="row" data-index="${index}">
                 <div class="col-span-1 sm:col-span-1 text-center text-gray-400 font-mono text-xs flex items-center justify-center">
                     ${window.batchMode ? `
                         <input type="checkbox" 
@@ -488,15 +618,15 @@ window.SongListManager = (function () {
                                ${isSelected ? 'checked' : ''}
                                aria-checked="${isSelected}"
                                aria-label="${selectionLabel} ${song.name || '未命名歌曲'}"
-                               onclick="event.stopPropagation(); handleBatchSelect('${String(song.id)}', this.checked);">
+                               data-songlist-action="batch-select">
                     ` : index + 1}
                 </div>
                 <!-- Title & Info -->
                 <div class="col-span-9 sm:col-span-9 md:col-span-5 lg:col-span-4 flex items-center gap-3 min-w-0">
                     <div class="w-10 h-10 md:w-12 md:h-12 flex-shrink-0 relative rounded-lg overflow-hidden shadow-sm border t-border-main group-hover:shadow-md transition-all group-hover:scale-105 duration-300">
                         <img data-src="${window.getImgUrl ? window.getImgUrl(song) : (song.img || song.albumImg || '/music/assets/logo.svg')}" src="/music/assets/logo.svg" alt="${song.name || '歌曲'}专辑封面" width="48" height="48" loading="lazy" decoding="async"
-                             class="lazy-image w-full h-full object-cover dynamic-logo is-placeholder" 
-                             onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');">
+                             class="lazy-image w-full h-full object-cover dynamic-logo is-placeholder"
+                             data-fallback-image="pending">
                         <div class="absolute inset-0 bg-black/20 hidden group-hover:flex items-center justify-center transition-all">
                             <i class="fas fa-play text-white text-xs"></i>
                         </div>
@@ -530,12 +660,12 @@ window.SongListManager = (function () {
                 <div class="col-span-2 md:col-span-1 flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                     <button aria-label="播放 ${song.name || '歌曲'}" class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors"
                             title="播放" 
-                            onclick="event.stopPropagation(); window.SongListManager.playSong(${index})">
+                            data-songlist-action="play" data-index="${index}">
                         <i class="fas fa-play w-3.5 h-3.5"></i>
                     </button>
                     <button aria-label="下载 ${song.name || '歌曲'}" class="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors"
                             title="下载" 
-                            onclick="event.stopPropagation(); downloadSong(${JSON.stringify(song).replace(/"/g, '&quot;')})">
+                            data-songlist-action="download" data-index="${index}">
                         <i class="fas fa-download w-3.5 h-3.5"></i>
                     </button>
                 </div>
@@ -743,8 +873,7 @@ window.SongListManager = (function () {
 
                 container.innerHTML = data.list.map(item => `
                     <div role="button" tabindex="0" aria-label="打开歌单 ${item.name || ''}" class="flex items-center gap-4 p-3 rounded-xl hover:t-bg-main transition-all cursor-pointer group"
-                         onclick="window.SongListManager.selectUserPlaylist('${item.id}')"
-                         onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.SongListManager.selectUserPlaylist('${item.id}'); }">
+                         data-songlist-action="select-user-playlist" data-id="${item.id}">
                         <div class="relative flex-shrink-0">
                             <img src="${item.img || '/music/assets/logo.svg'}" alt="${item.name || '歌单'}封面" width="48" height="48" loading="lazy" decoding="async" class="w-12 h-12 rounded-lg object-cover shadow-sm group-hover:scale-105 transition-transform">
                         </div>
@@ -771,24 +900,9 @@ window.SongListManager = (function () {
             toggleUserPlaylistModal(false);
         }
     };
-})();
-
-// Global proxies for HTML onclick attributes
-function toggleTagSelector() { window.SongListManager.toggleTagSelector(); }
-function changeSongListSource() { window.SongListManager.changeSource(); }
-function changeSongListSort(sort) { window.SongListManager.changeSort(sort); }
-function changeSongListPage(delta) { window.SongListManager.changePage(delta); }
-function closeSongListDetail() { window.SongListManager.closeDetail(); }
-function playAllInSongList() { window.SongListManager.playAll(); }
-function handleSongListSearchKeyPress(e) { if (e.key === 'Enter') window.SongListManager.search(); }
-function openExternalListModal() { window.SongListManager.openExternalListModal(); }
-function closeExternalListModal() { window.SongListManager.closeExternalListModal(); }
-function handleOpenExternalList() { window.SongListManager.handleOpenExternalList(); }
-function onExternalSourceChange() { window.SongListManager.onExternalSourceChange(); }
-function openQQInputModal() { window.SongListManager.openQQInputModal(); }
-function closeQQInputModal() { window.SongListManager.closeQQInputModal(); }
-function handleQQSubmit() { window.SongListManager.handleQQSubmit(); }
-function closeUserPlaylistModal() { window.SongListManager.closeUserPlaylistModal(); }
+    })();
+    return manager;
+}
 
 function toggleSongListDesc() {
     const descEl = document.getElementById('sl-detail-desc');
@@ -841,4 +955,3 @@ function toggleSlDetailHeader() {
         trigger?.setAttribute('aria-expanded', 'false');
     }
 }
-

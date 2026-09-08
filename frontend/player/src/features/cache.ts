@@ -14,6 +14,7 @@ export interface CacheFeatureContext {
     showError: (message: string) => void;
     escapeHtmlText: (value: any) => string;
     defaultSettings: any;
+    getDownloadStatusHtml: (icon: string, message: string, loading?: boolean) => string;
 }
 
 export function initCacheFeature(context: CacheFeatureContext) {
@@ -29,6 +30,7 @@ export function initCacheFeature(context: CacheFeatureContext) {
     const showError = context.showError;
     const escapeHtmlText = context.escapeHtmlText;
     const DEFAULT_SETTINGS = context.defaultSettings;
+    const getDownloadStatusHtml = context.getDownloadStatusHtml;
 
 async function calcStorageUsage() {
     try {
@@ -237,7 +239,7 @@ function toggleCacheDrawer() {
 
 async function refreshCacheList() {
     const container = document.getElementById('cache-list-container');
-    container.innerHTML = window.SystemDownloadManager.getStatusHtml('fa-spinner', '正在重新扫描文件并刷新列表...', true);
+    container.innerHTML = getDownloadStatusHtml('fa-spinner', '正在重新扫描文件并刷新列表...', true);
 
     try {
         const username = (window.currentListData && window.currentListData.username) || localStorage.getItem('lx_sync_user') || '';
@@ -276,7 +278,7 @@ function updateCacheHeaderStats() {
 function renderCacheList() {
     const container = document.getElementById('cache-list-container');
     if (currentCacheList.length === 0) {
-        container.innerHTML = window.SystemDownloadManager.getStatusHtml('fa-cloud-download-alt', '暂无服务器缓存歌曲');
+        container.innerHTML = getDownloadStatusHtml('fa-cloud-download-alt', '暂无服务器缓存歌曲');
         return;
     }
 
@@ -656,4 +658,3 @@ async function clearServerCache() {
     Object.assign(window, feature);
     return feature;
 }
-

@@ -2,6 +2,7 @@
 // @ts-nocheck
 const globalState = window as any;
 // Batch Selection and Deletion Functions
+import { getSongListManager } from '../player_services';
 // Batch Selection and Deletion Functions
 function ensureBatchSelectionState() {
     if (!(window.selectedItems instanceof Set)) window.selectedItems = new Set();
@@ -43,7 +44,7 @@ function syncSelectionPresentation(root = document) {
     });
 }
 
-function handleBatchSelect(songId, isChecked) {
+export function handleBatchSelect(songId, isChecked) {
     ensureBatchSelectionState();
     const id = String(songId); // Force string ID
     if (isChecked) {
@@ -68,7 +69,7 @@ function refreshBatchUI() {
     const slDetail = document.getElementById('songlist-detail-view');
     const artistHeader = document.getElementById('artist-detail-header');
     if (slDetail && !slDetail.classList.contains('hidden')) {
-        if (window.SongListManager) window.SongListManager.renderDetail();
+        getSongListManager()?.renderDetail();
     } else if (artistHeader && !artistHeader.classList.contains('hidden')) {
         // Artist Detail Mode
         if (window.currentArtistSongsCache && typeof window.renderArtistSongsUI === 'function') {
@@ -485,8 +486,8 @@ function changeItemsPerPage(value) {
     if (activeView === 'leaderboard' && window.LeaderboardManager) {
         window.LeaderboardManager.resetLocalPage();
         window.LeaderboardManager.renderSongs();
-    } else if (activeView === 'collection' && window.SongListManager) {
-        window.SongListManager.renderCurrentList();
+    } else if (activeView === 'collection' && getSongListManager()) {
+        getSongListManager()?.renderDetail();
     } else {
         globalState.renderResults(window.viewingPlaylist || globalState.viewingPlaylist);
     }

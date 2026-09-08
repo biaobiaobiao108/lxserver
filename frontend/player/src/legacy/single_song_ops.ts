@@ -1,5 +1,6 @@
 // Single-song operations keep their legacy window exports for inline handlers.
 // @ts-nocheck
+import { getDownloadManager } from '../player_services';
 const globalState = window as any;
 function getSongQualitySize(song, quality) {
     const maps = [
@@ -348,7 +349,7 @@ function getDefaultDownloadQuality() {
 }
 
 // Download single song
-async function downloadSong(songOrId, forceQuality = null, suppressAlerts = false, skipPromptTarget = null) {
+export async function downloadSong(songOrId, forceQuality = null, suppressAlerts = false, skipPromptTarget = null) {
     let song;
     if (typeof songOrId === 'object') {
         song = songOrId;
@@ -386,10 +387,11 @@ async function downloadSong(songOrId, forceQuality = null, suppressAlerts = fals
     if (!selected) return false;
 
     if (selected === '浏览器下载') {
-        if (window.SystemDownloadManager) {
+        const downloadManager = getDownloadManager();
+        if (downloadManager) {
             const targetQuality = forceQuality || getDefaultDownloadQuality();
 
-            window.SystemDownloadManager.addTasks([{
+            downloadManager.addTasks([{
                 ...song,
                 quality: targetQuality
             }]);
@@ -424,8 +426,9 @@ async function downloadSong(songOrId, forceQuality = null, suppressAlerts = fals
 
         try {
             // [Unified] 统一交给下载管理器调度
-            if (window.SystemDownloadManager) {
-                window.SystemDownloadManager.addTasks([{
+            const downloadManager = getDownloadManager();
+            if (downloadManager) {
+                downloadManager.addTasks([{
                     ...song,
                     taskId: 'server_' + (song.id || song.songmid),
                     isServer: true,
@@ -475,13 +478,14 @@ async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
     const targetQuality = batchOptions.quality || getDefaultDownloadQuality();
 
     if (selectedTarget === 'browser') {
-        if (window.SystemDownloadManager) {
+        const downloadManager = getDownloadManager();
+        if (downloadManager) {
             const tasks = songsToDownload.map(s => ({
                 ...s,
                 quality: targetQuality
             }));
 
-            await window.SystemDownloadManager.addTasks(tasks);
+            await downloadManager.addTasks(tasks);
 
             /* // [Removed] Delay until success
             if (typeof globalState.settings !== 'undefined' && globalState.settings.enableServerLyricCache !== false) {
@@ -513,7 +517,8 @@ async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
             }
         }
 
-        if (!window.SystemDownloadManager) {
+        const downloadManager = getDownloadManager();
+        if (!downloadManager) {
             globalState.showError('下载管理器未就绪');
             return false;
         }
@@ -527,7 +532,7 @@ async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
                 quality: targetQuality // 调度器启动时会重新计算最佳音质
             };
         });
-        await window.SystemDownloadManager.addTasks(tasks);
+        await downloadManager.addTasks(tasks);
 
         if (clearSelection) {
             if (typeof exitBatchMode === 'function') exitBatchMode();
@@ -601,4 +606,3 @@ window.downloadSong = downloadSong;
 window.batchDownloadSongs = batchDownloadSongs;
 window.batchDownloadFromList = batchDownloadFromList;
 window.requestServerLyricCache = requestServerLyricCache;
-

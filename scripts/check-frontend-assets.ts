@@ -35,6 +35,8 @@ const deletedResourceNames = [
   'user_sync.js',
   'batch_pagination.js',
   'single_song_ops.js',
+  'songlist_manager.js',
+  'download_manager.js',
 ];
 
 function readText(path: string): string {

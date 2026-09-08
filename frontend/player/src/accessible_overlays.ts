@@ -1,3 +1,5 @@
+import { getSongListManager } from './player_services';
+
 type OverlayElement = HTMLElement & {
     inert?: boolean;
 };
@@ -63,8 +65,8 @@ const iconLabels: Array<[string, string]> = [
 
 const overlayCloseActions: Record<string, () => void> = {
     'external-list-modal': () => (window as any).closeExternalListModal?.(),
-    'qq-input-modal': () => (window as any).SongListManager?.closeQQInputModal?.(),
-    'user-playlist-modal': () => (window as any).SongListManager?.closeUserPlaylistModal?.(),
+    'qq-input-modal': () => getSongListManager()?.closeQQInputModal(),
+    'user-playlist-modal': () => getSongListManager()?.closeUserPlaylistModal(),
     'sync-auth-modal': () => (window as any).closeSyncModal?.(),
     'custom-source-modal': () => (window as any).closeCustomSourceModal?.(),
     'playlist-add-modal': () => (window as any).closePlaylistAddModal?.(),

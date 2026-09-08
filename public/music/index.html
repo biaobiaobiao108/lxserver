@@ -497,14 +497,14 @@
                                     class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 t-text-muted group-focus-within:text-emerald-500 transition-colors"></i>
                                 <input type="text" id="songlist-search-input"
                                     class="w-full pl-10 pr-12 py-3 t-bg-panel border t-border-main rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm text-sm md:text-base"
-                                    placeholder="搜索歌单..." onkeypress="handleSongListSearchKeyPress(event)">
-                                <button onclick="window.SongListManager.search()"
+                                    placeholder="搜索歌单..." data-songlist-action="search">
+                                <button data-songlist-action="search"
                                     class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all"
                                     title="开始搜索">
                                     <i class="fas fa-arrow-right text-xs"></i>
                                 </button>
                             </div>
-                            <button onclick="toggleTagSelector()" id="tag-selector-btn"
+                            <button data-songlist-action="toggle-tags" id="tag-selector-btn"
                                 class="px-4 py-3 t-bg-panel border t-border-main rounded-xl hover:t-bg-main t-text-main flex items-center gap-2 shadow-sm transition-all whitespace-nowrap text-sm md:text-base">
                                 <span id="current-tag-name">全部分类</span>
                                 <i class="fas fa-chevron-down text-xs transition-transform duration-200"
@@ -516,7 +516,7 @@
                         <div
                             class="flex items-center gap-2 md:justify-end overflow-x-auto hide-scrollbar w-full md:w-auto pb-1 -mb-1">
                             <label for="songlist-source" class="sr-only">歌单来源</label>
-                            <select id="songlist-source" onchange="changeSongListSource()"
+                            <select id="songlist-source" data-songlist-action="change-source"
                                 class="flex-shrink-0 px-4 py-3 t-bg-panel border t-border-main rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-sm t-text-main font-medium text-sm md:text-base">
                                 <option value="wy">网易云</option>
                                 <option value="tx">QQ</option>
@@ -527,10 +527,10 @@
 
                             <div id="songlist-sort-container"
                                 class="flex flex-shrink-0 p-1 t-bg-panel border t-border-main rounded-xl shadow-sm">
-                                <!-- Dynamic sort buttons will be injected by songlist_manager.js -->
+                                <!-- Dynamic sort buttons are injected by the song list module. -->
                             </div>
 
-                            <button onclick="openExternalListModal()"
+                            <button data-songlist-action="open-external"
                                 class="flex-shrink-0 p-3 t-bg-panel border t-border-main rounded-xl hover:t-bg-main t-text-muted hover:text-emerald-600 transition-colors shadow-sm"
                                 title="打开外部歌单">
                                 <i class="fas fa-link"></i>
@@ -543,7 +543,7 @@
                         class="absolute top-20 left-6 right-6 md:left-auto md:right-0 md:w-[600px] max-h-[70vh] t-bg-panel shadow-2xl rounded-2xl border t-border-main z-[70] hidden opacity-0 transition-all duration-300 flex flex-col overflow-hidden glass">
                         <div class="p-4 border-b t-border-main flex items-center justify-between">
                             <h3 class="font-bold">选择分类</h3>
-                            <button onclick="toggleTagSelector()" class="t-text-muted hover:text-red-500">
+                            <button data-songlist-action="toggle-tags" class="t-text-muted hover:text-red-500">
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
@@ -567,12 +567,12 @@
 
                         <!-- Pagination -->
                         <div id="songlist-pagination" class="mt-10 mb-20 flex items-center justify-center gap-6">
-                            <button onclick="changeSongListPage(-1)" id="btn-songlist-prev"
+                            <button data-songlist-action="change-page" data-delta="-1" id="btn-songlist-prev"
                                 class="px-6 py-2 t-bg-panel border t-border-main rounded-xl hover:text-emerald-500 disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-2 shadow-sm font-medium">
                                 <i class="fas fa-chevron-left text-xs"></i> 上一页
                             </button>
                             <span id="songlist-page-info" class="text-sm font-mono font-bold t-text-main">第 1 页</span>
-                            <button onclick="changeSongListPage(1)" id="btn-songlist-next"
+                            <button data-songlist-action="change-page" data-delta="1" id="btn-songlist-next"
                                 class="px-6 py-2 t-bg-panel border t-border-main rounded-xl hover:text-emerald-500 disabled:opacity-30 disabled:pointer-events-none transition-all flex items-center gap-2 shadow-sm font-medium">
                                 下一页 <i class="fas fa-chevron-right text-xs"></i>
                             </button>
@@ -583,12 +583,11 @@
                     <div id="songlist-detail-view"
                         class="absolute inset-0 t-bg-main z-20 flex flex-col hidden translate-x-full transition-transform duration-300 pb-44 md:pb-32">
                         <div class="h-16 px-4 md:px-6 flex items-center gap-4 border-b t-border-main t-bg-panel glass">
-                            <button onclick="closeSongListDetail()"
+                            <button data-songlist-action="close-detail"
                                 class="p-2 t-text-muted hover:t-bg-track rounded-lg">
                                 <i class="fas fa-arrow-left text-xl"></i>
                             </button>
-                            <div class="flex-1 min-w-0 cursor-pointer select-none" role="button" tabindex="0" aria-expanded="true" aria-controls="sl-detail-header" onclick="toggleSlDetailHeader()"
-                                onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); toggleSlDetailHeader(); }"
+                            <div class="flex-1 min-w-0 cursor-pointer select-none" role="button" tabindex="0" aria-expanded="true" aria-controls="sl-detail-header" data-songlist-action="toggle-header"
                                 title="点击折叠/展开歌单信息">
                                 <div class="flex items-center gap-1.5">
                                     <h1 id="sl-detail-title" class="font-bold truncate text-sm md:text-base">歌单详情</h1>
@@ -598,7 +597,7 @@
                                 <div id="sl-detail-subtitle" class="text-[10px] md:text-xs t-text-muted truncate">加载中...
                                 </div>
                             </div>
-                            <button id="sl-detail-play-all" onclick="playAllInSongList()"
+                            <button id="sl-detail-play-all" data-songlist-action="play-all"
                                 class="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-all flex items-center gap-2">
                                 <i class="fas fa-play"></i>
                                 <span class="hidden sm:inline">播放全部</span>
@@ -633,9 +632,9 @@
                                     <div class="relative mt-1">
                                         <p id="sl-detail-desc"
                                             class="text-xs md:text-sm t-text-muted line-clamp-3 md:line-clamp-4 leading-relaxed max-w-4xl cursor-pointer hover:t-text-main transition-colors"
-                                            onclick="toggleSongListDesc()">
+                                            data-songlist-action="toggle-description">
                                         </p>
-                                        <button id="sl-detail-desc-btn" onclick="toggleSongListDesc()"
+                                        <button id="sl-detail-desc-btn" data-songlist-action="toggle-description"
                                             class="text-xs text-emerald-500 hover:text-emerald-600 mt-1 hidden font-medium">展开全部
                                             <i class="fas fa-chevron-down text-[10px] ml-0.5"></i></button>
                                     </div>
@@ -3643,7 +3642,7 @@
             <!-- Header -->
             <div class="p-6 border-b t-border-main flex justify-between items-center t-bg-main">
                 <h3 class="text-xl font-bold t-text-main">打开分享的歌单</h3>
-                <button onclick="closeExternalListModal()"
+                <button data-songlist-action="close-external"
                     class="t-text-muted hover:text-red-500 transition-colors p-2">
                     <i class="fas fa-times text-lg"></i>
                 </button>
@@ -3653,12 +3652,12 @@
             <div class="p-8 space-y-6">
                 <!-- [新增] 腾讯音源特有入口 -->
                 <div id="tx-user-playlist-entry" class="hidden text-right -mb-4">
-                    <a href="javascript:void(0)" onclick="window.SongListManager.openQQInputModal()"
+                    <a href="javascript:void(0)" data-songlist-action="open-qq"
                         class="text-xs text-emerald-500 hover:text-emerald-600 transition-colors">QQ号添加 -></a>
                 </div>
 
                 <div class="flex gap-4">
-                    <select id="external-list-source" onchange="window.SongListManager.onExternalSourceChange()"
+                    <select id="external-list-source" data-songlist-action="external-source-change"
                         class="lm-select !w-32 !py-2">
                         <option value="wy">网易音乐</option>
                         <option value="tx">腾讯音乐</option>
@@ -3693,7 +3692,7 @@
                 </div>
 
                 <div class="flex justify-center">
-                    <button onclick="handleOpenExternalList()"
+                    <button data-songlist-action="open-external-list"
                         class="px-12 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl shadow-lg shadow-emerald-100 transition-all hover:scale-105 active:scale-95">
                         立即打开
                     </button>
@@ -3709,7 +3708,7 @@
             id="qq-input-modal-content">
             <div class="p-6 border-b t-border-main flex justify-between items-center t-bg-main">
                 <h3 class="text-lg font-bold t-text-main">通过 QQ 号拉取歌单</h3>
-                <button onclick="window.SongListManager.closeQQInputModal()"
+                <button data-songlist-action="close-qq"
                     class="t-text-muted hover:text-red-500 transition-colors p-2">
                     <i class="fas fa-times"></i>
                 </button>
@@ -3717,7 +3716,7 @@
             <div class="p-6 space-y-4">
                 <input type="text" id="qq-input-field" placeholder="请输入 QQ 号"
                     class="w-full p-3 border t-border-main rounded-xl t-bg-main text-sm focus:ring-2 focus:ring-emerald-400 focus:outline-none">
-                <button onclick="window.SongListManager.handleQQSubmit()"
+                <button data-songlist-action="submit-qq"
                     class="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold transition-all shadow-lg active:scale-95">
                     立即获取
                 </button>
@@ -3739,7 +3738,7 @@
                         <p class="text-xs t-text-muted mt-0.5" id="user-playlist-subtitle">加载中...</p>
                     </div>
                 </div>
-                <button onclick="window.SongListManager.closeUserPlaylistModal()"
+                <button data-songlist-action="close-user-playlist"
                     class="t-text-muted hover:text-red-500 transition-colors p-2">
                     <i class="fas fa-times text-lg"></i>
                 </button>
@@ -4376,7 +4375,7 @@
                     class="p-2 t-text-muted hover:text-pink-500 transition-colors">
                     <i class="fas fa-file-audio"></i>
                 </button>
-                <button aria-label="打开下载管理" onclick="toggleDownloadDrawer()" title="下载管理"
+                <button aria-label="打开下载管理" data-download-action="open" title="下载管理"
                     class="p-2 t-text-muted hover:text-emerald-500 transition-colors">
                     <i class="fas fa-cloud-download-alt"></i>
                 </button>
@@ -4455,19 +4454,19 @@
                 </p>
             </div>
             <div class="flex items-center gap-2">
-                <button aria-label="一键补全缺失歌词" onclick="window.SystemDownloadManager && window.SystemDownloadManager.retryAllLyrics()"
+                <button aria-label="一键补全缺失歌词" data-download-action="retry-all-lyrics"
                     title="一键补全缺失歌词" class="p-2 t-text-muted hover:text-pink-500 transition-colors">
                     <i class="fas fa-file-audio"></i>
                 </button>
-                <button aria-label="全部暂停" onclick="window.SystemDownloadManager && window.SystemDownloadManager.pauseAll()" title="全部暂停"
+                <button aria-label="全部暂停" data-download-action="pause-all" title="全部暂停"
                     class="p-2 t-text-muted hover:text-yellow-500 transition-colors">
                     <i class="fas fa-pause"></i>
                 </button>
-                <button aria-label="全部继续" onclick="window.SystemDownloadManager && window.SystemDownloadManager.resumeAll()" title="全部继续"
+                <button aria-label="全部继续" data-download-action="resume-all" title="全部继续"
                     class="p-2 t-text-muted hover:text-emerald-500 transition-colors">
                     <i class="fas fa-play"></i>
                 </button>
-                <button aria-label="关闭下载管理" data-overlay-close onclick="toggleDownloadDrawer()" title="关闭"
+                <button aria-label="关闭下载管理" data-download-action="toggle" data-overlay-close title="关闭"
                     class="p-2 t-text-muted hover:text-red-500 transition-colors">
                     <i class="fas fa-times text-lg"></i>
                 </button>
@@ -4482,19 +4481,19 @@
                 <span id="download-progress-text" class="text-xs font-bold text-emerald-600">0%</span>
             </div>
             <div class="flex gap-2">
-                <button onclick="window.SystemDownloadManager && window.SystemDownloadManager.retryAllFailed()"
+                <button data-download-action="retry-all-failed"
                     title="全部重试"
                     class="px-3 py-1.5 text-xs font-bold text-blue-500 bg-blue-50 hover:bg-blue-100 rounded-lg shadow-sm transition-all flex items-center gap-1.5">
                     <i class="fas fa-redo text-[10px]"></i>
                     <span class="hidden md:inline">全部重试</span>
                 </button>
-                <button onclick="window.SystemDownloadManager && window.SystemDownloadManager.clearCompleted()"
+                <button data-download-action="clear-completed"
                     title="清空已完成"
                     class="px-3 py-1.5 text-xs font-bold text-gray-500 bg-gray-100 hover:bg-gray-200 rounded-lg shadow-sm transition-all flex items-center gap-1.5 dark:bg-gray-800 dark:hover:bg-gray-700">
                     <i class="fas fa-broom text-[10px]"></i>
                     <span class="hidden md:inline">清空已完成</span>
                 </button>
-                <button onclick="window.SystemDownloadManager && window.SystemDownloadManager.clearAll()" title="清空全部"
+                <button data-download-action="clear-all" title="清空全部"
                     class="px-3 py-1.5 text-xs font-bold text-red-500 bg-red-50 hover:bg-red-100 rounded-lg shadow-sm transition-all flex items-center gap-1.5">
                     <i class="fas fa-trash text-[10px]"></i>
                     <span class="hidden md:inline">清空全部</span>
@@ -5106,9 +5105,7 @@
     <!-- Audio Element -->
     <audio id="audio-player" crossorigin="anonymous"></audio>
 
-    <!-- External Scripts Section (Placed at the end for performance) -->
-    <script src="js/songlist_manager.js"></script>
-    <script src="js/download_manager.js"></script>
+    <!-- The player module owns feature initialization and delegated events. -->
     <script type="module" src="app.js"></script>
 </body>
 

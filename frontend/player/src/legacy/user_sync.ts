@@ -1,3 +1,7 @@
+// The sync client still exposes a stable window bridge for existing player code.
+// @ts-nocheck
+const pako = (window as any).pako;
+const CryptoJS = (window as any).CryptoJS;
 /**
  * LX Music Web Sync Client
  * Ported from lx-music-desktop to support Pairing & Sync
@@ -785,3 +789,5 @@ const SyncManager = {
 };
 
 window.SyncManager = SyncManager;
+
+

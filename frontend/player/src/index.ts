@@ -1,5 +1,6 @@
 import './legacy/quality';
 import './legacy/idb_store';
+import './legacy/user_sync';
 import './legacy/list_search';
 import './legacy/pwa';
 import './legacy/theme_manager';

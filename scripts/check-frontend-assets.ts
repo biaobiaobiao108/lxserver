@@ -32,6 +32,7 @@ const deletedResourceNames = [
   'lyric-utils.js',
   'lyric-parser.js',
   'log_viewer.js',
+  'user_sync.js',
 ];
 
 function readText(path: string): string {

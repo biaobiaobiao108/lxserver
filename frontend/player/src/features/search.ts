@@ -5,6 +5,7 @@ import {
     safeInlineString,
 } from '../player_security';
 import { registerPlayerEventAction } from '../player_events';
+import { updatePaginationInfo } from '../legacy/batch_pagination';
 
 export type SearchFeatureContext = {
     getSettings: () => Record<string, any>;
@@ -1899,7 +1900,7 @@ function renderResults(list) {
 
     if (!list || list.length === 0) {
         container.innerHTML = '<div class="text-center t-text-muted p-8">未找到相关结果</div>';
-        (window as any).updatePaginationInfo(0, 0, 0, 1, 1);
+        updatePaginationInfo(0, 0, 0, 1, 1);
         return;
     }
 
@@ -2065,7 +2066,7 @@ function renderResults(list) {
     });
 
     // Update pagination info
-    (window as any).updatePaginationInfo(startIndex + 1, endIndex, totalItems, pageState.value, totalPages);
+    updatePaginationInfo(startIndex + 1, endIndex, totalItems, pageState.value, totalPages);
 
     // Init Lazy Loader
     lazyLoadImages(container);

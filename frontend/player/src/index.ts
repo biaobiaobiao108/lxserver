@@ -474,6 +474,7 @@ const {
     lazyLoadImages,
 } = searchFeature;
 clearSearchNavigation = leaveSearchView;
+Object.assign(window, { getImgUrl, createMarqueeHtml, applyMarqueeChecks });
 
 // Initialize Unified Search for Global (Favorites/Search)
 window.goToPage = function (page) {

@@ -2,6 +2,7 @@ import {
     escapeHtmlText,
     safeInlineString,
 } from '../player_security';
+import { RemoteClient } from '../legacy/user_sync';
 
 export type SyncState = {
     currentListData: any;
@@ -543,7 +544,7 @@ async function handleRemoteOverwriteConnect(silent = false) {
     }
 
     if (state.currentRemoteOverwriteClient) state.currentRemoteOverwriteClient.close();
-    state.currentRemoteOverwriteClient = new (window as any).RemoteClient(url, code);
+    state.currentRemoteOverwriteClient = new RemoteClient(url, code);
     const tempRemoteClient = state.currentRemoteOverwriteClient;
 
     tempRemoteClient.listHandlers = {

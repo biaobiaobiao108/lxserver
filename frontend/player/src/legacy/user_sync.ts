@@ -344,7 +344,7 @@ const ListHelper = {
 };
 
 
-class RemoteClient {
+export class RemoteClient {
     constructor(url, code) {
         this.rawUrl = url;
         this.code = code;
@@ -789,5 +789,4 @@ const SyncManager = {
 };
 
 window.SyncManager = SyncManager;
-
 

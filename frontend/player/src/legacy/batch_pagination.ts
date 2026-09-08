@@ -372,7 +372,7 @@ function scrollToSearchResultsTop() {
     }
 }
 
-function updatePaginationInfo(start, end, total, current, totalPages) {
+export function updatePaginationInfo(start, end, total, current, totalPages) {
     const infoEl = document.getElementById('pagination-info');
     if (infoEl) {
         if (total === 0) {

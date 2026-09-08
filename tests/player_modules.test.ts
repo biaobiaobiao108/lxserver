@@ -70,4 +70,20 @@ describe('Player manager module boundaries', () => {
 
         expect(violations).toEqual([]);
     });
+
+    it('keeps cross-module search and sync dependencies as explicit imports', () => {
+        const searchSource = read('frontend/player/src/features/search.ts');
+        const paginationSource = read('frontend/player/src/legacy/batch_pagination.ts');
+        const syncSource = read('frontend/player/src/features/sync.ts');
+        const userSyncSource = read('frontend/player/src/legacy/user_sync.ts');
+        const indexSource = read('frontend/player/src/index.ts');
+
+        expect(searchSource).toContain("import { updatePaginationInfo } from '../legacy/batch_pagination';");
+        expect(searchSource).not.toContain('window.updatePaginationInfo');
+        expect(paginationSource).toContain('export function updatePaginationInfo');
+        expect(syncSource).toContain("import { RemoteClient } from '../legacy/user_sync';");
+        expect(syncSource).not.toContain('window as any).RemoteClient');
+        expect(userSyncSource).toContain('export class RemoteClient');
+        expect(indexSource).toContain('Object.assign(window, { getImgUrl, createMarqueeHtml, applyMarqueeChecks });');
+    });
 });

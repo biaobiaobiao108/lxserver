@@ -7,7 +7,6 @@ const ASSETS_TO_CACHE = [
     './js/ui-utils.js',
     './icon.svg',
     './manifest.json',
-    './vendor/fonts/inter.css',
     './tailwind.generated.css',
     './music/assets/fontawesome/css/all.min.css'
 ];

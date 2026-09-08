@@ -1,5 +1,6 @@
 // @ts-nocheck
 // This legacy-compatible module is compiled as an isolated browser bundle.
+import { safeInlineJson, safeInlineString } from '../player_security';
 /**
  * Leaderboard Manager for LX Music Web
  * 排行榜功能模块 — 风格与 SongListManager 保持一致
@@ -154,7 +155,7 @@ window.LeaderboardManager = (function () {
 
         container.innerHTML = boards.map((board, i) => `
             <div id="lb-board-${board.bangid}"
-                onclick="window.LeaderboardManager.selectBoard('${board.bangid}', '${board.name.replace(/'/g, "\\'")}' )"
+                data-event-click-action="window.LeaderboardManager.selectBoard" data-event-click-args="[${safeInlineString(board.bangid)}, ${safeInlineString(board.name)}]"
                 class="lb-board-item flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 group ${state.currentBangid == board.bangid ? 'active-option' : 'hover:t-bg-panel t-text-muted'}">
                 <span class="text-xs font-mono w-5 text-center flex-shrink-0 ${i < 3 ? 'text-emerald-600 dark:text-emerald-500 font-bold' : 't-text-muted'}">${i + 1}</span>
                 <span class="text-sm font-medium truncate flex-1 ${state.currentBangid == board.bangid ? '' : 't-text-main group-hover:t-text-main'}">${board.name}</span>
@@ -212,8 +213,8 @@ window.LeaderboardManager = (function () {
             return `
             <div id="lb-row-${index}" role="button" tabindex="0" aria-label="${window.batchMode ? `${selectionLabel} ${song.name || '未命名歌曲'}` : `播放 ${song.name || '未命名歌曲'}`}" ${selectionAttributes}
                  data-selection-state="${isSelected ? 'selected' : 'unselected'}" class="${rowClass}" data-song-id="${String(song.id)}"
-                 onclick="window.LeaderboardManager.handleRowClick(${index})"
-                 onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); this.click(); }">
+                 data-event-click-action="window.LeaderboardManager.handleRowClick" data-event-click-args="[${index}]"
+                 data-event-keydown-action="window.LeaderboardManager.handleRowClick" data-event-keydown-args="[${index}]" data-event-keys="Enter, " data-event-target-self="true" data-event-prevent="true">
                 <!-- 序号 -->
                 <div class="col-span-1 sm:col-span-1 text-center flex items-center justify-center">
                     ${window.batchMode ? `
@@ -223,7 +224,7 @@ window.LeaderboardManager = (function () {
                                ${isSelected ? 'checked' : ''}
                                aria-checked="${isSelected}"
                                aria-label="${selectionLabel} ${song.name || '未命名歌曲'}"
-                               onclick="event.stopPropagation(); handleBatchSelect('${String(song.id)}', this.checked);">
+                               data-event-click-action="handleBatchSelect" data-event-click-args="[${safeInlineString(String(song.id))}, &quot;@checked&quot;]" data-event-stop="true">
                     ` : `<span class="${rankClass}">${rank}</span>`}
                 </div>
                 <!-- 封面 + 歌名 -->
@@ -231,7 +232,7 @@ window.LeaderboardManager = (function () {
                     <div class="w-10 h-10 md:w-12 md:h-12 flex-shrink-0 relative rounded-lg overflow-hidden shadow-sm border t-border-main group-hover:shadow-md transition-all group-hover:scale-105 duration-300">
                         <img data-src="${imgUrl}" src="/music/assets/logo.svg" alt="${song.name || '歌曲'}专辑封面" width="48" height="48" loading="lazy" decoding="async"
                              class="lazy-image w-full h-full object-cover dynamic-logo is-placeholder"
-                             onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');">
+                             data-event-error-action="fallback-image">
                         <div class="absolute inset-0 bg-black/20 hidden group-hover:flex items-center justify-center transition-all">
                             <i class="fas fa-play text-white text-xs"></i>
                         </div>
@@ -265,12 +266,12 @@ window.LeaderboardManager = (function () {
                 <div class="col-span-2 sm:col-span-1 md:col-span-1 flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                     <button class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors"
                             title="播放"
-                            onclick="event.stopPropagation(); window.LeaderboardManager.playSong(${index})">
+                            data-event-click-action="window.LeaderboardManager.playSong" data-event-click-args="[${index}]" data-event-stop="true">
                         <i class="fas fa-play w-3.5 h-3.5"></i>
                     </button>
                     <button class="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors"
                             title="下载"
-                            onclick="event.stopPropagation(); downloadSong(${JSON.stringify(song).replace(/"/g, '&quot;')})">
+                            data-event-click-action="downloadSong" data-event-click-args="[${safeInlineJson(song)}]" data-event-stop="true">
                         <i class="fas fa-download w-3.5 h-3.5"></i>
                     </button>
                 </div>
@@ -547,4 +548,3 @@ function toggleLbSidebar(force) {
     }
 }
 window.toggleLbSidebar = toggleLbSidebar;
-

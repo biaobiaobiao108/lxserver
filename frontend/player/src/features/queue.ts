@@ -93,11 +93,11 @@ export function initQueueFeature(context: QueueFeatureContext) {
             return `
                 <div role="button" tabindex="0" aria-label="播放 ${context.escapeHtmlText(song.name || '未命名歌曲')}"
                      class="group flex items-center gap-3 p-3 rounded-xl transition-all hover:t-bg-item-hover cursor-pointer relative ${isActive ? 't-bg-item-hover border-l-4 border-emerald-500 pl-2' : ''} ${index > 12 ? 'deferred-list-item' : ''}"
-                     onclick="playSongFromQueue(${index})"
-                     onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); playSongFromQueue(${index}); }">
+                     data-event-click-action="playSongFromQueue" data-event-click-args="[${index}]"
+                     data-event-keydown-action="playSongFromQueue" data-event-keydown-args="[${index}]" data-event-keys="Enter, " data-event-target-self="true" data-event-prevent="true">
                     <div class="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 relative">
                         <img src="${context.getImgUrl(song)}" alt="${context.escapeHtmlText(song.name || '歌曲')}专辑封面" width="40" height="40"
-                             onerror="this.src='/music/assets/logo.svg'"
+                             data-event-error-action="fallback-image"
                              loading="lazy" decoding="async"
                              class="w-full h-full object-cover">
                         ${isActive ? '<div class="absolute inset-0 bg-emerald-500/20 flex items-center justify-center"><div class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping"></div></div>' : ''}
@@ -111,7 +111,7 @@ export function initQueueFeature(context: QueueFeatureContext) {
                         </div>
                     </div>
                     <div class="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        <button aria-label="从队列移除 ${context.escapeHtmlText(song.name || '歌曲')}" onclick="event.stopPropagation(); removeFromQueue(${index})" class="p-2 text-gray-400 hover:text-red-500 transition-colors">
+                        <button aria-label="从队列移除 ${context.escapeHtmlText(song.name || '歌曲')}" data-event-click-action="removeFromQueue" data-event-click-args="[${index}]" data-event-stop="true" class="p-2 text-gray-400 hover:text-red-500 transition-colors">
                             <i class="fas fa-trash-alt text-xs"></i>
                         </button>
                         <div class="p-2 text-gray-400 cursor-grab active:cursor-grabbing queue-drag-handle">

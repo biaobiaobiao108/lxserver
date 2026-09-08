@@ -4,6 +4,7 @@ import {
     safeInlineJson,
     safeInlineString,
 } from '../player_security';
+import { registerPlayerEventAction } from '../player_events';
 
 export type SearchFeatureContext = {
     getSettings: () => Record<string, any>;
@@ -61,6 +62,39 @@ export function initSearchFeature(context: SearchFeatureContext) {
     const playFromView = context.playFromView;
     const hideSearchSuggestions = () => (window as any).hideSearchSuggestions?.();
     let currentSearch = { name: '', source: 'kw' };
+
+    registerPlayerEventAction('search-toggle-artist-favorite', async (_event, element, args) => {
+        const [id, source, name, image] = args.map(String);
+        const toggle = (window as any).toggleArtistFavorite;
+        if (typeof toggle !== 'function') return;
+        const favorited = await toggle(id, source, name, image);
+        const button = element as HTMLButtonElement;
+        const isHeader = button.id === 'artist-header-fav-btn';
+        button.className = isHeader
+            ? `absolute top-2 right-12 md:top-4 md:right-16 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full transition-all z-30 shadow-sm active:scale-90 ${favorited ? 'bg-rose-500 text-white' : 'bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 t-text-main'}`
+            : `absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}`;
+        button.title = favorited ? '取消收藏' : '收藏歌手';
+    });
+
+    registerPlayerEventAction('search-toggle-album-favorite', async (_event, element, args) => {
+        const [id, source, name, image, artistName] = args.map(String);
+        const toggle = (window as any).toggleAlbumFavorite;
+        if (typeof toggle !== 'function') return;
+        const favorited = await toggle(id, source, name, image, artistName);
+        const button = element as HTMLButtonElement;
+        button.className = `absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}`;
+        button.title = favorited ? '取消收藏' : '收藏专辑';
+    });
+
+    registerPlayerEventAction('search-row-activate', (_event, _element, args) => {
+        const [itemId, index] = args;
+        const playerWindow = window as any;
+        if (playerWindow.batchMode) {
+            playerWindow.handleBatchSelect?.(itemId, !playerWindow.selectedItems?.has(String(itemId)));
+        } else {
+            playFromView(Number(index));
+        }
+    });
 
 function handleSearchKeyPress(e) {
     if (e.key === 'Enter') {
@@ -533,7 +567,7 @@ function renderHotSearch(data) {
                     const keywordText = String(keyword ?? '');
                     const escapedKeyword = escapeHtmlText(keywordText);
                     return `
-                    <button onclick="handleHotSearchClick(${safeInlineString(keywordText)})"
+                    <button data-event-click-action="handleHotSearchClick" data-event-click-args="[${safeInlineString(keywordText)}]"
                             class="hot-search-item group flex items-center px-2.5 py-3 md:p-3 t-bg-panel hover:bg-emerald-50 border t-border-main hover:border-emerald-400 rounded-lg transition-all shadow-sm hover:shadow-md overflow-hidden h-14">
                         <span class="rank flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold mr-3 ${index < 3 ? 'bg-gradient-to-r from-orange-400 to-red-500 text-white' : 'bg-gray-100 text-gray-500'
         }">
@@ -547,7 +581,7 @@ function renderHotSearch(data) {
                 `}).join('')}
             </div>
             <div class="mt-6 text-center">
-                <button onclick="showInitialSearchState()" 
+                <button data-event-click-action="showInitialSearchState"
                         class="text-sm t-text-muted hover:text-emerald-500 transition-colors">
                     <i class="fas fa-sync-alt mr-1"></i>
                     刷新热搜
@@ -745,12 +779,12 @@ function renderSingerResults(list) {
             <div class="relative mb-2 md:mb-3">
                 <div class="w-16 h-16 sm:w-24 sm:h-24 md:w-32 md:h-32 rounded-full overflow-hidden shadow-sm">
                     <img src="${escapeHtmlText(singerImage)}" alt="${escapeHtmlText(singerName)}头像" width="128" height="128" loading="lazy" decoding="async"
-                         onerror="this.src='/music/assets/logo.svg'"
+                         data-event-error-action="fallback-image"
                          class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
                 </div>
                 <button id="singer-fav-${escapeHtmlText(singerId)}" class="absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${isArtistFavorited(singerId, singerSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
                         title="${isArtistFavorited(singerId, singerSource) ? '取消收藏' : '收藏歌手'}"
-                        onclick="event.stopPropagation(); (async () => { const favd = await toggleArtistFavorite(${safeInlineString(singerId)}, ${safeInlineString(singerSource)}, ${safeInlineString(singerName)}, ${safeInlineString(singer.picUrl || '')}); const btn = document.getElementById(${safeInlineString(`singer-fav-${singerId}`)}); if(btn){ btn.className = 'absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ' + (favd ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'); btn.title = favd ? '取消收藏' : '收藏歌手'; } })()">
+                        data-event-click-action="search-toggle-artist-favorite" data-event-click-args="[${safeInlineString(singerId)}, ${safeInlineString(singerSource)}, ${safeInlineString(singerName)}, ${safeInlineString(singer.picUrl || '')}]" data-event-stop="true">
                     <i class="fas fa-heart text-[10px]"></i>
                 </button>
             </div>
@@ -792,11 +826,11 @@ function renderAlbumResults(list) {
         div.innerHTML = `
             <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative">
                 <img src="${escapeHtmlText(albumImage)}" alt="${escapeHtmlText(albumName)}封面" width="320" height="320" loading="lazy" decoding="async"
-                     onerror="this.src='/music/assets/logo.svg'"
+                     data-event-error-action="fallback-image"
                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
                 <button id="album-fav-${escapeHtmlText(albumId)}" class="absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${isAlbumFavorited(albumId, albumSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
                         title="${isAlbumFavorited(albumId, albumSource) ? '取消收藏' : '收藏专辑'}"
-                        onclick="event.stopPropagation(); (async () => { const favd = await toggleAlbumFavorite(${safeInlineString(albumId)}, ${safeInlineString(albumSource)}, ${safeInlineString(albumName)}, ${safeInlineString(item.picUrl || '')}, ${safeInlineString(item.artistName || '')}); const btn = document.getElementById(${safeInlineString(`album-fav-${albumId}`)}); if(btn){ btn.className = 'absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ' + (favd ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'); btn.title = favd ? '取消收藏' : '收藏专辑'; } })()">
+                        data-event-click-action="search-toggle-album-favorite" data-event-click-args="[${safeInlineString(albumId)}, ${safeInlineString(albumSource)}, ${safeInlineString(albumName)}, ${safeInlineString(item.picUrl || '')}, ${safeInlineString(item.artistName || '')}]" data-event-stop="true">
                     <i class="fas fa-heart text-xs"></i>
                 </button>
             </div>
@@ -972,36 +1006,26 @@ function renderArtistHeader(info, activeTab, order) {
     let headerHtml = `
         <div id="artist-detail-header" class="relative ${headerPadding} is-folded t-bg-panel/50 border-b t-border-main transition-all duration-500 ease-in-out overflow-hidden group/header" style="${isArtistFolded ? 'min-height: ' + (isMobile ? '0px' : '90px') + ';' : ''}">
             <!-- Small Absolute Back Button -->
-            <button onclick="goBackToSearch()" class="absolute top-2 left-2 md:top-4 md:left-4 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-emerald-500/80 hover:bg-emerald-500 text-white transition-all z-30 shadow-md active:scale-90" title="返回搜索">
+            <button data-event-click-action="goBackToSearch" class="absolute top-2 left-2 md:top-4 md:left-4 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-emerald-500/80 hover:bg-emerald-500 text-white transition-all z-30 shadow-md active:scale-90" title="返回搜索">
                 <i class="fas fa-arrow-left"></i>
             </button>
             <!-- Favorite Button (Artist) -->
             <button id="artist-header-fav-btn"
-                onclick="(async () => { 
-                    const favd = await toggleArtistFavorite(${artistIdArg}, ${artistSourceArg}, ${artistNameArg}, ${artistAvatarArg});
-                    const btn = document.getElementById('artist-header-fav-btn'); 
-                    if(btn){ 
-                        const base = 'absolute top-2 right-12 md:top-4 md:right-16 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full transition-all z-30 shadow-sm active:scale-90';
-                        const favedCls = 'bg-rose-500 text-white';
-                        const normalCls = 'bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 t-text-main';
-                        btn.className = base + ' ' + (favd ? favedCls : normalCls);
-                        btn.title = favd ? '取消收藏' : '收藏歌手';
-                    } 
-                })()"
+                data-event-click-action="search-toggle-artist-favorite" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, ${artistNameArg}, ${artistAvatarArg}]"
                 class="absolute top-2 right-12 md:top-4 md:right-16 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full ${isArtistFavorited(artistIdValue, artistSourceValue) ? 'bg-rose-500 text-white' : 'bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 t-text-main'} transition-all z-30 shadow-sm active:scale-90"
                 title="${isArtistFavorited(info.id, info.source) ? '取消收藏' : '收藏歌手'}">
                 <i class="fas fa-heart"></i>
             </button>
 
             <!-- Fold Toggle Button -->
-            <button id="artist-fold-btn" onclick="toggleArtistFold()" class="absolute top-2 right-2 md:top-4 md:right-4 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 t-text-main transition-all z-30 shadow-sm active:scale-90" title="折叠/展开">
+            <button id="artist-fold-btn" data-event-click-action="toggleArtistFold" class="absolute top-2 right-2 md:top-4 md:right-4 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 t-text-main transition-all z-30 shadow-sm active:scale-90" title="折叠/展开">
                 <i class="fas fa-chevron-up transition-transform duration-500 ${isArtistFolded ? 'rotate-180' : ''}" id="artist-fold-icon"></i>
             </button>
 
             <div id="artist-main-layout" class="flex flex-col md:flex-row gap-6 md:gap-8 ${isArtistFolded && isMobile ? 'items-start text-left' : 'items-center md:items-start text-center md:text-left'} transition-all duration-500">
                 <div id="artist-avatar-container" class="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden shadow-2xl ring-4 ring-emerald-500/20 flex-shrink-0 transition-all duration-500 origin-center" style="${isArtistFolded ? 'transform: scale(0); opacity: 0; width: 0; height: 0; margin: 0;' : ''}">
                     <img src="${escapeHtmlText(artistAvatar)}" alt="${artistName}头像" width="160" height="160" loading="lazy" decoding="async"
-                         onerror="this.src='/music/assets/logo.svg'"
+                         data-event-error-action="fallback-image"
                          class="w-full h-full object-cover">
                 </div>
                 <div class="flex-1 min-w-0">
@@ -1017,7 +1041,7 @@ function renderArtistHeader(info, activeTab, order) {
                         </div>
                         <div class="relative group">
                             <p id="artist-bio-text" class="text-sm t-text-muted leading-relaxed line-clamp-3 overflow-y-auto max-h-32 transition-all cursor-pointer bg-black/5 dark:bg-white/5 p-3 rounded-lg custom-scrollbar" 
-                            onclick="this.classList.toggle('line-clamp-3')" title="点击展开/收回详情">
+                            data-event-click-action="this.classList.toggle" data-event-click-args="[&quot;line-clamp-3&quot;]" title="点击展开/收回详情">
                                 ${artistDescription}
                             </p>
                         </div>
@@ -1027,12 +1051,12 @@ function renderArtistHeader(info, activeTab, order) {
             
             <div id="artist-tabs-bar" class="flex items-end justify-between ${tabsClass} border-t t-border-main transition-all duration-500 relative z-40" style="min-height: 48px;">
                 <div class="flex gap-8">
-                    <button onclick="enterArtist(${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, 'songs')"
+                    <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, &quot;songs&quot;]"
                             class="pb-2 text-sm font-bold transition-all relative ${activeTab === 'songs' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
                         所有歌曲
                         ${activeTab === 'songs' ? '<div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 rounded-full"></div>' : ''}
                     </button>
-                    <button onclick="enterArtist(${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, 'albums')"
+                    <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, &quot;albums&quot;]"
                             class="pb-2 text-sm font-bold transition-all relative ${activeTab === 'albums' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
                         所有专辑
                         ${activeTab === 'albums' ? '<div class="absolute bottom-0 left-0 right-0 h-1 bg-emerald-500 rounded-full"></div>' : ''}
@@ -1041,11 +1065,11 @@ function renderArtistHeader(info, activeTab, order) {
                 
                 ${activeTab === 'songs' ? `
                 <div class="flex p-1 mb-1 t-bg-main rounded-lg border t-border-main shadow-sm relative z-50">
-                    <button onclick="enterArtist(${artistIdArg}, ${artistSourceArg}, 'hot', 'songs')"
+                    <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;hot&quot;, &quot;songs&quot;]"
                             class="px-4 py-1.5 text-xs font-bold rounded-md transition-all ${order === 'hot' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
                         热门
                     </button>
-                    <button onclick="enterArtist(${artistIdArg}, ${artistSourceArg}, 'time', 'songs')"
+                    <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;time&quot;, &quot;songs&quot;]"
                             class="px-4 py-1.5 text-xs font-bold rounded-md transition-all ${order === 'time' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
                         最新
                     </button>
@@ -1233,12 +1257,12 @@ function renderArtistSongsUI(list, page) {
         <div class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm list-results-header">
             <div class="col-span-2 sm:col-span-1 list-header-leading">
                 <div class="list-header-actions" role="group" aria-label="列表操作">
-                    <button onclick="toggleBatchMode()" data-list-action="batch"
+                    <button data-event-click-action="toggleBatchMode" data-list-action="batch"
                         class="list-header-action"
                         title="多选操作" aria-label="多选操作" aria-pressed="${window.batchMode ? 'true' : 'false'}">
                         <i class="fas fa-tasks" aria-hidden="true"></i>
                     </button>
-                    <button onclick="window.ListSearch.toggleBar()" data-list-action="search"
+                    <button data-event-click-action="ListSearch.toggleBar" data-list-action="search"
                         class="list-header-action"
                         title="搜索当前列表" aria-label="搜索当前列表">
                         <i class="fas fa-search" aria-hidden="true"></i>
@@ -1283,8 +1307,8 @@ function renderArtistSongsUI(list, page) {
                 <div role="button" tabindex="0" aria-label="${window.batchMode ? `${selectionLabel} ${itemName}` : `播放 ${itemName}`}" ${selectionAttributes}
                      data-selection-state="${isSelected ? 'selected' : 'unselected'}"
                      class="${rowClass}" data-song-id="${itemId}"
-                     onclick="window.batchMode ? handleBatchSelect(${itemIdArg}, !window.selectedItems.has(${itemIdArg})) : playFromView(${index})"
-                     onkeydown="if (event.target !== this) return; if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); window.batchMode ? handleBatchSelect(${itemIdArg}, !window.selectedItems.has(${itemIdArg})) : playFromView(${index}); }">
+                     data-event-click-action="search-row-activate" data-event-click-args="[${itemIdArg}, ${index}]"
+                     data-event-keydown-action="search-row-activate" data-event-keydown-args="[${itemIdArg}, ${index}]" data-event-keys="Enter, " data-event-target-self="true" data-event-prevent="true">
                     <!-- Index -->
                     <div class="col-span-2 sm:col-span-1 text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
                         ${window.batchMode ? `
@@ -1294,7 +1318,7 @@ function renderArtistSongsUI(list, page) {
                                    ${isSelected ? 'checked' : ''}
                                    aria-checked="${isSelected}"
                                    aria-label="${selectionLabel} ${itemName}"
-                            onclick="event.stopPropagation(); handleBatchSelect(${itemIdArg}, this.checked);">
+                            data-event-click-action="handleBatchSelect" data-event-click-args="[${itemIdArg}, &quot;@checked&quot;]" data-event-stop="true">
                         ` : `<span class="index-num group-hover:hidden">${index + 1}</span><i class="fas fa-play text-emerald-500 hidden group-hover:block text-[10px]"></i>`}
                     </div>
 
@@ -1302,7 +1326,7 @@ function renderArtistSongsUI(list, page) {
                     <div class="col-span-8 sm:col-span-7 md:col-span-6 lg:col-span-4 flex items-center gap-3 min-w-0">
                         <div class="w-10 h-10 md:w-12 md:h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-sm relative">
                             <img src="${itemImage}" alt="${itemName}专辑封面" width="48" height="48" loading="lazy" decoding="async"
-                                 onerror="this.src='/music/assets/logo.svg'" 
+                                 data-event-error-action="fallback-image"
                                  class="w-full h-full object-cover">
                             <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                                 <i class="fas fa-play text-white text-xs"></i>
@@ -1334,10 +1358,10 @@ function renderArtistSongsUI(list, page) {
 
                     <!-- Actions -->
                     <div class="col-span-2 sm:col-span-1 flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors" title="播放" onclick="event.stopPropagation(); playFromView(${index})">
+                        <button class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors" title="播放" data-event-click-action="playFromView" data-event-click-args="[${index}]" data-event-stop="true">
                             <i class="fas fa-play w-3.5 h-3.5"></i>
                         </button>
-                        <button class="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors" title="下载" onclick="event.stopPropagation(); downloadSong(${safeInlineJson(item)})">
+                        <button class="p-1.5 hover:bg-blue-50 rounded-lg text-blue-600 transition-colors" title="下载" data-event-click-action="downloadSong" data-event-click-args="[${safeInlineJson(item)}]" data-event-stop="true">
                             <i class="fas fa-download w-3.5 h-3.5"></i>
                         </button>
                     </div>
@@ -1348,12 +1372,12 @@ function renderArtistSongsUI(list, page) {
 
         <!-- 歌手详情内部分页控件 -->
         <div class=" mt-2 flex-shrink-0">
-            <button onclick="artistSongsPrevPage()"
+            <button data-event-click-action="artistSongsPrevPage"
                 class="text-gray-500 hover:text-emerald-600 disabled:opacity-30 transition-colors ${pageState.value <= 1 ? 'opacity-30 pointer-events-none' : ''}">
                 <i class="fas fa-chevron-left"></i> 上一页
             </button>
             <span class="text-xs t-text-muted font-mono">显示 ${startIndex + 1}-${endIndex} 首，共 ${totalItems} 首</span>
-            <button onclick="artistSongsNextPage()"
+            <button data-event-click-action="artistSongsNextPage"
                 class="text-gray-500 hover:text-emerald-600 disabled:opacity-30 transition-colors ${pageState.value >= totalPages ? 'opacity-30 pointer-events-none' : ''}">
                 下一页 <i class="fas fa-chevron-right"></i>
             </button>
@@ -1498,7 +1522,7 @@ function renderArtistAlbumsUI(list) {
                 <div class="artist-album-card group flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20" data-album-index="${index}">
                     <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative bg-gray-100 dark:bg-gray-800">
                         <img src="${escapeHtmlText(getImgUrl(album))}" alt="${escapeHtmlText(albumName)}封面" width="320" height="320" loading="lazy" decoding="async"
-                             onerror="this.src='/music/assets/logo.svg'" 
+                             data-event-error-action="fallback-image"
                              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
                         <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                              <div class="w-12 h-12 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-transform duration-300">
@@ -1672,7 +1696,7 @@ async function enterAlbum(id, source = 'wy', fromHistory = false) {
         showError(`获取专辑歌曲失败: ${e.message}`);
         resultsContainer.innerHTML = `<div class="text-center text-red-500 p-8">
             <p>获取专辑歌曲失败：${escapeHtmlText(e.message)}</p>
-            <button type="button" onclick="goBackToSearch()" class="mt-4 px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600">返回专辑搜索</button>
+            <button type="button" data-event-click-action="goBackToSearch" class="mt-4 px-4 py-2 rounded-lg bg-emerald-500 text-white hover:bg-emerald-600">返回专辑搜索</button>
         </div>`;
         const backBtn = document.getElementById('search-back-btn');
         if (backBtn) backBtn.classList.remove('hidden');
@@ -1964,7 +1988,7 @@ function renderResults(list) {
                            ${isSelected ? 'checked' : ''}
                            aria-checked="${isSelected}"
                            aria-label="${selectionLabel} ${itemName}"
-                    onclick="event.stopPropagation(); handleBatchSelect(${itemIdArg}, this.checked);">
+                    data-event-click-action="handleBatchSelect" data-event-click-args="[${itemIdArg}, &quot;@checked&quot;]" data-event-stop="true">
                 ` : `<span class="index-num">${actualIndexInOriginal + 1}</span>`}
             </div>
 
@@ -1974,7 +1998,7 @@ function renderResults(list) {
                      <img data-src="${escapeHtmlText(imgUrl)}" src="/music/assets/logo.svg" alt="${itemName}专辑封面" width="48" height="48"
                           loading="lazy" decoding="async"
                           class="lazy-image w-full h-full rounded-lg object-cover shadow-sm group-hover:shadow-md transition-all group-hover:scale-105 duration-300 dynamic-logo is-placeholder" 
-                           onerror="this.src='/music/assets/logo.svg'; this.classList.add('is-placeholder');">
+                           data-event-error-action="fallback-image">
                      <div class="absolute inset-0 bg-black/20 rounded-lg hidden group-hover:flex items-center justify-center transition-all">
                         <i class="fas fa-play text-white text-xs md:text-sm"></i>
                      </div>
@@ -1996,7 +2020,7 @@ function renderResults(list) {
             <!-- Artist (Hidden on Mobile) -->
             <div class="hidden sm:flex sm:col-span-3 md:col-span-3 lg:col-span-3 t-text-muted text-sm md:text-base items-center hover:text-emerald-600 transition-colors cursor-pointer overflow-hidden"
                  title="${itemSinger}"
-                 onclick="event.stopPropagation(); performSearch(${itemSingerArg}, ${safeInlineString(item.source || '')}, 'singer');">
+                 data-event-click-action="performSearch" data-event-click-args="[${itemSingerArg}, ${safeInlineString(item.source || '')}, &quot;singer&quot;]" data-event-stop="true">
                 ${createMarqueeHtml(item.singer)}
             </div>
 
@@ -2017,20 +2041,20 @@ function renderResults(list) {
                 <button class="p-2 sm:p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg text-emerald-600 transition-colors touch-manipulation min-w-[36px] min-h-[36px] hidden sm:flex items-center justify-center" 
                         title="播放" 
                         aria-label="播放 ${itemName}"
-                        onclick="event.stopPropagation(); playFromView(${actualIndexInOriginal})">
+                        data-event-click-action="playFromView" data-event-click-args="[${actualIndexInOriginal}]" data-event-stop="true">
                     <i class="fas fa-play text-xs sm:text-sm"></i>
                 </button>
                 <button class="p-2 sm:p-1.5 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg text-blue-600 transition-colors touch-manipulation min-w-[36px] min-h-[36px] flex items-center justify-center" 
                         title="下载" 
                         aria-label="下载 ${itemName}"
-                        onclick="event.stopPropagation(); downloadSong(${safeInlineJson(item)})">
+                        data-event-click-action="downloadSong" data-event-click-args="[${safeInlineJson(item)}]" data-event-stop="true">
                     <i class="fas fa-download text-xs sm:text-sm"></i>
                 </button>
                 ${window.currentSearchScope !== 'network' ? `
                 <button class="p-2 sm:p-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg text-red-600 transition-colors touch-manipulation min-w-[36px] min-h-[36px] flex items-center justify-center" 
                         title="删除" 
                         aria-label="删除 ${itemName}"
-                        onclick="event.stopPropagation(); deleteSingleSong(${itemIdArg})">
+                        data-event-click-action="deleteSingleSong" data-event-click-args="[${itemIdArg}]" data-event-stop="true">
                     <i class="fas fa-trash text-xs sm:text-sm"></i>
                 </button>
                 ` : ''}

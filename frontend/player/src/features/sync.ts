@@ -95,12 +95,12 @@ function updateSyncStatus(html, showLogout = true) {
     // Show logout button if requested AND we have active data or connection
     const hasActiveLogin = state.currentListData || (syncManager && syncManager.client && syncManager.client.isConnected);
     if (showLogout && hasActiveLogin) {
-        fullHtml += ` <button onclick="handleSyncLogout()" class="ml-2 text-red-500 hover:text-red-600 text-[10px] md:text-xs font-bold px-2 py-0.5 rounded border border-red-200 hover:bg-red-300/10 transition-all inline-flex items-center gap-1" title="退出登录"><i class="fas fa-sign-out-alt"></i><span class="hidden sm:inline">退出登录</span></button>`;
+        fullHtml += ` <button data-event-click-action="handleSyncLogout" class="ml-2 text-red-500 hover:text-red-600 text-[10px] md:text-xs font-bold px-2 py-0.5 rounded border border-red-200 hover:bg-red-300/10 transition-all inline-flex items-center gap-1" title="退出登录"><i class="fas fa-sign-out-alt"></i><span class="hidden sm:inline">退出登录</span></button>`;
 
         // Add "Sync from Remote" button if in LOCAL mode
         if (localStorage.getItem('lx_sync_mode') === 'local') {
             const username = localStorage.getItem('lx_sync_user') || '该用户';
-            fullHtml += ` <button onclick="showRemoteOverwriteModal(${safeInlineString(username)})" class="ml-2 text-emerald-500 hover:text-emerald-600 text-[10px] md:text-xs font-bold px-2 py-0.5 rounded border border-emerald-200 hover:bg-emerald-300/10 transition-all inline-flex items-center gap-1" title="连接远程服务器"><i class="fas fa-satellite-dish"></i><span class="hidden sm:inline">连接远程服务器</span></button>`;
+            fullHtml += ` <button data-event-click-action="showRemoteOverwriteModal" data-event-click-args="[${safeInlineString(username)}]" class="ml-2 text-emerald-500 hover:text-emerald-600 text-[10px] md:text-xs font-bold px-2 py-0.5 rounded border border-emerald-200 hover:bg-emerald-300/10 transition-all inline-flex items-center gap-1" title="连接远程服务器"><i class="fas fa-satellite-dish"></i><span class="hidden sm:inline">连接远程服务器</span></button>`;
         }
     }
     statusEl.innerHTML = fullHtml;

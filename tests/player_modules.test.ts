@@ -8,6 +8,20 @@ function read(relativePath: string): string {
     return fs.readFileSync(path.join(projectRoot, relativePath), 'utf8');
 }
 
+function listFiles(relativePath: string, extension: string): string[] {
+    const directory = path.join(projectRoot, relativePath);
+    const files: string[] = [];
+    const visit = (current: string) => {
+        for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+            const fullPath = path.join(current, entry.name);
+            if (entry.isDirectory()) visit(fullPath);
+            else if (entry.name.endsWith(extension)) files.push(fullPath);
+        }
+    };
+    visit(directory);
+    return files;
+}
+
 describe('Player manager module boundaries', () => {
     it('does not expose song list or download managers through window', () => {
         const source = [
@@ -40,5 +54,20 @@ describe('Player manager module boundaries', () => {
         const serviceWorker = read('public/music/sw.js');
         expect(serviceWorker).not.toContain('./js/songlist_manager.js');
         expect(serviceWorker).not.toContain('./js/download_manager.js');
+    });
+
+    it('does not contain inline HTML event attributes in player sources or templates', () => {
+        const files = [
+            ...listFiles('frontend/player/src', '.ts'),
+            path.join(projectRoot, 'public/music/index.html'),
+            path.join(projectRoot, 'public/music/login.html'),
+        ];
+        const inlineEventAttribute = /\bon[a-zA-Z]+\s*=\s*["']/;
+        const violations = files.flatMap(file => {
+            const source = fs.readFileSync(file, 'utf8');
+            return inlineEventAttribute.test(source) ? [path.relative(projectRoot, file)] : [];
+        });
+
+        expect(violations).toEqual([]);
     });
 });

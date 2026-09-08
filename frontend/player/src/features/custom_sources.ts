@@ -406,7 +406,7 @@ async function renderCustomSources() {
                     </div>
                     <p class="text-base font-bold t-text-main mb-2">列表内容已隐藏</p>
                     <p class="text-xs text-center max-w-[240px] leading-relaxed">当前系统已开启公开访问限制，请登录管理员账号后再管理或查看自定义源列表。</p>
-                    <button onclick="handleAdminLogin()" class="mt-6 px-6 py-2.5 bg-emerald-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-100 hover:bg-emerald-600 transition-all active:scale-95">前往登录</button>
+                    <button data-event-click-action="handleAdminLogin" class="mt-6 px-6 py-2.5 bg-emerald-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-100 hover:bg-emerald-600 transition-all active:scale-95">前往登录</button>
                 </div>
             `;
             return;
@@ -419,7 +419,7 @@ async function renderCustomSources() {
                     <i class="fas fa-box-open text-3xl mb-3 opacity-30"></i>
                     <p class="text-sm">暂无自定义源</p>
                     ${containerId === 'custom-sources-list' ?
-                    `<button onclick="document.getElementById('script-file').click()" class="mt-3 text-emerald-600 hover:text-emerald-700 text-sm font-medium">即刻上传</button>`
+                    `<button data-event-click-action="open-script-file" class="mt-3 text-emerald-600 hover:text-emerald-700 text-sm font-medium">即刻上传</button>`
                     : ''}
                 </div>
             `;
@@ -514,7 +514,7 @@ async function renderCustomSources() {
                 </div>
                 
                 <div class="flex flex-col items-end gap-2 shrink-0">
-                    <button onclick="toggleSource(${safeInlineString(source.id)}, ${source.enabled})"
+                    <button data-event-click-action="toggleSource" data-event-click-args="[${safeInlineString(source.id)}, ${source.enabled}]"
                             class="px-3 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap w-20 flex justify-center items-center ${source.enabled
                     ? (source.status === 'failed' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-500/30' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400 hover:bg-emerald-200 dark:hover:bg-emerald-500/30')
                     : 't-bg-track t-text-muted hover:t-bg-item-hover'}">
@@ -523,14 +523,14 @@ async function renderCustomSources() {
                     
                     <div class="flex items-center gap-1">
                         ${source.enabled && source.status === 'failed' && canManageSource ? `
-                        <button onclick="reloadSource(${safeInlineString(source.id)})"
+                        <button data-event-click-action="reloadSource" data-event-click-args="[${safeInlineString(source.id)}]"
                                 class="p-1.5 text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 rounded-lg transition-colors"
                                 title="尝试重新加载">
                             <i class="fas fa-sync-alt text-sm"></i>
                         </button>` : ''}
                         
                         ${canManageSource ? `
-                        <button onclick="deleteSource(${safeInlineString(source.id)})"
+                        <button data-event-click-action="deleteSource" data-event-click-args="[${safeInlineString(source.id)}]"
                                 class="p-1.5 t-text-muted hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/40 rounded-lg transition-colors"
                                 title="删除">
                             <i class="fas fa-trash-alt text-sm"></i>

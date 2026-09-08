@@ -321,7 +321,7 @@ function renderCacheList() {
         return `
             <div class="group flex items-center p-2.5 rounded-2xl hover:t-bg-panel-light transition-all duration-300 gap-3 border border-transparent 
                 ${isSelected ? 't-bg-panel-light border-blue-500/30 ring-1 ring-blue-500/10' : ''}"
-                onclick="${cacheBatchMode ? `toggleCacheSelection(${idx})` : ''}">
+                ${cacheBatchMode ? `data-event-click-action="toggleCacheSelection" data-event-click-args="[${idx}]"` : ''}>
                 
                 ${cacheBatchMode ? `
                 <div class="flex-shrink-0 w-5 flex items-center justify-center">
@@ -335,7 +335,7 @@ function renderCacheList() {
                 <div class="relative w-12 h-12 flex-shrink-0 group-hover:scale-105 transition-transform duration-500">
                     <img class="w-full h-full object-cover rounded-xl shadow-md bg-gray-100" alt="${escapeHtmlText(item.filename || '缓存歌曲')}封面" width="48" height="48" loading="lazy" decoding="async"
                          src="${escapeHtmlText(coverUrl)}"
-                         onerror="this.src='/music/assets/logo.svg'">
+                         data-event-error-action="fallback-image">
                     <div class="absolute inset-0 bg-black/5 rounded-xl"></div>
                 </div>
 
@@ -355,7 +355,7 @@ function renderCacheList() {
                         </div>
                     ` : `
                         <div class="mt-1">
-                            <button onclick="event.stopPropagation(); retryCacheLyric(this, ${itemJson})"
+                            <button data-event-click-action="retryCacheLyric" data-event-click-args="[&quot;@this&quot;, ${itemJson}]" data-event-stop="true"
                                     class="text-[9px] bg-red-400 hover:bg-red-500 text-white px-1.5 py-0.5 rounded font-black shadow-sm inline-flex items-center gap-1 transition-colors" title="歌词缺失，点击尝试补全">
                                 <span>LRC+</span>
                                 <i class="fas fa-redo-alt text-[7px]"></i>
@@ -366,7 +366,7 @@ function renderCacheList() {
 
                 <div class="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                     ${!cacheBatchMode ? `
-                        <button onclick="event.stopPropagation(); removeCacheItem(${idx})"
+                        <button data-event-click-action="removeCacheItem" data-event-click-args="[${idx}]" data-event-stop="true"
                                 class="p-2 t-text-muted hover:text-red-500 transition-colors" title="删除">
                             <i class="fas fa-trash-alt text-xs"></i>
                         </button>

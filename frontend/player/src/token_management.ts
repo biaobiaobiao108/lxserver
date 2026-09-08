@@ -113,25 +113,25 @@ function renderTokenList(tokens) {
                     <div class="flex items-center gap-2">
                         <span class="text-[11px] t-text-muted opacity-70 hidden sm:inline">${isDisabled ? '停用中' : '生效中'}</span>
                         <label class="relative inline-flex items-center cursor-pointer scale-[0.85]">
-                            <input type="checkbox" ${!isDisabled ? 'checked' : ''} onchange="handleToggleTokenStatus(${maskedArg}, !this.checked)" class="sr-only peer">
+                            <input type="checkbox" ${!isDisabled ? 'checked' : ''} data-event-change-action="handleToggleTokenStatus" data-event-change-args="[${maskedArg}, &quot;@not-checked&quot;]" class="sr-only peer">
                             <div class="w-11 h-6 bg-gray-200/50 peer-focus:outline-none rounded-full peer dark:bg-gray-700/50 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-emerald-500"></div>
                         </label>
                     </div>
 
                     <div class="flex items-center gap-1">
-                        <button onclick="openTokenLogsModal(${maskedArg}, ${tokenNameArg})"
+                        <button data-event-click-action="openTokenLogsModal" data-event-click-args="[${maskedArg}, ${tokenNameArg}]"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:t-bg-primary hover:text-white transition-all group/btn" title="查看日志">
                             <i class="fas fa-list-ul text-[13px] md:text-[14px]"></i>
                         </button>
-                        <button onclick="openEditTokenModal(${maskedArg}, ${tokenNameArg}, ${expiresAt})"
+                        <button data-event-click-action="openEditTokenModal" data-event-click-args="[${maskedArg}, ${tokenNameArg}, ${expiresAt}]"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:t-bg-primary hover:text-white transition-all group/btn" title="编辑信息">
                             <i class="fas fa-pencil-alt text-[13px] md:text-[14px]"></i>
                         </button>
-                        <button onclick="copyTokenToClipboard(${tokenArg})"
+                        <button data-event-click-action="copyTokenToClipboard" data-event-click-args="[${tokenArg}]"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:bg-blue-500 hover:text-white transition-all group/btn" title="复制 Token">
                             <i class="far fa-copy text-[13px] md:text-[14px]"></i>
                         </button>
-                        <button onclick="handleRemoveToken(${tokenArg})"
+                        <button data-event-click-action="handleRemoveToken" data-event-click-args="[${tokenArg}]"
                             class="p-2 md:p-2.5 rounded-xl t-bg-track hover:bg-red-500 hover:text-white transition-all group/btn" title="删除 Token">
                             <i class="far fa-trash-alt text-[13px] md:text-[14px]"></i>
                         </button>

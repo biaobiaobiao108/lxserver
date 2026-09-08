@@ -58,7 +58,7 @@
         </div>
 
         <!-- Password Input -->
-        <form onsubmit="handleLogin(event)" class="space-y-6">
+        <form id="auth-form" class="space-y-6">
             <div class="relative">
                 <div class="absolute left-4 top-1/2 -translate-y-1/2 t-text-muted">
                     <i class="fas fa-lock"></i>
@@ -159,6 +159,7 @@
         }
 
         document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('auth-form')?.addEventListener('submit', handleLogin)
             document.getElementById('auth-password-input').focus()
         })
     </script>

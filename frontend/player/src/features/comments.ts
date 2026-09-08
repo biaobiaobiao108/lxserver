@@ -76,7 +76,7 @@ export function initCommentsFeature(context: CommentsFeatureContext) {
                      loading="lazy" fetchpriority="low"
                      width="40" height="40" alt="${context.escapeHtmlText(comment.userName || '用户')}的头像"
                      class="${avatarClass}"
-                     onerror="if(!this.dataset.tried){this.dataset.tried=1;this.src='/music/assets/logo.svg';this.classList.add('dynamic-logo','is-placeholder','p-1.5','bg-emerald-50');this.style.filter='var(--logo-filter, none)';}">
+                     data-event-error-action="fallback-comment-image">
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center justify-between mb-1">
                         <span class="text-xs md:text-sm font-black t-text-main truncate">${context.escapeHtmlText(comment.userName || '用户')}</span>
@@ -91,10 +91,10 @@ export function initCommentsFeature(context: CommentsFeatureContext) {
                             ${comment.images.map((image: any) => {
                                 const imageUrl = safeImageUrl(image);
                                 return `
-                                <button type="button" class="border-0 p-0 bg-transparent rounded-lg cursor-pointer hover:opacity-90 transition-opacity" aria-label="打开评论图片" onclick="window.open(${safeInlineString(imageUrl)}, '_blank', 'noopener')">
+                                <button type="button" class="border-0 p-0 bg-transparent rounded-lg cursor-pointer hover:opacity-90 transition-opacity" aria-label="打开评论图片" data-event-click-action="window.open" data-event-click-args="[${safeInlineString(imageUrl)}, &quot;_blank&quot;, &quot;noopener&quot;]">
                                     <img src="${context.escapeHtmlText(imageUrl)}" loading="lazy" fetchpriority="low" width="200" height="300" alt="评论图片"
                                          class="w-[200px] h-[300px] object-contain rounded-lg shadow-sm"
-                                         onerror="this.closest('button').style.display='none'">
+                                         data-event-error-action="hide-parent-button">
                                 </button>
                             `;
                             }).join('')}

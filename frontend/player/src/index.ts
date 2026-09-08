@@ -49,6 +49,7 @@ import { initLyricFeature } from './features/lyrics';
 import { initSearchFeature } from './features/search';
 import { initPlaybackFeature, type PlaybackState } from './features/playback';
 import { initSyncFeature, type SyncState } from './features/sync';
+import { bindPlayerEvents, registerPlayerEventAction } from './player_events';
 import { DownloadManager } from './legacy/download_manager';
 import { createSongListManager, type SongListManagerApi } from './legacy/songlist_manager';
 import {
@@ -550,6 +551,34 @@ songListManager = createSongListManager({ downloadSong, handleBatchSelect });
 registerSongListManager(songListManager);
 downloadManager = new DownloadManager();
 registerDownloadManager(downloadManager);
+registerPlayerEventAction('open-local-mode-settings', () => {
+    switchTab('settings');
+    setTimeout(() => document.getElementById('btn-mode-local')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+});
+registerPlayerEventAction('update-server-cache-location', (_event, element, args) => {
+    const value = args[0] ?? (element as HTMLSelectElement).value;
+    updateSetting('serverCacheLocation', value);
+    updateServerCacheConfig(value);
+});
+registerPlayerEventAction('update-server-cache-naming', (_event, element, args) => {
+    const value = args[0] ?? (element as HTMLInputElement).value;
+    updateSetting('serverCacheNamingPattern', value);
+    updateServerCacheConfig(null, value);
+});
+registerPlayerEventAction('trigger-player-like', () => {
+    document.getElementById('player-like-btn')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+});
+registerPlayerEventAction('open-script-file', () => {
+    document.getElementById('script-file')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+});
+registerPlayerEventAction('set-lyric-lines', (_event, _element, args) => {
+    const lines = String(args[0] ?? '');
+    (window as any).lyricCard?.setLyricLines(Number(lines));
+    document.querySelectorAll<HTMLElement>('.lc-lines-btn').forEach(button => {
+        button.classList.toggle('lc-btn-active', button.dataset.lines === lines);
+    });
+});
+bindPlayerEvents();
 
 window.networkListUpdateMap = new Set();
 let networkListAutoCheckTimer = null;
@@ -1245,7 +1274,7 @@ async function loadLocalFonts(targetSelectId = 'lyric-font-family-select', btnEl
         return;
     }
 
-    const btn = btnEl || document.querySelector('button[onclick="loadLocalFonts()"]');
+    const btn = btnEl || document.querySelector('button[data-event-click-action="loadLocalFonts"]');
     const originalText = btn ? btn.innerHTML : '';
 
     try {
@@ -3661,10 +3690,10 @@ function renderMyLists(data) {
             opsHtml = `
                 <button type="button" class="refresh-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 hidden group-hover:block flex-shrink-0 text-[10px] mr-2 transition-all active:rotate-180"
                    title="更新歌单内容" aria-label="更新歌单内容"
-                   onclick="event.stopPropagation(); handleRefreshList(${idArg}, event)"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
+                   data-event-click-action="handleRefreshList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
                 <button type="button" class="jump-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 hidden group-hover:block flex-shrink-0 text-[10px] mr-2 transition-all"
                    title="打开原始歌单" aria-label="打开原始歌单"
-                   onclick="event.stopPropagation(); handleJumpToOriginalList(${idArg}, event)"><i class="fas fa-external-link-alt" aria-hidden="true"></i></button>
+                   data-event-click-action="handleJumpToOriginalList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-external-link-alt" aria-hidden="true"></i></button>
                 ${updateBadge}
             `;
         }
@@ -3677,8 +3706,8 @@ function renderMyLists(data) {
             <i class="fas ${icon} w-5 t-text-muted group-hover:text-emerald-500 transition-colors flex-shrink-0"></i>
             ${displayName.length > 8 ? `<div class="ml-2 flex-1 overflow-hidden">${nameHtml}</div>` : nameHtml}
             <span class="text-xs text-gray-300 group-hover:t-text-muted mr-2 flex-shrink-0">${count}</span>
-            ${typeof listObj !== 'string' ? `<button type="button" class="text-gray-300 hover:text-emerald-500 flex-shrink-0 mr-2 transition-colors" title="重命名歌单" aria-label="重命名歌单" onclick="event.stopPropagation(); handleRenameList(${idArg}, event)"><i class="fas fa-pen text-[10px]" aria-hidden="true"></i></button>` : ''}
-            ${idValue !== 'default' && idValue !== 'love' ? `<button type="button" class="bg-transparent border-0 p-0 text-gray-300 hover:text-red-500 hidden group-hover:block flex-shrink-0" title="删除歌单" aria-label="删除歌单" onclick="event.stopPropagation(); handleRemoveList(${idArg}, event)"><i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
+            ${typeof listObj !== 'string' ? `<button type="button" class="text-gray-300 hover:text-emerald-500 flex-shrink-0 mr-2 transition-colors" title="重命名歌单" aria-label="重命名歌单" data-event-click-action="handleRenameList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-pen text-[10px]" aria-hidden="true"></i></button>` : ''}
+            ${idValue !== 'default' && idValue !== 'love' ? `<button type="button" class="bg-transparent border-0 p-0 text-gray-300 hover:text-red-500 hidden group-hover:block flex-shrink-0" title="删除歌单" aria-label="删除歌单" data-event-click-action="handleRemoveList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
         `;
         return div;
     };

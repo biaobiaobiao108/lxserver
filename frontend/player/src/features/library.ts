@@ -370,7 +370,7 @@ function renderLibraryArtists(list) {
         <div class="p-3 md:p-4 border-b t-border-main t-bg-main flex items-center justify-between">
             <span class="text-sm font-bold t-text-main">收藏歌手 <span class="text-emerald-500">${list.length}</span> 位</span>
             <div class="flex items-center gap-2">
-                <button onclick="enterLibraryArtistBatch()" class="text-xs px-3 py-1.5 border t-border-main rounded-lg t-text-muted hover:text-emerald-600 hover:border-emerald-400 transition-all flex items-center gap-1">
+                <button data-event-click-action="enterLibraryArtistBatch" class="text-xs px-3 py-1.5 border t-border-main rounded-lg t-text-muted hover:text-emerald-600 hover:border-emerald-400 transition-all flex items-center gap-1">
                     <i class="fas fa-tasks"></i> 批量管理
                 </button>
             </div>
@@ -378,11 +378,11 @@ function renderLibraryArtists(list) {
         <div id="lib-artist-batch-bar" class="hidden bg-emerald-50 border-b border-emerald-200 p-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <span class="text-sm text-emerald-700">已选: <span id="lib-artist-sel-count" class="font-bold">0</span></span>
-                <button onclick="libSelectAllArtists()" class="text-xs px-3 py-1 t-bg-panel border border-emerald-300 rounded hover:bg-emerald-50 text-emerald-700">全选</button>
-                <button onclick="libDeselectAllArtists()" class="text-xs px-3 py-1 t-bg-panel border t-border-main rounded hover:t-bg-track t-text-muted">清空</button>
-                <button onclick="exitLibraryArtistBatch()" class="text-xs px-3 py-1 t-bg-panel border border-red-300 rounded hover:bg-red-50 text-red-600">退出</button>
+                <button data-event-click-action="libSelectAllArtists" class="text-xs px-3 py-1 t-bg-panel border border-emerald-300 rounded hover:bg-emerald-50 text-emerald-700">全选</button>
+                <button data-event-click-action="libDeselectAllArtists" class="text-xs px-3 py-1 t-bg-panel border t-border-main rounded hover:t-bg-track t-text-muted">清空</button>
+                <button data-event-click-action="exitLibraryArtistBatch" class="text-xs px-3 py-1 t-bg-panel border border-red-300 rounded hover:bg-red-50 text-red-600">退出</button>
             </div>
-            <button onclick="libDeleteSelectedArtists()" class="text-xs px-4 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded transition-colors flex items-center gap-1">
+            <button data-event-click-action="libDeleteSelectedArtists" class="text-xs px-4 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded transition-colors flex items-center gap-1">
                 <i class="fas fa-trash"></i> 删除所选
             </button>
         </div>
@@ -411,7 +411,7 @@ function renderLibraryArtists(list) {
             <div class="relative mb-2 md:mb-3">
                 <div class="w-16 h-16 sm:w-24 sm:h-24 md:w-32 md:h-32 rounded-full overflow-hidden shadow-sm">
                     <img src="${escapeHtmlText(safeImageUrl(singer.picUrl))}" alt="${escapeHtmlText(singerName)}头像" width="128" height="128" loading="lazy" decoding="async"
-                         onerror="this.src='/music/assets/logo.svg'"
+                         data-event-error-action="fallback-image"
                          class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
                 </div>
                 <div class="lib-batch-check absolute inset-0 bg-black/40 hidden items-center justify-center rounded-full">
@@ -419,7 +419,7 @@ function renderLibraryArtists(list) {
                 </div>
                 <button class="lib-fav-btn absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full bg-red-400/80 hover:bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10"
                         title="取消收藏"
-                        onclick="event.stopPropagation(); removeLibraryArtist(${safeInlineString(singerId)}, ${safeInlineString(singerSource)})">
+                        data-event-click-action="removeLibraryArtist" data-event-click-args="[${safeInlineString(singerId)}, ${safeInlineString(singerSource)}]" data-event-stop="true">
                     <i class="fas fa-times text-[10px]"></i>
                 </button>
             </div>
@@ -456,10 +456,10 @@ function renderLibraryAlbums(list) {
         <div class="p-3 md:p-4 border-b t-border-main t-bg-main flex items-center justify-between">
             <span class="text-sm font-bold t-text-main">收藏专辑 <span class="text-emerald-500">${list.length}</span> 张</span>
             <div class="flex items-center gap-2">
-                <button id="sync-all-albums-btn" onclick="syncAllLibraryAlbums()" class="text-xs px-3 py-1.5 border t-border-main rounded-lg t-text-muted hover:text-blue-500 hover:border-blue-400 transition-all flex items-center gap-1">
+                <button id="sync-all-albums-btn" data-event-click-action="syncAllLibraryAlbums" class="text-xs px-3 py-1.5 border t-border-main rounded-lg t-text-muted hover:text-blue-500 hover:border-blue-400 transition-all flex items-center gap-1">
                     <i class="fas fa-sync-alt"></i> 同步所有
                 </button>
-                <button onclick="enterLibraryAlbumBatch()" class="text-xs px-3 py-1.5 border t-border-main rounded-lg t-text-muted hover:text-emerald-600 hover:border-emerald-400 transition-all flex items-center gap-1">
+                <button data-event-click-action="enterLibraryAlbumBatch" class="text-xs px-3 py-1.5 border t-border-main rounded-lg t-text-muted hover:text-emerald-600 hover:border-emerald-400 transition-all flex items-center gap-1">
                     <i class="fas fa-tasks"></i> 批量管理
                 </button>
             </div>
@@ -467,11 +467,11 @@ function renderLibraryAlbums(list) {
         <div id="lib-album-batch-bar" class="hidden bg-emerald-50 border-b border-emerald-200 p-3 flex items-center justify-between">
             <div class="flex items-center gap-3">
                 <span class="text-sm text-emerald-700">已选: <span id="lib-album-sel-count" class="font-bold">0</span></span>
-                <button onclick="libSelectAllAlbums()" class="text-xs px-3 py-1 t-bg-panel border border-emerald-300 rounded hover:bg-emerald-50 text-emerald-700">全选</button>
-                <button onclick="libDeselectAllAlbums()" class="text-xs px-3 py-1 t-bg-panel border t-border-main rounded hover:t-bg-track t-text-muted">清空</button>
-                <button onclick="exitLibraryAlbumBatch()" class="text-xs px-3 py-1 t-bg-panel border border-red-300 rounded hover:bg-red-50 text-red-600">退出</button>
+                <button data-event-click-action="libSelectAllAlbums" class="text-xs px-3 py-1 t-bg-panel border border-emerald-300 rounded hover:bg-emerald-50 text-emerald-700">全选</button>
+                <button data-event-click-action="libDeselectAllAlbums" class="text-xs px-3 py-1 t-bg-panel border t-border-main rounded hover:t-bg-track t-text-muted">清空</button>
+                <button data-event-click-action="exitLibraryAlbumBatch" class="text-xs px-3 py-1 t-bg-panel border border-red-300 rounded hover:bg-red-50 text-red-600">退出</button>
             </div>
-            <button onclick="libDeleteSelectedAlbums()" class="text-xs px-4 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded transition-colors flex items-center gap-1">
+            <button data-event-click-action="libDeleteSelectedAlbums" class="text-xs px-4 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded transition-colors flex items-center gap-1">
                 <i class="fas fa-trash"></i> 删除所选
             </button>
         </div>
@@ -499,7 +499,7 @@ function renderLibraryAlbums(list) {
         div.innerHTML = `
             <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative">
                 <img src="${escapeHtmlText(safeImageUrl(item.picUrl))}" alt="${escapeHtmlText(albumName)}封面" width="320" height="320" loading="lazy" decoding="async"
-                     onerror="this.src='/music/assets/logo.svg'"
+                     data-event-error-action="fallback-image"
                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
                 <div class="lib-batch-check absolute inset-0 bg-black/40 hidden items-center justify-center rounded-xl">
                     <i class="fas fa-check-circle text-white text-3xl"></i>
@@ -509,7 +509,7 @@ function renderLibraryAlbums(list) {
                         <i class="fas fa-download text-xs"></i>
                     </button>
                     <button type="button" class="lib-fav-btn w-8 h-8 rounded-full bg-red-400/80 hover:bg-red-500 text-white flex items-center justify-center opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all shadow-sm" title="取消收藏"
-                            onclick="event.stopPropagation(); removeLibraryAlbum(${safeInlineString(albumId)}, ${safeInlineString(albumSource)})">
+                            data-event-click-action="removeLibraryAlbum" data-event-click-args="[${safeInlineString(albumId)}, ${safeInlineString(albumSource)}]" data-event-stop="true">
                         <i class="fas fa-times text-xs"></i>
                     </button>
                 </div>

@@ -1,5 +1,6 @@
 // @ts-nocheck
 // This legacy-compatible module is compiled as an isolated browser bundle.
+import { registerPlayerEventAction } from '../player_events';
 /**
  * Sound Effects Manager for LX Music Web Player
  * Handles EQ, 3D Surround, Pitch Shifting, and Environment Reverb.
@@ -364,7 +365,7 @@ window.soundEffects = (function () {
                 const isActive = activePresetName === p.name || (activePresetName === '' && settings.eq.join(',') === p.values.join(','));
                 return `
                 <button class="px-3 py-1.5 text-[11px] font-bold rounded-lg border t-border-main transition-all ${isActive ? 'bg-emerald-500 text-white border-emerald-500 shadow-md shadow-emerald-500/20' : 't-bg-main t-text-muted hover:t-bg-item-hover'}"
-                    onclick="window.soundEffects.applyPreset('${p.name}')">${p.name}</button>
+                    data-event-click-action="soundEffects.applyPreset" data-event-click-args="[&quot;${p.name}&quot;]">${p.name}</button>
             `;
             }).join('');
 
@@ -374,14 +375,14 @@ window.soundEffects = (function () {
                 return `
                 <div class="relative group">
                     <button class="px-3 py-1.5 pr-10 text-[11px] font-bold rounded-lg border t-border-main transition-all ${isActive ? 'bg-emerald-500 text-white border-emerald-500 shadow-md shadow-emerald-500/20' : 't-bg-main t-text-muted hover:t-bg-item-hover'}"
-                        onclick="window.soundEffects.applyPreset('${p.name}')">${p.name}</button>
+                        data-event-click-action="soundEffects.applyPreset" data-event-click-args="[&quot;${p.name}&quot;]">${p.name}</button>
                     <div class="absolute right-1 top-1/2 -translate-y-1/2 flex items-center transition-opacity">
                         <button class="w-4 h-4 flex items-center justify-center text-[10px] text-gray-400 hover:text-emerald-500" 
-                            onclick="event.stopPropagation(); window.soundEffects.renameCustomPreset('${p.name}')" title="重命名">
+                            data-event-click-action="soundEffects.renameCustomPreset" data-event-click-args="[&quot;${p.name}&quot;]" data-event-stop="true" title="重命名">
                             <i class="fas fa-edit"></i>
                         </button>
                         <button class="w-4 h-4 flex items-center justify-center text-[10px] text-gray-400 hover:text-red-500" 
-                            onclick="event.stopPropagation(); window.soundEffects.deleteCustomPreset('${p.name}')" title="删除">
+                            data-event-click-action="soundEffects.deleteCustomPreset" data-event-click-args="[&quot;${p.name}&quot;]" data-event-stop="true" title="删除">
                             <i class="fas fa-trash-alt"></i>
                         </button>
                     </div>
@@ -394,16 +395,16 @@ window.soundEffects = (function () {
                     <div class="relative flex items-center">
                         <input type="text" id="new-preset-name" placeholder="输入名称..." 
                             class="w-24 px-2 py-1 text-[11px] rounded-lg border border-emerald-500 t-bg-main t-text-main focus:outline-none shadow-sm"
-                            onkeydown="if(event.key==='Enter') window.soundEffects.saveNewPreset(this.value); if(event.key==='Escape') window.soundEffects.cancelAddPreset();"
-                            onblur="window.soundEffects.saveNewPreset(this.value)">
-                        <script>setTimeout(() => document.getElementById('new-preset-name')?.focus(), 50);</script>
+                            data-event-keydown-action="sound-effects-preset-key" data-event-keys="Enter,Escape" data-event-target-self="true" data-event-prevent="true"
+                            data-event-blur-action="soundEffects.saveNewPreset" data-event-blur-args="[&quot;@value&quot;]">
                     </div>
                 `;
             } else {
                 html += `<button class="p-1 px-3 text-xs rounded-lg border border-dashed t-border-main hover:text-emerald-500 transition-colors" 
-                    onclick="window.soundEffects.startAddPreset()" title="在此添加自定义预设">+</button>`;
+                    data-event-click-action="soundEffects.startAddPreset" title="在此添加自定义预设">+</button>`;
             }
             presetContainer.innerHTML = html;
+            if (isAddingPreset) setTimeout(() => document.getElementById('new-preset-name')?.focus(), 50);
         }
 
         // Reverb List (Multi-column list like reference)
@@ -413,7 +414,7 @@ window.soundEffects = (function () {
                 <label class="flex items-center gap-2 cursor-pointer group text-[12px] font-bold t-text-muted hover:t-text-main min-w-[75px]">
                     <div class="relative w-4 h-4 border t-border-dim rounded flex items-center justify-center transition-colors ${settings.reverb.id === r.id ? 'bg-emerald-500 border-emerald-500' : 'bg-white'}">
                          <input type="radio" name="reverb-opt" value="${r.id}" ${settings.reverb.id === r.id ? 'checked' : ''} 
-                            class="absolute inset-0 opacity-0 cursor-pointer" onchange="window.soundEffects.setReverb('${r.id}')">
+                            class="absolute inset-0 opacity-0 cursor-pointer" data-event-change-action="soundEffects.setReverb" data-event-change-args="[&quot;${r.id}&quot;]">
                          ${settings.reverb.id === r.id ? '<i class="fas fa-check text-[9px] text-white"></i>' : ''}
                     </div>
                     <span>${r.name}</span>
@@ -432,7 +433,7 @@ window.soundEffects = (function () {
                     <span class="w-8 text-[12px] font-bold t-text-muted text-right">${label}</span>
                     <input type="range" min="-12" max="12" step="1" value="${settings.eq[i]}" 
                         class="flex-1 h-1.5 rounded-full lc-range-input cursor-pointer"
-                        oninput="window.soundEffects.setEQ(${i}, this.value)">
+                        data-event-input-action="window.soundEffects.setEQ" data-event-input-args="[${i}, &quot;@value&quot;]">
                     <span class="w-10 text-[12px] font-mono font-bold text-emerald-600 text-left">${settings.eq[i]}db</span>
                 </div>
                 `;
@@ -729,3 +730,9 @@ window.soundEffects = (function () {
     return manager;
 })();
 
+registerPlayerEventAction('sound-effects-preset-key', (event, element) => {
+    if (!(event instanceof KeyboardEvent)) return;
+    const manager = (window as any).soundEffects;
+    if (event.key === 'Enter') manager?.saveNewPreset?.((element as HTMLInputElement).value);
+    if (event.key === 'Escape') manager?.cancelAddPreset?.();
+});

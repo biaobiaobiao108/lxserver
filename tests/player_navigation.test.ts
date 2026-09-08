@@ -59,7 +59,7 @@ describe('Player Navigation and State Restoration Safety', () => {
         const html = fs.readFileSync(playerHtmlPath, 'utf8');
         expect(html.includes('viewport-fit=cover')).toBe(true);
         expect(html.includes('id="mobile-menu-btn"')).toBe(true);
-        expect(html.includes('toggleSidebar()')).toBe(true);
+        expect(html.includes('data-event-click-action="toggleSidebar"')).toBe(true);
     });
 
     it('artist and album searches guard favorite callbacks and use the auth bridge', () => {

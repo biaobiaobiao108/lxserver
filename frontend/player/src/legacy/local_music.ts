@@ -1,5 +1,6 @@
 // @ts-nocheck
 // This legacy-compatible module is compiled as an isolated browser bundle.
+import { safeInlineString } from '../player_security';
 /**
  * LocalMusicManager (本地音乐模块)
  * 处理在本地音乐Tab下的列表加载、刷选、删除功能
@@ -2350,7 +2351,7 @@ window.LocalMusicManager = {
             html += `
                 <div class="flex items-center p-3 md:p-4 t-bg-main border t-border-main rounded-2xl md:rounded-3xl hover:border-emerald-400 group transition-all shadow-sm">
                     <div class="w-12 h-12 rounded-xl overflow-hidden mr-4 flex-shrink-0 bg-gray-100 border t-border-main">
-                        <img src="${item.img || '/music/assets/logo.svg'}" alt="${item.name || '歌曲'}专辑封面" width="48" height="48" onerror="this.src='/music/assets/logo.svg'" loading="lazy" decoding="async" class="w-full h-full object-cover">
+                        <img src="${item.img || '/music/assets/logo.svg'}" alt="${item.name || '歌曲'}专辑封面" width="48" height="48" data-event-error-action="fallback-image" loading="lazy" decoding="async" class="w-full h-full object-cover">
                     </div>
                     <div class="flex-1 min-w-0 mr-4">
                         <div class="font-bold t-text-main text-sm md:text-base truncate group-hover:text-emerald-500 transition-colors">${item.name}</div>
@@ -2360,7 +2361,7 @@ window.LocalMusicManager = {
                         <div class="text-[10px] uppercase font-black t-text-muted opacity-30 tracking-widest mb-0.5">${item.source}</div>
                         <div class="text-[11px] font-mono font-bold ${isMatch ? 'text-emerald-500 bg-emerald-50 px-1.5 py-0.5 rounded-lg' : 't-text-main'}">${item.interval || '--:--'}</div>
                     </div>
-                    <button onclick="window.LocalMusicManager.linkItem(${originalIdx})"
+                    <button data-event-click-action="window.LocalMusicManager.linkItem" data-event-click-args="[${originalIdx}]"
                         class="px-6 py-2.5 ${isMatch ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20' : 't-bg-track hover:t-bg-item-hover t-text-main border t-border-main'} font-bold text-xs rounded-xl shadow-lg transition-all active:scale-95">
                         关联
                     </button>
@@ -2626,14 +2627,14 @@ window.LocalMusicManager = {
         if (this.subPathModalMode === 'filter') {
             // [All Directories] Option
             html += `
-                <button onclick="window.LocalMusicManager.selectSubPath('')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '' ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
+                <button data-event-click-action="LocalMusicManager.selectSubPath" data-event-click-args="[&quot;&quot;]" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '' ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
                     <i class="fas fa-layer-group text-xl"></i>
                     <span class="text-xs font-bold truncate w-full text-center">全部目录</span>
                 </button>
             `;
             // [Root Only] Option
             html += `
-                <button onclick="window.LocalMusicManager.selectSubPath('__ROOT__')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '__ROOT__' ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
+                <button data-event-click-action="LocalMusicManager.selectSubPath" data-event-click-args="[&quot;__ROOT__&quot;]" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '__ROOT__' ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
                     <i class="fas fa-home text-xl"></i>
                     <span class="text-xs font-bold truncate w-full text-center">根目录</span>
                 </button>
@@ -2641,7 +2642,7 @@ window.LocalMusicManager = {
         } else {
             // [Categorize to Root] Option
             html += `
-                <button onclick="window.LocalMusicManager.selectSubPath('')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '' ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
+                <button data-event-click-action="LocalMusicManager.selectSubPath" data-event-click-args="[&quot;&quot;]" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${this.selectedSubPath === '' ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
                     <i class="fas fa-home text-xl"></i>
                     <span class="text-xs font-bold truncate w-full text-center">移动到根目录 (/)</span>
                 </button>
@@ -2651,7 +2652,7 @@ window.LocalMusicManager = {
         dirs.forEach(dir => {
             const isActive = this.selectedSubPath === dir;
             html += `
-                <button onclick="window.LocalMusicManager.selectSubPath('${dir.replace(/'/g, "\\'")}')" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${isActive ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
+                <button data-event-click-action="window.LocalMusicManager.selectSubPath" data-event-click-args="[${safeInlineString(dir)}]" class="p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 group ${isActive ? 'subpath-btn-active' : 'subpath-btn-inactive'}">
                     <i class="fas fa-folder text-xl"></i>
                     <span class="text-xs font-bold truncate w-full text-center" title="${dir}">${dir}</span>
                 </button>
@@ -3172,4 +3173,3 @@ setTimeout(() => {
         window.LocalMusicManager.init();
     }
 }, 500);
-

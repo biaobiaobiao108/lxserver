@@ -411,7 +411,7 @@ async function nextPage() {
         globalState.renderResults(window.viewingPlaylist);
         scrollToSearchResultsTop();
     } else if (window.currentSearchScope === 'network') {
-        const btn = document.querySelector('button[onclick="nextPage()"]');
+        const btn = document.querySelector('button[data-event-click-action="nextPage"]');
         const oldHtml = btn ? btn.innerHTML : '';
         if (btn) {
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 加载中...';

@@ -93,6 +93,7 @@ export const adaptNodeHandler = (
       method: ctx.method,
       url: ctx.request.url,
       headers: Object.fromEntries(ctx.headers.entries()),
+      socket: { remoteAddress: ctx.remoteAddress },
       on(event: string, callback: (arg?: any) => void) {
         if (event === 'data') {
           void readRequestBody().then(callback).catch(() => { })

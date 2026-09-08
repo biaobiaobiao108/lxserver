@@ -29,6 +29,9 @@ const deletedResourceNames = [
   'Sortable.min.js',
   'NoSleep.min.js',
   'marked.min.js',
+  'lyric-utils.js',
+  'lyric-parser.js',
+  'log_viewer.js',
 ];
 
 function readText(path: string): string {

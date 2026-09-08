@@ -8,8 +8,6 @@ const ASSETS_TO_CACHE = [
     './css/theme_variables.css',
     './assets/fontawesome/css/all.min.css',
     // 核心 JS
-    './js/lyric-parser.js',
-    './js/lyric-utils.js',
     './js/lyric-card.js',
     './js/user_sync.js',
     './js/batch_pagination.js',
@@ -19,7 +17,6 @@ const ASSETS_TO_CACHE = [
     './js/local_music.js',
     './js/download_manager.js',
     './css/tailwind.generated.css',
-    './js/log_viewer.js',
     // 第三方库
     './js/vendor-bridge.js',
     // 音频效果

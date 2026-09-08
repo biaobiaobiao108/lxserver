@@ -5,6 +5,7 @@ import './legacy/pwa';
 import './legacy/theme_manager';
 import './legacy/common_ui';
 import './legacy/ios_background_audio';
+import './legacy/lyric_parser';
 import { initAccessibleOverlays } from './accessible_overlays';
 import {
     ensureLeaderboardLoaded,

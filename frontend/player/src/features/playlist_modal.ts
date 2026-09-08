@@ -227,17 +227,10 @@ function cleanSongData(song) {
 
     // Source Reference: src/types/music.d.ts
     // 补全特定源的字段
-    if (song.source === 'kg') {
-        meta.hash = sourceMeta.hash || song.hash;
-    } else if (song.source === 'tx') {
+    if (song.source === 'tx') {
         meta.strMediaMid = sourceMeta.strMediaMid || song.strMediaMid || song.mediaMid;
         meta.id = sourceMeta.id || song.songId || song.id; // tx often uses numerical ID here
         meta.albumMid = sourceMeta.albumMid || song.albumMid;
-    } else if (song.source === 'mg') {
-        meta.copyrightId = sourceMeta.copyrightId || song.copyrightId || songId; // fallback
-        meta.lrcUrl = sourceMeta.lrcUrl || song.lrcUrl;
-        meta.mrcUrl = sourceMeta.mrcUrl || song.mrcUrl;
-        meta.trcUrl = sourceMeta.trcUrl || song.trcUrl;
     }
 
     // Common Base

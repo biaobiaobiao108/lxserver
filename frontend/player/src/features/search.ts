@@ -62,7 +62,7 @@ export function initSearchFeature(context: SearchFeatureContext) {
     const renderLibraryAlbums = context.renderLibraryAlbums;
     const playFromView = context.playFromView;
     const hideSearchSuggestions = () => (window as any).hideSearchSuggestions?.();
-    let currentSearch = { name: '', source: 'kw' };
+    let currentSearch = { name: '', source: 'wy' };
 
     registerPlayerEventAction('search-toggle-artist-favorite', async (_event, element, args) => {
         const [id, source, name, image] = args.map(String);
@@ -152,7 +152,7 @@ function performSearch(query, source = null, type = 'song') {
     // 如果指定了源且属于支持的源，则更新选择框
     const sourceEl = document.getElementById('search-source');
     const typeEl = document.getElementById('search-type');
-    const validSources = ['kw', 'kg', 'tx', 'wy', 'mg'];
+    const validSources = ['wy', 'tx'];
     const searchType = ['song', 'singer', 'album'].includes(type) ? type : 'song';
     if (typeEl) {
         typeEl.value = searchType;
@@ -213,7 +213,7 @@ function applySearchTypeSourceRestrictions() {
 }
 window.handleSearchTypeChange = handleSearchTypeChange;
 
-const SOURCES = ['kw', 'kg', 'tx', 'wy', 'mg'];
+const SOURCES = ['wy', 'tx'];
 
 type SearchRequestContext = {
     serial: number;
@@ -500,7 +500,7 @@ let hotSearchCache = null;
 let hotSearchCacheTime = 0;
 const HOT_SEARCH_CACHE_DURATION = 5 * 60 * 1000; // 5分钟缓存
 
-async function fetchHotSearch(source = 'mg') {
+async function fetchHotSearch(source = 'wy') {
     // 检查缓存（必须匹配 source）
     if (hotSearchCache &&
         hotSearchCache.source === source && // Add checking source
@@ -724,13 +724,10 @@ window.getQualityTags = getQualityTags;
 
 function getSourceTag(source) {
     const colors = {
-        kw: 't-badge-yellow border-yellow-200 dark:border-yellow-500/30',
-        kg: 't-badge-blue border-blue-200 dark:border-blue-500/30',
         tx: 't-badge-green border-green-200 dark:border-emerald-500/30',
-        wy: 't-badge-red border-red-200 dark:border-red-500/30',
-        mg: 't-badge-pink border-pink-200 dark:border-pink-500/30'
+        wy: 't-badge-red border-red-200 dark:border-red-500/30'
     };
-    const names = { kw: '酷我', kg: '酷狗', tx: 'QQ', wy: '网易', mg: '咪咕' };
+    const names = { tx: 'QQ', wy: '网易' };
     const color = colors[source] || 't-bg-main t-text-muted t-border-main';
     const name = escapeHtmlText(names[source] || String(source || '').toUpperCase());
     return `<span class="flex-shrink-0 px-1 py-0 rounded text-[10px] font-bold border ${color} mr-1">${name}</span>`;

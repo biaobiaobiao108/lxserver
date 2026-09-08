@@ -440,11 +440,8 @@ async function renderCustomSources() {
             let supportedBadges = '';
             if (source.supportedSources && source.supportedSources.length > 0) {
                 const sourceMap = {
-                    'kg': { name: '酷狗', color: 't-badge-blue' },
-                    'kw': { name: '酷我', color: 't-badge-yellow' },
                     'tx': { name: 'QQ', color: 't-badge-green' },
-                    'wy': { name: '网易', color: 't-badge-red' },
-                    'mg': { name: '咪咕', color: 't-badge-pink' }
+                    'wy': { name: '网易', color: 't-badge-red' }
                 };
 
                 supportedBadges = `<div class="flex flex-wrap gap-1.5 mt-2">

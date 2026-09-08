@@ -109,7 +109,7 @@ export const createMusicRouter = (): Router => {
   // 1. 音乐搜索 API
   router.get('/api/music/search', async (ctx) => {
     const name = ctx.query.get('name') || ''
-    const source = ctx.query.get('source') || 'kw'
+    const source = ctx.query.get('source') || 'wy'
     const type = ctx.query.get('type') || 'song'
     const limit = boundedInt(ctx.query.get('limit'), 20, 1, 100)
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
@@ -168,7 +168,7 @@ export const createMusicRouter = (): Router => {
   // 2. 搜索提示 (TipSearch) API
   router.get('/api/music/tipSearch', async (ctx) => {
     const name = ctx.query.get('name') || ''
-    const source = ctx.query.get('source') || 'kw'
+    const source = ctx.query.get('source') || 'wy'
     if (!name) return ctx.json([])
     try {
       if (!musicSdk[source] || !musicSdk[source].tipSearch) {
@@ -559,7 +559,7 @@ export const createMusicRouter = (): Router => {
 
   // 11. 热搜 API
   router.get('/api/music/hotSearch', async (ctx) => {
-    const source = ctx.query.get('source') || 'mg'
+    const source = ctx.query.get('source') || 'wy'
     try {
       if (!musicSdk[source] || !musicSdk[source].hotSearch) {
         return ctx.json({ error: '该音源不支持热搜功能' }, 404)
@@ -660,7 +660,7 @@ export const createMusicRouter = (): Router => {
 
   // 17. 排行榜列表 API
   router.get('/api/music/leaderboard/boards', async (ctx) => {
-    const source = ctx.query.get('source') || 'kg'
+    const source = ctx.query.get('source') || 'wy'
     try {
       if (!musicSdk[source] || !musicSdk[source].leaderboard) {
         throw new Error(`Source ${source} does not support leaderboard`)
@@ -674,7 +674,7 @@ export const createMusicRouter = (): Router => {
 
   // 18. 排行榜内歌曲列表 API
   router.get('/api/music/leaderboard/list', async (ctx) => {
-    const source = ctx.query.get('source') || 'kg'
+    const source = ctx.query.get('source') || 'wy'
     const bangid = ctx.query.get('bangid')
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     if (!bangid) return ctx.text('Missing bangid', 400)

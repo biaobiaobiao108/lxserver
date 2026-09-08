@@ -59,10 +59,6 @@ export const normalizeSongInfo = (songInfo: any) => {
       if (!songInfo.songmid && songInfo.id) songInfo.songmid = String(songInfo.id)
       break
 
-    case 'kg': // 酷狗
-      if (!songInfo.hash && meta.hash) songInfo.hash = meta.hash
-      break
-
     case 'tx': // 腾讯
       if (!songInfo.strMediaMid && meta.strMediaMid) songInfo.strMediaMid = meta.strMediaMid
       if (!songInfo.albumMid && meta.albumMid) songInfo.albumMid = meta.albumMid
@@ -72,20 +68,12 @@ export const normalizeSongInfo = (songInfo: any) => {
       }
       break
 
-    case 'mg': // 咪咕
-      if (!songInfo.copyrightId && meta.copyrightId) songInfo.copyrightId = meta.copyrightId
-      if (!songInfo.lrcUrl && meta.lrcUrl) songInfo.lrcUrl = meta.lrcUrl
-      if (!songInfo.songId) songInfo.songId = songInfo.songmid
-      break
-
-    case 'kw': // 酷我
-      break
   }
 
   return songInfo
 }
 
-const AUTO_SOURCE_ORDER = ['wy', 'tx', 'kw', 'kg', 'mg']
+const AUTO_SOURCE_ORDER = ['wy', 'tx'] as const
 const SOURCE_MATCH_CACHE_TTL = 60_000
 const sourceMatchCache = new Map<string, { expiresAt: number, promise: Promise<any[]> }>()
 

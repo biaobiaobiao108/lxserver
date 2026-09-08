@@ -85,7 +85,7 @@ async function fetchSearchTips(query) {
     currentTipAbortController = new AbortController();
     const signal = currentTipAbortController.signal;
 
-    const source = (document.getElementById('search-source')) ? document.getElementById('search-source').value : 'kw';
+    const source = (document.getElementById('search-source')) ? document.getElementById('search-source').value : 'wy';
     try {
         const resp = await fetch(`/api/music/tipSearch?name=${encodeURIComponent(query)}&source=${source}`, { signal });
         if (!resp.ok) return;

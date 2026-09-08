@@ -326,7 +326,7 @@ async function findOtherSourceMatches(song, isSilent = false, options = {}) {
         }
 
         // 2. 切换到和当前不同源，并且根据优先级排列 (网易、QQ、酷我、酷狗、咪咕)
-        const baseOrder = ['wy', 'tx', 'kw', 'kg', 'mg'];
+        const baseOrder = ['wy', 'tx'];
         const searchSourcesOrdered = baseOrder.filter(s => s !== song.source);
 
         // 3. 过滤出自定义源支持解析的平台
@@ -398,7 +398,7 @@ function timeToSeconds(timeStr) {
  * 辅助：获取源名称
  */
 function getSourceName(source) {
-    const names = { kw: '酷我', kg: '酷狗', tx: 'QQ', wy: '网易', mg: '咪咕' };
+    const names = { tx: 'QQ', wy: '网易' };
     return names[source] || source.toUpperCase();
 }
 

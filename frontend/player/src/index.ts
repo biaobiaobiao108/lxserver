@@ -3989,7 +3989,7 @@ function formatSongToLxMusicStandard(item) {
         (s.al && s.al.picUrl) || null;
 
     // 如果已经包含合法的 meta 且有 songId，且 ID 符合规范，可能是已格式化的
-    if (s.meta && s.meta.songId && s.id && (String(s.id).includes('_') || s.source === 'mg')) {
+    if (s.meta && s.meta.songId && s.id && String(s.id).includes('_')) {
         // 确保 picUrl 存在
         if (!s.meta.picUrl && picUrl) s.meta.picUrl = picUrl;
         return s;
@@ -4043,38 +4043,6 @@ function formatSongToLxMusicStandard(item) {
             break;
         case 'wy':
             rootItem.id = `wy_${songmid}`;
-            break;
-        case 'kg':
-            let hash = s.hash || (s.meta && s.meta.hash) || '';
-            if (!hash && String(songmid).includes('_')) {
-                hash = String(songmid).split('_')[1];
-            } else if (!hash && String(songmid).length === 32) {
-                hash = songmid;
-            }
-
-            let kgSongId = s.songId || (s.meta && s.meta.songId) || (String(songmid).includes('_') ? String(songmid).split('_')[0] : songmid);
-            if (kgSongId === hash) kgSongId = '';
-
-            meta.songId = String(kgSongId || '');
-            meta.hash = hash;
-
-            if (kgSongId && hash) {
-                rootItem.id = `${kgSongId}_${hash}`;
-            } else if (hash) {
-                rootItem.id = hash;
-            } else {
-                rootItem.id = `kg_${kgSongId}`;
-            }
-            break;
-        case 'mg':
-            if (s.copyrightId || (s.meta && s.meta.copyrightId))
-                meta.copyrightId = s.copyrightId || s.meta.copyrightId;
-            if (s.lrcUrl || (s.meta && s.meta.lrcUrl))
-                meta.lrcUrl = s.lrcUrl || s.meta.lrcUrl;
-            rootItem.id = String(songmid);
-            break;
-        case 'kw':
-            rootItem.id = `kw_${songmid}`;
             break;
         default:
             rootItem.id = songmid;

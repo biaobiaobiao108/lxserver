@@ -33,10 +33,7 @@ const remoteQualitySizeCache = new Map();
 
 const QUALITY_SOURCE_LABELS = {
     tx: 'TX',
-    wy: 'WY',
-    kw: 'KW',
-    kg: 'KG',
-    mg: 'MG'
+    wy: 'WY'
 };
 
 function getSongQualityCacheKey(song, quality) {

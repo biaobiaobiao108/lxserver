@@ -8,6 +8,7 @@ import { fetchRecommendedAlbums } from '@/server/utils/recommendAlbums'
 import { fetchGenres, fetchRadios, fetchPlaylistsByGenre, fetchRadioSongs, fetchPlaylistSongs, fetchSongsByGenre } from '@/server/utils/discovery'
 import fs from 'fs'
 import path from 'path'
+import { BUILTIN_ONLINE_SOURCES, isBuiltinOnlineSource, normalizeOnlineSources } from '@/common/musicSources'
 // @ts-ignore
 import musicSdkRaw from '@/modules/utils/musicSdk/index.js'
 const musicSdk = musicSdkRaw as any
@@ -1435,14 +1436,16 @@ class SubsonicHandler {
     private async fetchOnlineSearchSongs(cleanQuery: string, sources: string[], limit: number = 30): Promise<{ music: LX.Music.MusicInfo, listId: string }[]> {
         if (!cleanQuery) return []
         const results: { music: LX.Music.MusicInfo, listId: string }[] = []
-        const validSources = sources.filter(s => ['wy', 'tx', 'kw', 'kg', 'mg'].includes(s) && musicSdk[s]?.musicSearch?.search)
+        const validSources = sources.filter((source): source is (typeof BUILTIN_ONLINE_SOURCES)[number] => (
+            isBuiltinOnlineSource(source) && Boolean(musicSdk[source]?.musicSearch?.search)
+        ))
         // [限制] 单个平台最大获取数量上限
         const targetLimit = Math.min(limit, 50)
 
         await Promise.all(validSources.map(async source => {
             try {
                 // 计算需要的页数 (网易云 wy 单页限制 20 条，如需要 50 条则自动抓取前 3 页)
-                const pageSize = source === 'kg' ? Math.min(targetLimit, 100) : source === 'wy' ? 20 : 30
+                const pageSize = source === 'wy' ? 20 : 30
                 const pagesToFetch = Math.min(Math.ceil(targetLimit / pageSize), 3) // 最多自动抓取前 3 页
 
                 const allItems: any[] = []
@@ -1505,7 +1508,7 @@ class SubsonicHandler {
 
         // 0. 解析搜索前缀与搜索模式
         let searchMode: 'local_only' | 'force_online' | 'fallback' | 'merge' = 'fallback'
-        let targetOnlineSources: string[] = String(global.lx.config['subsonic.onlineSearchSources'] || 'wy,tx,kw,kg,mg').split(',').map(s => s.trim()).filter(Boolean)
+        let targetOnlineSources: string[] = normalizeOnlineSources(global.lx.config['subsonic.onlineSearchSources'])
         let cleanQuery = rawQuery
 
         const lowerQuery = rawQuery.toLowerCase()
@@ -1517,8 +1520,8 @@ class SubsonicHandler {
             const colonIdx = rawQuery.indexOf(':') !== -1 ? rawQuery.indexOf(':') : rawQuery.indexOf('：')
             cleanQuery = rawQuery.slice(colonIdx + 1).trim()
         } else {
-            // 检查指定的音源前缀: wy:, tx:, kw:, kg:, mg:
-            const knownSources = ['wy', 'tx', 'kw', 'kg', 'mg']
+            // 检查指定的内置音源前缀: wy:, tx:
+            const knownSources = BUILTIN_ONLINE_SOURCES
             let matchedPrefixSource = ''
             for (const s of knownSources) {
                 if (lowerQuery.startsWith(`${s}:`) || lowerQuery.startsWith(`${s}：`)) {
@@ -2015,30 +2018,14 @@ class SubsonicHandler {
             const found = await this.findMusicById(username, id)
             let musicInfo: any = found?.music || { source, songmid, id, meta: { songId: songmid } }
 
-            let hash = musicInfo.hash || musicInfo.meta?.hash || ''
-            if (source === 'kg' && !hash) {
-                try {
-                    const title = musicInfo.name || params.get('title') || params.get('name') || songmid
-                    const searchRes = await musicSdk.kg.musicSearch.search(title, 1, 5)
-                    const match = searchRes?.list?.find((item: any) => String(item.songmid || item.id || item.Audioid) === songmid) || searchRes?.list?.[0]
-                    if (match) {
-                        hash = match.hash || match.meta?.hash || match.types?.[0]?.hash || ''
-                    }
-                } catch (e) {
-                    console.error('[Subsonic] Auto-resolve kg hash for stream failed:', e)
-                }
-            }
-
             musicInfo = {
                 ...musicInfo,
                 source,
                 songmid,
                 id,
-                ...(hash ? { hash } : {}),
                 meta: {
                     ...(musicInfo.meta || {}),
                     songId: songmid,
-                    ...(hash ? { hash } : {}),
                 }
             }
 
@@ -2475,7 +2462,7 @@ class SubsonicHandler {
         }
 
         try {
-            // 尝试查找歌曲详情以丰富歌词请求元数据 (KG/MG 特别需要)
+            // 尝试查找歌曲详情以丰富歌词请求元数据
             const found = await this.findMusicById(username, id)
             const musicMeta = found?.music || {
                 id,
@@ -2485,25 +2472,10 @@ class SubsonicHandler {
                 singer: params.get('artist') || ''
             } as any
 
-            let hash = (musicMeta as any).hash || (musicMeta as any).meta?.hash || ''
-            if (source === 'kg' && !hash) {
-                try {
-                    const title = musicMeta.name || params.get('title') || params.get('name') || songmid
-                    const searchRes = await musicSdk.kg.musicSearch.search(title, 1, 5)
-                    const match = searchRes?.list?.find((item: any) => String(item.songmid || item.id || item.Audioid) === songmid) || searchRes?.list?.[0]
-                    if (match) {
-                        hash = match.hash || match.meta?.hash || match.types?.[0]?.hash || ''
-                    }
-                } catch (e) {
-                    console.error('[Subsonic] Auto-resolve kg hash for lyric failed:', e)
-                }
-            }
-
             const songInfo = {
                 songmid: (musicMeta as any).songmid || songmid,
                 name: musicMeta.name || '',
                 singer: musicMeta.singer || '',
-                hash: hash,
                 interval: (musicMeta as any).interval || '',
                 _interval: (musicMeta as any)._interval || (musicMeta as any).interval || '',
                 copyrightId: (musicMeta as any).copyrightId || (musicMeta as any).meta?.copyrightId || '',

@@ -2474,7 +2474,7 @@ window.LocalMusicManager = {
     },
 
     async findBestMatch(localItem) {
-        const sources = ['tx', 'wy', 'kg', 'kw', 'mg'];
+        const sources = ['tx', 'wy'];
         const targetSecs = this.parseInterval(localItem.interval);
         if (targetSecs <= 0) return null;
 

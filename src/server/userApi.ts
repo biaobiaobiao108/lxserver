@@ -530,26 +530,8 @@ export async function callUserApiGetMusicUrl(
         }
 
         // ========== 各平台特有字段 ==========
-        // 酷狗 (kg): hash, albumId
-        if (songInfo.meta.hash && !normalizedSongInfo.hash) {
-            normalizedSongInfo.hash = songInfo.meta.hash
-        }
         if (songInfo.meta.albumId && !normalizedSongInfo.albumId) {
             normalizedSongInfo.albumId = songInfo.meta.albumId
-        }
-
-        // 咪咕 (mg): copyrightId, lrcUrl, mrcUrl, trcUrl
-        if (songInfo.meta.copyrightId && !normalizedSongInfo.copyrightId) {
-            normalizedSongInfo.copyrightId = songInfo.meta.copyrightId
-        }
-        if (songInfo.meta.lrcUrl && !normalizedSongInfo.lrcUrl) {
-            normalizedSongInfo.lrcUrl = songInfo.meta.lrcUrl
-        }
-        if (songInfo.meta.mrcUrl && !normalizedSongInfo.mrcUrl) {
-            normalizedSongInfo.mrcUrl = songInfo.meta.mrcUrl
-        }
-        if (songInfo.meta.trcUrl && !normalizedSongInfo.trcUrl) {
-            normalizedSongInfo.trcUrl = songInfo.meta.trcUrl
         }
 
         // QQ音乐 (tx): strMediaMid, albumMid

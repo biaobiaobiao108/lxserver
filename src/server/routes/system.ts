@@ -8,6 +8,7 @@ import { serverStatus } from '../state'
 import { startupLog } from '@/utils/log4js'
 import { getUserDirname } from '@/user'
 import { resolveInside } from '@/utils/pathSecurity'
+import { normalizeOnlineSources } from '@/common/musicSources'
 
 const parseBoolean = (value: unknown, fallback: boolean): boolean => {
   if (typeof value === 'boolean') return value
@@ -249,7 +250,7 @@ export const createSystemRouter = (): Router => {
       'subsonic.enableDebug': c['subsonic.enableDebug'] ?? true,
       'subsonic.onlineSearch': c['subsonic.onlineSearch'] ?? true,
       'subsonic.onlineSearchMode': c['subsonic.onlineSearchMode'] ?? 'fallback',
-      'subsonic.onlineSearchSources': c['subsonic.onlineSearchSources'] ?? 'wy,tx,kw,kg,mg',
+      'subsonic.onlineSearchSources': normalizeOnlineSources(c['subsonic.onlineSearchSources']).join(','),
       'subsonic.lyricTranslation': c['subsonic.lyricTranslation'] ?? true,
       'singer.sourcePriority': (c['singer.sourcePriority'] || ['tx', 'wy']).join(','),
       'artist.maxFetchPages': c['artist.maxFetchPages'] ?? 20,
@@ -342,7 +343,9 @@ export const createSystemRouter = (): Router => {
       if (newConfig['subsonic.enableDebug'] !== undefined) c['subsonic.enableDebug'] = parseBoolean(newConfig['subsonic.enableDebug'], true)
       if (newConfig['subsonic.onlineSearch'] !== undefined) c['subsonic.onlineSearch'] = parseBoolean(newConfig['subsonic.onlineSearch'], true)
       if (newConfig['subsonic.onlineSearchMode'] !== undefined) c['subsonic.onlineSearchMode'] = newConfig['subsonic.onlineSearchMode']
-      if (newConfig['subsonic.onlineSearchSources'] !== undefined) c['subsonic.onlineSearchSources'] = newConfig['subsonic.onlineSearchSources']
+      if (newConfig['subsonic.onlineSearchSources'] !== undefined) {
+        c['subsonic.onlineSearchSources'] = normalizeOnlineSources(newConfig['subsonic.onlineSearchSources']).join(',')
+      }
       if (newConfig['subsonic.lyricTranslation'] !== undefined) c['subsonic.lyricTranslation'] = parseBoolean(newConfig['subsonic.lyricTranslation'], true)
       if (newConfig['singer.sourcePriority'] !== undefined) {
         const priority = String(newConfig['singer.sourcePriority']).split(',').filter(s => s === 'tx' || s === 'wy') as Array<'tx' | 'wy'>

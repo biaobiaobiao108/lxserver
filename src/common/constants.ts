@@ -49,18 +49,18 @@ export const DATA_KEYS = {
 
 export const DEFAULT_SETTING = {
   leaderboard: {
-    source: 'kw',
-    boardId: 'kw__16',
+    source: 'wy',
+    boardId: 'wy__3778678',
   },
 
   songList: {
-    source: 'kw',
+    source: 'wy',
     sortId: 'new',
     tagId: '',
   },
 
   search: {
-    temp_source: 'kw',
+    temp_source: 'wy',
     source: 'all',
     type: 'music',
   },

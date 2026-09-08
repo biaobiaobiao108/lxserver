@@ -721,11 +721,8 @@ export const detectDownloadSource = (rawUrl: string, fallbackSource?: string) =>
     try { value = decodeURIComponent(value) } catch (e) { }
 
     const sourcePatterns: Array<[string, RegExp]> = [
-        ['kw', /(?:^|[./])(?:kuwo\.cn|kuwo\.com)(?:[/:?]|$)/],
         ['wy', /(?:^|[./])(?:music\.126\.net|music\.163\.com|163yun\.com)(?:[/:?]|$)/],
         ['tx', /(?:^|[./])(?:qqmusic\.qq\.com|music\.tc\.qq\.com|stream\.qqmusic\.qq\.com)(?:[/:?]|$)/],
-        ['kg', /(?:^|[./])(?:kugou\.com|kugou\.net)(?:[/:?]|$)/],
-        ['mg', /(?:^|[./])(?:migu\.cn|miguvideo\.com|cmvideo\.cn)(?:[/:?]|$)/],
     ]
     for (const [source, pattern] of sourcePatterns) {
         if (pattern.test(value)) return source
@@ -1824,7 +1821,7 @@ export const checkLyricCache = (songInfo: any, username?: string): LyricCacheRes
         return acc
     }
 
-    const cleanId = (sid: string) => String(sid || '').replace(/^(tx|mg|wy|kg|kw|bd|mg)_/, '')
+    const cleanId = (sid: string) => String(sid || '').replace(/^(tx|wy)_/, '')
     const targetCleanId = cleanId(id)
 
     for (const dirPath of basePaths) {

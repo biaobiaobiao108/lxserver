@@ -323,28 +323,7 @@ function renderTrackListHeader({ includeBackToolbar = false, extraClass = '' } =
         </div>
     ` : '';
 
-    return `${backToolbar}
-        <div class="player-track-list-header player-track-grid player-track-grid--network player-track-grid--header ${extraClass} border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
-            <div class="player-track-index list-header-leading">
-                <div class="list-header-actions" role="group" aria-label="列表操作">
-                    <button data-event-click-action="toggleBatchMode" data-list-action="batch"
-                        class="list-header-action"
-                        title="多选操作" aria-label="多选操作" aria-pressed="${window.batchMode ? 'true' : 'false'}">
-                        <i class="fas fa-tasks" aria-hidden="true"></i>
-                    </button>
-                    <button data-event-click-action="ListSearch.toggleBar" data-list-action="search"
-                        class="list-header-action"
-                        title="搜索当前列表" aria-label="搜索当前列表">
-                        <i class="fas fa-search" aria-hidden="true"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="player-track-title">歌曲标题</div>
-            <div class="player-track-artist text-right md:text-left">歌手</div>
-            <div class="player-track-album">专辑</div>
-            <div class="player-track-duration text-center md:text-left">时长</div>
-            <div class="player-track-actions text-right">操作</div>
-        </div>`;
+    return backToolbar;
 }
 
 //搜索歌曲

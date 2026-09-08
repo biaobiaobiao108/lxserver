@@ -315,7 +315,7 @@
 
                     <!-- Search Results Container -->
                     <div
-                        class="flex-1 t-bg-panel rounded-2xl shadow-sm border t-border-main overflow-hidden flex flex-col">
+                        class="flex-1 t-bg-panel rounded-2xl shadow-sm border t-border-main overflow-hidden flex flex-col relative">
                         <!-- Batch Toolbar (Hidden by default) 搜索/我的收藏批量操作 -->
                         <div id="batch-toolbar"
                             class="hidden bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 p-3 flex items-center justify-between">
@@ -348,36 +348,8 @@
                                 </button>
                             </div>
                         </div>
-                        <!-- Header -->
-                        <div id="search-results-header"
-                            class="player-track-list-header player-track-grid player-track-grid--network player-track-grid--header px-3 py-1.5 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
-                            <div class="player-track-index list-header-leading">
-                                <button id="search-back-btn" data-event-click-action="goBackToSearch"
-                                    class="hidden list-header-back text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                    title="返回列表" aria-label="返回列表">
-                                    <i class="fas fa-arrow-left text-xs" aria-hidden="true"></i>
-                                </button>
-                                <div class="list-header-actions" role="group" aria-label="列表操作">
-                                    <button data-event-click-action="toggleBatchMode" data-list-action="batch"
-                                        class="list-header-action"
-                                        title="多选操作" aria-label="多选操作" aria-pressed="false">
-                                        <i class="fas fa-tasks" aria-hidden="true"></i>
-                                    </button>
-                                    <button data-event-click-action="ListSearch.toggleBar" data-list-action="search"
-                                        class="list-header-action"
-                                        title="搜索当前列表" aria-label="搜索当前列表">
-                                        <i class="fas fa-search" aria-hidden="true"></i>
-                                    </button>
-                                </div>
-                            </div>
-                            <div class="player-track-title" id="header-title">歌曲标题
-                            </div>
-                            <div class="player-track-artist text-right md:text-left">
-                                歌手</div>
-                            <div class="player-track-album" id="header-album">专辑</div>
-                            <div class="player-track-duration text-right">时长</div>
-                            <div class="player-track-actions text-right">操作</div>
-                        </div>
+                        <!-- Hidden Anchor for Header compatibility -->
+                        <div id="search-results-header" class="hidden"></div>
 
                         <!-- Global Local Search Bar (Hidden by default) -->
                         <div id="gl-local-search-bar"
@@ -439,6 +411,23 @@
                                 <i class="fas fa-music text-6xl opacity-20"></i>
                                 <p>输入关键词开始搜索音乐</p>
                             </div>
+                        </div>
+                        <!-- Search Floating Action Capsule -->
+                        <div id="search-floating-actions"
+                            class="player-floating-capsule absolute right-4 md:right-6 bottom-14 z-30">
+                            <button id="search-back-btn" data-event-click-action="goBackToSearch"
+                                class="hidden text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                                title="返回列表" aria-label="返回列表">
+                                <i class="fas fa-arrow-left text-xs" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" data-event-click-action="toggleBatchMode" data-list-action="batch"
+                                title="多选操作" aria-label="多选操作" aria-pressed="false">
+                                <i class="fas fa-tasks text-xs" aria-hidden="true"></i>
+                            </button>
+                            <button type="button" data-event-click-action="ListSearch.toggleBar" data-list-action="search"
+                                title="搜索当前列表" aria-label="搜索当前列表">
+                                <i class="fas fa-search text-xs" aria-hidden="true"></i>
+                            </button>
                         </div>
                         <!-- Pagination -->
                         <div id="search-pagination-bar"
@@ -743,18 +732,6 @@
                                     </div>
                                 </div>
 
-                                <!-- Track list column header -->
-                                <div id="sl-track-header"
-                                    class="player-track-list-header player-track-grid player-track-grid--network player-track-grid--header px-3 py-1.5 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
-                                    <div class="player-track-index list-header-leading">
-                                        <span class="text-xs font-mono text-center w-full block">#</span>
-                                    </div>
-                                    <div class="player-track-title">歌曲标题</div>
-                                    <div class="player-track-artist">歌手</div>
-                                    <div class="player-track-album">专辑</div>
-                                    <div class="player-track-duration text-right">时长</div>
-                                    <div class="player-track-actions text-right">操作</div>
-                                </div>
                             </div>
 
                             <!-- Song items container -->
@@ -835,9 +812,7 @@
                         </div>
 
                         <!-- 右侧：歌曲列表区 -->
-                        <div id="lb-songs-container" class="flex-1 flex flex-col overflow-hidden">
-                            <!-- ... (批量操作和搜索过滤维持原样) ... -->
-                            <!-- 此处为了代码简洁，保留原有逻辑，仅外层容器调整 -->
+                        <div id="lb-songs-container" class="flex-1 flex flex-col overflow-hidden relative">
                             <!-- 批量操作工具栏 -->
                             <div id="lb-batch-toolbar"
                                 class="hidden bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 p-3 flex items-center justify-between flex-shrink-0">
@@ -877,7 +852,7 @@
                                         <label for="lb-local-search-input" class="sr-only">搜索排行榜歌曲</label>
                                         <input type="text" id="lb-local-search-input"
                                             class="w-full pl-9 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border t-border-main rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-400 t-text-main transition-all"
-                                            placeholder="搜索歌曲名、歌手..." data-event-input-action="ListSearch.handleSearch"
+                                            placeholder="搜索当前榜单歌曲、歌手..." data-event-input-action="ListSearch.handleSearch"
                                             data-event-keydown-action="ListSearch.handleKeydown" data-event-keydown-args="[&quot;@event&quot;]">
                                         <i
                                             class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
@@ -923,30 +898,6 @@
                                 </div>
                             </div>
 
-                            <!-- 列表表头 -->
-                            <div
-                                class="player-track-list-header player-track-grid player-track-grid--network player-track-grid--header flex-shrink-0 px-3 py-1.5 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
-                                <div class="player-track-index list-header-leading">
-                                    <div class="list-header-actions" role="group" aria-label="列表操作">
-                                        <button data-event-click-action="toggleLbBatchMode"
-                                            class="list-header-action"
-                                            title="批量操作" aria-label="批量操作">
-                                            <i class="fas fa-tasks" aria-hidden="true"></i>
-                                        </button>
-                                        <button data-event-click-action="lbToggleListSearch"
-                                            class="list-header-action"
-                                            title="过滤歌曲" aria-label="过滤歌曲">
-                                            <i class="fas fa-search" aria-hidden="true"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                <div class="player-track-title">歌曲标题</div>
-                                <div class="player-track-artist">歌手</div>
-                                <div class="player-track-album">专辑</div>
-                                <div class="player-track-duration text-right">时长</div>
-                                <div class="player-track-actions text-right">操作</div>
-                            </div>
-
                             <!-- 歌曲列表 -->
                             <div id="lb-songs-list" class="player-track-list-content flex-1 overflow-y-auto px-0 py-2 space-y-1 custom-scrollbar pb-20">
                                 <!-- 歌曲行由 JS 注入 -->
@@ -954,6 +905,19 @@
                                     <i class="fas fa-chart-bar text-5xl mb-4 opacity-20"></i>
                                     <p class="text-base font-medium">请从左侧选择一个榜单</p>
                                 </div>
+                            </div>
+
+                            <!-- Leaderboard Floating Action Capsule -->
+                            <div id="lb-floating-actions"
+                                class="player-floating-capsule absolute right-4 md:right-6 bottom-14 z-30">
+                                <button type="button" data-event-click-action="toggleLbBatchMode"
+                                    title="批量操作" aria-label="批量操作">
+                                    <i class="fas fa-tasks text-xs" aria-hidden="true"></i>
+                                </button>
+                                <button type="button" data-event-click-action="lbToggleListSearch"
+                                    title="过滤歌曲" aria-label="过滤歌曲">
+                                    <i class="fas fa-search text-xs" aria-hidden="true"></i>
+                                </button>
                             </div>
 
                             <!-- 分页 -->
@@ -1335,32 +1299,22 @@
                         </div>
                     </div>
 
-                    <!-- Header Row -->
-                    <div
-                        class="player-track-list-header player-track-grid player-track-grid--local player-track-grid--header px-3 py-1.5 border t-border-main t-bg-main text-gray-500 text-sm font-medium shrink-0 rounded-t-xl list-results-header">
-                        <div class="player-track-index list-header-leading">
-                            <div class="list-header-actions" role="group" aria-label="列表操作">
-                                <span>#</span>
-                                <button data-event-click-action="LocalMusicManager.toggleBatchMode"
-                                    class="list-header-action" title="批量操作" aria-label="批量操作">
-                                    <i class="fas fa-tasks" aria-hidden="true"></i>
-                                </button>
-                            </div>
-                        </div>
-                        <div class="player-track-title">歌曲标题</div>
-                        <div class="player-track-artist">歌手</div>
-                        <div class="player-track-album">专辑</div>
-                        <div class="player-track-source">来源/信息</div>
-                        <div class="player-track-actions text-right">操作</div>
-                    </div>
-
                     <!-- List Area -->
                     <div id="lm-list-container"
-                        class="player-track-list-content flex-1 overflow-y-auto px-0 py-2 space-y-1 custom-scrollbar pb-20 rounded-b-xl border border-t-0 t-border-main t-bg-panel">
+                        class="player-track-list-content flex-1 overflow-y-auto px-0 py-2 space-y-1 custom-scrollbar pb-20 rounded-xl border t-border-main t-bg-panel">
                         <div class="text-center py-20 text-gray-500 animate-fade-in">
                             <i class="fas fa-circle-notch fa-spin text-4xl mb-4 text-emerald-500"></i>
                             <p class="font-bold tracking-wider">正在加载本地音乐...</p>
                         </div>
+                    </div>
+
+                    <!-- Local Music Floating Action Capsule -->
+                    <div id="lm-floating-actions"
+                        class="player-floating-capsule absolute right-4 md:right-6 bottom-14 z-30">
+                        <button type="button" data-event-click-action="LocalMusicManager.toggleBatchMode"
+                            title="批量操作" aria-label="批量操作">
+                            <i class="fas fa-tasks text-xs" aria-hidden="true"></i>
+                        </button>
                     </div>
                     <div id="lm-pagination"
                         class="player-pagination-bar border-x border-b t-border-main rounded-b-xl t-bg-panel/80 flex-shrink-0 hidden">

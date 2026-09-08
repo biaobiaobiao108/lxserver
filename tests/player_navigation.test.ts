@@ -115,7 +115,7 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(css).toContain('margin-inline: 0;');
         expect(css).toContain('.player-pagination-bar');
         expect(css).toContain('block-size: 3rem');
-        expect(html).toContain('player-track-grid--header');
+        expect(html).toContain('player-floating-capsule');
         expect(css).toContain('.favorite-sidebar-item.active-sub-item');
         for (const source of rendererSources) {
             expect(source).toContain('player-track-grid');
@@ -168,7 +168,7 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(artistSongsSection).toContain('getArtistSongsPageMetrics');
         expect(artistSongsSection).toContain('const startIndex = (artistPage - 1) * itemsPerPage;');
         expect(artistSongsSection).toContain('player-pagination-bar');
-        expect(searchContent).toContain('player-track-list-header player-track-grid player-track-grid--network');
+        expect(searchContent).toContain('class="artist-detail-view');
         expect(artistSongsSection).not.toContain('pageState.value');
         expect(css).toContain('#artist-tabs-bar');
         expect(css).toContain('block-size: 2.5rem');
@@ -246,7 +246,11 @@ describe('Player Navigation and State Restoration Safety', () => {
         const css = fs.readFileSync(playerCssPath, 'utf8');
 
         const sharedHeaders = html.match(/player-track-list-header player-track-grid/g) ?? [];
-        expect(sharedHeaders.length).toBeGreaterThanOrEqual(4);
+        expect(sharedHeaders.length).toBe(0);
+        for (const id of ['search-floating-actions', 'lb-floating-actions', 'lm-floating-actions']) {
+            const element = html.match(new RegExp(`id="${id}"[\\s\\S]{0,240}`))?.[0] ?? '';
+            expect(element).toContain('player-floating-capsule');
+        }
         for (const id of ['search-pagination-bar', 'songlist-pagination', 'lb-pagination', 'lm-pagination']) {
             const element = html.match(new RegExp(`id="${id}"[\\s\\S]{0,240}`))?.[0] ?? '';
             expect(element).toContain('player-pagination-bar');

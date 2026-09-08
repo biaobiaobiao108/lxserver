@@ -710,6 +710,46 @@ html, body {
     z-index: 30;
 }
 
+/* Floating Action Capsule (FAB) for lists without column headers */
+.player-floating-capsule {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border-radius: 0.875rem;
+    border: 1px solid var(--border-main);
+    background: color-mix(in srgb, var(--bg-panel) 85%, var(--bg-main));
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 4px 16px -2px rgb(0 0 0 / 0.15), 0 2px 6px -1px rgb(0 0 0 / 0.1);
+    z-index: 30;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+}
+
+.player-floating-capsule:hover {
+    box-shadow: 0 8px 24px -4px rgb(0 0 0 / 0.2), 0 4px 8px -2px rgb(0 0 0 / 0.12);
+}
+
+.player-floating-capsule button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    border-radius: 0.625rem;
+    color: var(--text-muted);
+    transition: color 0.15s ease, background-color 0.15s ease, transform 0.1s ease;
+}
+
+.player-floating-capsule button:hover {
+    color: var(--text-main);
+    background-color: var(--bg-item-hover);
+}
+
+.player-floating-capsule button:active {
+    transform: scale(0.92);
+}
+
 #search-pagination-bar.hidden {
     display: none !important;
 }

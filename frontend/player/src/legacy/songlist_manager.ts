@@ -13,6 +13,12 @@ export type SongListManagerContext = {
 export function createSongListManager(context: SongListManagerContext) {
     const manager = (function () {
     const API_BASE = '/api/music';
+    const DETAIL_PAGE_LIMIT = 50;
+    let initialized = false;
+    let initialLoadPromise = null;
+    let detailLoading = false;
+    let detailScrollBound = false;
+    let listLoading = false;
     let currentState = {
         source: 'wy',
         tagId: '',
@@ -34,7 +40,7 @@ export function createSongListManager(context: SongListManagerContext) {
         list: [],
         page: 1,
         total: 0,
-        limit: 30
+        limit: DETAIL_PAGE_LIMIT
     };
     let tagsRequestController = null;
     let listRequestController = null;
@@ -43,8 +49,10 @@ export function createSongListManager(context: SongListManagerContext) {
     let listRequestSerial = 0;
     let detailRequestSerial = 0;
 
-    // Initialize
-    async function init() {
+    // Bind the delegated handlers immediately, but defer remote data until the
+    // user actually opens the song-list plaza.
+    function init() {
+        if (initialized) return;
         console.log('[SongList] Initializing...');
         bindEvents();
 
@@ -57,8 +65,6 @@ export function createSongListManager(context: SongListManagerContext) {
         }
 
         renderSortTabs();
-        await loadTags();
-        loadList();
 
         // Bind events that might not be in HTML attributes
         document.addEventListener('click', function (e) {
@@ -70,6 +76,18 @@ export function createSongListManager(context: SongListManagerContext) {
                 }
             }
         });
+        initialized = true;
+    }
+
+    async function load() {
+        init();
+        if (!initialLoadPromise) {
+            initialLoadPromise = (async () => {
+                await loadTags();
+                await loadList();
+            })();
+        }
+        return initialLoadPromise;
     }
 
     let eventsBound = false;
@@ -314,6 +332,7 @@ export function createSongListManager(context: SongListManagerContext) {
         listRequestController?.abort();
         const requestSerial = ++listRequestSerial;
         listRequestController = new AbortController();
+        listLoading = true;
         currentState.page = page;
         const { source, tagId, sortId } = currentState;
         const container = document.getElementById('songlist-container');
@@ -341,19 +360,55 @@ export function createSongListManager(context: SongListManagerContext) {
             if (e?.name === 'AbortError' || requestSerial !== listRequestSerial) return;
             console.error('[SongList] Load list failed:', e);
             container.innerHTML = `<div class="col-span-full py-20 text-center text-red-500">加载失败: ${e.message}</div>`;
+        } finally {
+            if (requestSerial === listRequestSerial) {
+                listLoading = false;
+                updatePaginationUI();
+            }
+        }
+    }
+
+    function bindDetailScroll() {
+        if (detailScrollBound) return;
+        const scrollContainer = document.getElementById('sl-detail-scroll-container');
+        if (!scrollContainer) return;
+        detailScrollBound = true;
+        scrollContainer.addEventListener('scroll', () => {
+            if (detailLoading || !detailState.info || !detailState.total || detailState.list.length >= detailState.total) return;
+            const distanceToBottom = scrollContainer.scrollHeight - scrollContainer.scrollTop - scrollContainer.clientHeight;
+            if (distanceToBottom < 480) {
+                void loadDetail(detailState.id, detailState.source, detailState.page + 1);
+            }
+        }, { passive: true });
+    }
+
+    function updateDetailLoadingIndicator() {
+        const indicator = document.getElementById('sl-detail-load-indicator');
+        if (!indicator) return;
+        const hasMore = detailState.total > detailState.list.length;
+        indicator.classList.remove('hidden');
+        if (detailLoading) {
+            indicator.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-2"></i>正在加载更多歌曲...';
+        } else if (hasMore) {
+            indicator.innerHTML = '<i class="fas fa-chevron-down mr-2"></i>继续下滑加载更多';
+        } else {
+            indicator.innerHTML = '<i class="fas fa-check mr-2"></i>已加载全部歌曲';
         }
     }
 
     async function loadDetail(id, source, page = 1) {
+        if (detailLoading && page > 1) return false;
         detailRequestController?.abort();
         const requestSerial = ++detailRequestSerial;
         detailRequestController = new AbortController();
+        detailLoading = true;
         detailState.id = id;
         detailState.source = source;
         detailState.page = page;
 
         const detailView = document.getElementById('songlist-detail-view');
         const listContainer = document.getElementById('sl-detail-list');
+        bindDetailScroll();
 
         if (page === 1) {
             detailView.classList.remove('hidden');
@@ -365,6 +420,7 @@ export function createSongListManager(context: SongListManagerContext) {
             // Clear old data to prevent flickering
             detailState.info = null;
             detailState.list = [];
+            detailState.total = 0;
             const nameEl = document.getElementById('sl-detail-name');
             if (nameEl) nameEl.innerText = '正在加载...';
             const titleEl = document.getElementById('sl-detail-title');
@@ -395,19 +451,18 @@ export function createSongListManager(context: SongListManagerContext) {
             }
         }
 
-
         try {
-            const url = `${API_BASE}/songList/detail?source=${encodeURIComponent(source)}&id=${encodeURIComponent(id)}&page=${page}`;
+            const url = `${API_BASE}/songList/detail?source=${encodeURIComponent(source)}&id=${encodeURIComponent(id)}&page=${page}&limit=${detailState.limit}`;
             const res = await fetch(url, { signal: detailRequestController.signal });
             const data = await res.json();
-            if (requestSerial !== detailRequestSerial || detailState.id !== id || detailState.source !== source || detailState.page !== page) return;
+            if (requestSerial !== detailRequestSerial || detailState.id !== id || detailState.source !== source || detailState.page !== page) return false;
 
             detailState.info = data.info;
 
             // Normalize IDs to ensure batch operations work correctly
             const normalizedList = (data.list || []).map((song, idx) => {
                 if (!song.id || song.id === 'undefined') {
-                    song.id = song.songmid || song.songId || song.hash || song.copyrightId || song.mid || song.mediaMid || `sl_${detailState.id}_${idx}`;
+                    song.id = song.songmid || song.songId || song.hash || song.copyrightId || song.mid || song.mediaMid || `sl_${detailState.id}_${(page - 1) * detailState.limit + idx}`;
                 }
                 return song;
             });
@@ -417,7 +472,10 @@ export function createSongListManager(context: SongListManagerContext) {
             } else {
                 detailState.list = [...detailState.list, ...normalizedList];
             }
-            detailState.total = data.total;
+            const total = Number(data.total);
+            detailState.total = Number.isFinite(total) && total >= 0
+                ? total
+                : Math.max(detailState.total, detailState.list.length);
             window.viewingPlaylist = detailState.list; // Sync with global
 
             // Initialize Unified Search for this context only on first load
@@ -426,20 +484,38 @@ export function createSongListManager(context: SongListManagerContext) {
                     renderCallback: () => manager.renderDetail(),
                     getList: () => detailState.list
                 });
+                renderDetail();
             } else if (window.ListSearch && window.ListSearch.state.active && window.ListSearch.state.id === 'songlist') {
                 // If appending more songs while filtering, refresh results
                 window.ListSearch.handleSearch();
-                return; // handleSearch already calls renderDetail
+            } else {
+                renderDetail();
             }
-
-            renderDetail();
+            return true;
         } catch (e) {
-            if (e?.name === 'AbortError' || requestSerial !== detailRequestSerial) return;
+            if (e?.name === 'AbortError' || requestSerial !== detailRequestSerial) return false;
             console.error('[SongList] Load detail failed:', e);
             if (page === 1) {
                 listContainer.innerHTML = `<div class="text-center text-red-500 p-10">加载失败: ${e.message}</div>`;
             }
+            return false;
+        } finally {
+            if (requestSerial === detailRequestSerial) {
+                detailLoading = false;
+                updateDetailLoadingIndicator();
+            }
         }
+    }
+
+    async function ensureAllLoaded() {
+        if (!detailState.id || !detailState.info) return false;
+        let guard = 0;
+        while (detailState.total > detailState.list.length && guard++ < 1000) {
+            const previousLength = detailState.list.length;
+            const loaded = await loadDetail(detailState.id, detailState.source, detailState.page + 1);
+            if (!loaded || detailState.list.length <= previousLength) return false;
+        }
+        return true;
     }
 
     // --- Rendering ---
@@ -725,7 +801,11 @@ export function createSongListManager(context: SongListManagerContext) {
                     </button>
                 </div>
             </div>
-        `}).join('');
+        `}).join('') + `
+            <div id="sl-detail-load-indicator" class="py-5 text-center text-xs t-text-muted" role="status" aria-live="polite"></div>
+        `;
+
+        updateDetailLoadingIndicator();
 
         // Trigger Lazy Load
         if (typeof window.lazyLoadImages === 'function') {
@@ -747,7 +827,10 @@ export function createSongListManager(context: SongListManagerContext) {
 
     return {
         init,
+        load,
+        ensureAllLoaded,
         selectTag: function (id, name) {
+            init();
             currentState.tagId = id;
             currentState.tagName = name;
             document.getElementById('current-tag-name').innerText = name;
@@ -755,6 +838,7 @@ export function createSongListManager(context: SongListManagerContext) {
             loadList(1);
         },
         changeSource: async function () {
+            init();
             currentState.source = document.getElementById('songlist-source').value;
 
             // 保存到缓存
@@ -771,23 +855,28 @@ export function createSongListManager(context: SongListManagerContext) {
             loadList(1);
         },
         changeSort: function (sort) {
+            init();
             currentState.sortId = sort;
             renderSortTabs();
             loadList(1);
         },
         changePage: function (delta) {
+            init();
             const next = currentState.page + delta;
             if (next < 1) return;
+            if (listLoading) return;
             loadList(next);
             document.getElementById('songlist-grid').scrollTo({ top: 0, behavior: 'smooth' });
         },
         openDetail: function (id, source) {
+            init();
             if (window.ListSearch) window.ListSearch.resetState();
             loadDetail(id, source);
         },
         closeDetail: function () {
             detailRequestController?.abort();
             detailRequestSerial++;
+            detailLoading = false;
             if (window.ListSearch && window.ListSearch.state.id === 'songlist') {
                 window.ListSearch.resetState();
             }
@@ -804,8 +893,15 @@ export function createSongListManager(context: SongListManagerContext) {
                 window.updatePlaylist(listWithSource, index, 'songlist', true);
             }
         },
-        playAll: function () {
+        playAll: async function () {
             if (detailState.list.length === 0) return;
+            if (detailState.total > detailState.list.length) {
+                const loaded = await ensureAllLoaded();
+                if (!loaded) {
+                    if (window.showToast) window.showToast('error', '歌单仍在加载中，请稍后重试');
+                    return;
+                }
+            }
             if (typeof window.updatePlaylist === 'function') {
                 const listWithSource = detailState.list.map(s => ({ ...s, source: detailState.source }));
                 // 播放全部：不加入默认列表 (shouldAddToDefault = false)
@@ -820,20 +916,29 @@ export function createSongListManager(context: SongListManagerContext) {
                 return;
             }
 
+            listRequestController?.abort();
+            const requestSerial = ++listRequestSerial;
+            listRequestController = new AbortController();
+            listLoading = true;
+            currentState.page = 1;
             const container = document.getElementById('songlist-container');
             container.innerHTML = '<div class="col-span-full py-20 text-center t-text-muted"><i class="fas fa-spinner fa-spin text-4xl mb-4 text-emerald-500"></i><p>正在搜索歌单...</p></div>';
 
             try {
                 const url = `${API_BASE}/songList/search?source=${currentState.source}&text=${encodeURIComponent(text)}&page=1`;
-                const res = await fetch(url);
+                const res = await fetch(url, { signal: listRequestController.signal });
                 const data = await res.json();
+                if (requestSerial !== listRequestSerial) return;
                 currentState.list = data.list || [];
                 currentState.total = data.total || 0;
                 renderList();
                 document.getElementById('songlist-pagination').classList.add('hidden');
             } catch (e) {
+                if (e?.name === 'AbortError' || requestSerial !== listRequestSerial) return;
                 console.error('[SongList] Search failed:', e);
                 container.innerHTML = `<div class="col-span-full py-20 text-center text-red-500">搜索失败: ${e.message}</div>`;
+            } finally {
+                if (requestSerial === listRequestSerial) listLoading = false;
             }
         },
         handleRowClick: function (index) {

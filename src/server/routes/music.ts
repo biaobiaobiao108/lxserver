@@ -645,13 +645,14 @@ export const createMusicRouter = (): Router => {
     const source = ctx.query.get('source') || 'wy'
     const id = ctx.query.get('id')
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
+    const limit = boundedInt(ctx.query.get('limit'), 50, 1, 100)
     if (!id) return ctx.text('Missing id', 400)
     try {
       const sourceApi = getBuiltinSource(source)
       if (!sourceApi?.songList?.getListDetail) {
         throw new Error(`Source ${source} does not support songList`)
       }
-      const result = await sourceApi.songList.getListDetail(id, page)
+      const result = await sourceApi.songList.getListDetail(id, page, limit)
       if (result && result.list) {
         result.list = result.list.map(normalizeSongInfo)
       }

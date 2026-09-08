@@ -73,7 +73,7 @@ export interface SongListApi {
   sortList?: unknown
   getTags?: () => Promise<any>
   getList?: (sortId: string, tagId: string, page: number) => Promise<MusicSearchResult>
-  getListDetail?: (id: string, page: number) => Promise<MusicSearchResult>
+  getListDetail?: (id: string, page: number, limit?: number) => Promise<MusicSearchResult>
   search?: (text: string, page: number) => Promise<MusicSearchResult>
 }
 

@@ -1511,6 +1511,9 @@ function switchTab(tabId, preserveSearchNavigation = false) {
 
     if (tabId === 'songlist') {
         document.getElementById('page-title').innerText = "歌单";
+        void songListManager.load().catch(err => {
+            console.error('[SongList] 初始加载失败:', err);
+        });
     }
 
     if (tabId === 'leaderboard') {
@@ -4126,9 +4129,19 @@ function formatSongToLxMusicStandard(item) {
     return rootItem;
 }
 
-function collectCurrentSongList() {
+async function collectCurrentSongList() {
     const activeListData = isUserLoggedIn() ? (window.myPersonalListData || currentListData) : currentListData;
     if (!activeListData) return;
+
+    // 详情页采用按页懒加载；收藏整张歌单前确保后续页面也已拉取，避免只收藏首屏。
+    if (typeof songListManager.ensureAllLoaded === 'function') {
+        const loaded = await songListManager.ensureAllLoaded();
+        if (!loaded) {
+            if (window.showToast) window.showToast('error', '歌单仍在加载中，请稍后重试');
+            return;
+        }
+    }
+
     const detail = songListManager.getCurrentDetail();
     if (!detail || !detail.id || !detail.list || detail.list.length === 0) {
         if (window.showToast) window.showToast('error', '歌单数据不完整或为空');

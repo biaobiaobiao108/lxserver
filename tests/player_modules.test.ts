@@ -56,6 +56,23 @@ describe('Player manager module boundaries', () => {
         expect(serviceWorker).not.toContain('./js/download_manager.js');
     });
 
+    it('defers songlist loading and paginates detail requests', () => {
+        const songListSource = read('frontend/player/src/legacy/songlist_manager.ts');
+        const indexSource = read('frontend/player/src/index.ts');
+        const detailRoute = read('src/server/routes/music.ts');
+        const wySource = read('src/modules/utils/musicSdk/wy/songList.ts');
+        const txSource = read('src/modules/utils/musicSdk/tx/songList.ts');
+
+        expect(songListSource).toContain('async function load()');
+        expect(songListSource).toContain('async function ensureAllLoaded()');
+        expect(songListSource).toContain('page=${page}&limit=${detailState.limit}');
+        expect(indexSource).toContain('void songListManager.load().catch');
+        expect(indexSource).toContain('await songListManager.ensureAllLoaded()');
+        expect(detailRoute).toContain("const limit = boundedInt(ctx.query.get('limit'), 50, 1, 100)");
+        expect(wySource).toContain('n: pageLimit');
+        expect(txSource).toContain('allSongs.slice(rangeStart, rangeStart + pageLimit)');
+    });
+
     it('does not contain inline HTML event attributes in player sources or templates', () => {
         const files = [
             ...listFiles('frontend/player/src', '.ts'),

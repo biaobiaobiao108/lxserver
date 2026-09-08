@@ -197,9 +197,11 @@ export default {
     return id
   },
   // 获取歌曲列表内的音乐
-  async getListDetail(id: any, tryNum: any= 0): Promise<any> {
+  async getListDetail(id: any, page: any = 1, limit: any = 50, tryNum: any = 0): Promise<any> {
     if (tryNum > 2) return Promise.reject(new Error('try max num'))
 
+    const pageNumber = Math.max(1, Number(page) || 1)
+    const pageLimit = Math.min(100, Math.max(1, Number(limit) || 50))
     id = await this.getListId(id)
 
     const requestObj_listDetail = httpFetch(this.getListDetailUrl(id), {
@@ -210,13 +212,15 @@ export default {
     })
     const { body } = await requestObj_listDetail.promise
 
-    if (body.code !== this.successCode) return this.getListDetail(id, ++tryNum)
+    if (body.code !== this.successCode) return this.getListDetail(id, pageNumber, pageLimit, ++tryNum)
     const cdlist = body.cdlist[0]
+    const allSongs = this.filterListDetail(cdlist.songlist || [])
+    const rangeStart = (pageNumber - 1) * pageLimit
     return {
-      list: this.filterListDetail(cdlist.songlist),
-      page: 1,
-      limit: cdlist.songlist.length + 1,
-      total: cdlist.songlist.length,
+      list: allSongs.slice(rangeStart, rangeStart + pageLimit),
+      page: pageNumber,
+      limit: pageLimit,
+      total: allSongs.length,
       source: 'tx',
       info: {
         name: cdlist.dissname,

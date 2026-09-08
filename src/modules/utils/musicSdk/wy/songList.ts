@@ -66,9 +66,11 @@ export default {
     }
     return { id, cookie }
   },
-  async getListDetail(rawId: any, page: any, tryNum: any= 0): Promise<any> { // 获取歌曲列表内的音乐
+  async getListDetail(rawId: any, page: any = 1, limit: any = 50, tryNum: any = 0): Promise<any> { // 获取歌曲列表内的音乐
     if (tryNum > 2) return Promise.reject(new Error('try max num'))
 
+    const pageNumber = Math.max(1, Number(page) || 1)
+    const pageLimit = Math.min(100, Math.max(1, Number(limit) || 50))
     const { id, cookie } = await this.getListId(rawId)
     if (cookie) this.cookie = cookie
 
@@ -83,37 +85,39 @@ export default {
         url: 'https://music.163.com/api/v3/playlist/detail',
         params: {
           id,
-          n: this.limit_song,
+          // 歌曲详情按页加载；trackIds 仍用于获取总数和当前页的 ID。
+          n: pageLimit,
           s: 8,
         },
       }),
     })
     const { statusCode, body } = await requestObj_listDetail.promise
-    if (statusCode !== 200 || body.code !== this.successCode) return this.getListDetail(id, page, ++tryNum)
-    let limit = 1000
-    let rangeStart = (page - 1) * limit
-    // console.log(body)
-    let list
-    if (body.playlist.trackIds.length == body.privileges.length) {
-      list = this.filterListDetail(body)
-    } else {
+    if (statusCode !== 200 || body.code !== this.successCode) return this.getListDetail(id, pageNumber, pageLimit, ++tryNum)
+
+    const trackIds = Array.isArray(body.playlist?.trackIds) ? body.playlist.trackIds : []
+    const total = trackIds.length || body.playlist?.tracks?.length || 0
+    const rangeStart = (pageNumber - 1) * pageLimit
+    const pageIds = trackIds.slice(rangeStart, rangeStart + pageLimit).map((trackId: any) => trackId.id)
+    let list: any[] = []
+
+    if (pageIds.length > 0) {
       try {
-        list = (await musicDetailApi.getList(body.playlist.trackIds.slice(rangeStart, limit * page).map((trackId: any) => trackId.id))).list
+        list = (await musicDetailApi.getList(pageIds)).list
       } catch (err: any) {
         console.log(err)
-        if (err.message == 'try max num') {
-          throw err
-        } else {
-          return this.getListDetail(id, page, ++tryNum)
-        }
+        if (err.message === 'try max num') throw err
+        return this.getListDetail(id, pageNumber, pageLimit, ++tryNum)
       }
+    } else if (trackIds.length === 0 && Array.isArray(body.playlist?.tracks)) {
+      // 兼容部分接口只返回 tracks、不返回 trackIds 的响应。
+      list = this.filterListDetail(body).slice(rangeStart, rangeStart + pageLimit)
     }
-    // console.log(list)
+
     return {
       list,
-      page,
-      limit,
-      total: body.playlist.trackIds.length,
+      page: pageNumber,
+      limit: pageLimit,
+      total,
       source: 'wy',
       info: {
         play_count: formatPlayCount(body.playlist.playCount),

@@ -602,12 +602,22 @@ html, body {
     line-height: 1.2;
 }
 
+#search-results-header,
+#songlist-detail-view .player-track-grid--header,
+#view-leaderboard .player-track-grid--header,
+#view-localmusic .player-track-grid--header {
+    margin-inline: 0.5rem;
+}
+
 .list-header-leading {
     display: flex;
     align-items: center;
     justify-content: flex-start;
     gap: 0.25rem;
+    inline-size: 100%;
+    max-inline-size: 100%;
     min-inline-size: 0;
+    white-space: nowrap;
 }
 
 .list-header-back {
@@ -628,6 +638,7 @@ html, body {
     align-items: center;
     gap: 2px;
     padding: 2px;
+    max-inline-size: 100%;
     flex-shrink: 0;
     border: 1px solid var(--border-main);
     border-radius: 0.625rem;
@@ -2300,7 +2311,9 @@ aside {
 /* ── 播放器统一列表与歌单卡片布局 ── */
 .player-track-grid {
     display: grid;
-    grid-template-columns: 2.25rem minmax(0, 1fr) max-content;
+    --player-track-index-size: 5rem;
+    --player-track-action-size: 5rem;
+    grid-template-columns: var(--player-track-index-size) minmax(0, 1fr) minmax(var(--player-track-action-size), max-content);
     column-gap: 0.625rem;
     align-items: center;
     min-inline-size: 0;
@@ -2320,6 +2333,25 @@ aside {
 .player-track-source,
 .player-track-actions {
     min-inline-size: 0;
+}
+
+.player-track-index {
+    inline-size: 100%;
+}
+
+.player-track-grid--header > .player-track-index,
+.player-track-grid--header > .player-track-title,
+.player-track-grid--header > .player-track-artist,
+.player-track-grid--header > .player-track-album,
+.player-track-grid--header > .player-track-duration,
+.player-track-grid--header > .player-track-actions,
+.list-results-header > .player-track-index,
+.list-results-header > .player-track-title,
+.list-results-header > .player-track-artist,
+.list-results-header > .player-track-album,
+.list-results-header > .player-track-duration,
+.list-results-header > .player-track-actions {
+    white-space: nowrap;
 }
 
 .player-track-artist,
@@ -2379,6 +2411,10 @@ aside {
 .player-track-grid--network,
 .player-track-grid--local {
     scrollbar-gutter: stable;
+}
+
+.player-track-grid--local {
+    --player-track-action-size: 7rem;
 }
 
 .playlist-card-grid {
@@ -2498,7 +2534,7 @@ aside {
 
 @media (min-width: 640px) {
     .player-track-grid {
-        grid-template-columns: 2.75rem minmax(0, 1fr) max-content;
+        grid-template-columns: var(--player-track-index-size) minmax(0, 1fr) minmax(var(--player-track-action-size), max-content);
         column-gap: 0.75rem;
     }
 }
@@ -2506,12 +2542,13 @@ aside {
 @media (min-width: 1025px) {
     .player-track-grid--network,
     .player-track-grid--network.player-track-grid--no-album {
-        grid-template-columns: 3rem minmax(12rem, 5fr) minmax(9rem, 3fr) minmax(4.5rem, max-content) max-content;
+        grid-template-columns: 5rem minmax(12rem, 3fr) minmax(10rem, 3fr) minmax(4.5rem, max-content) minmax(var(--player-track-action-size), max-content);
         column-gap: 1rem;
     }
 
     .player-track-grid--local {
-        grid-template-columns: 3rem minmax(12rem, 4fr) minmax(9rem, 2fr) minmax(10rem, 2fr) max-content;
+        --player-track-action-size: 12.5rem;
+        grid-template-columns: 5rem minmax(12rem, 3fr) minmax(10rem, 2.5fr) minmax(9rem, 2.5fr) minmax(var(--player-track-action-size), max-content);
         column-gap: 1rem;
     }
 
@@ -2532,15 +2569,16 @@ aside {
 
 @media (min-width: 1280px) {
     .player-track-grid--network {
-        grid-template-columns: 3rem minmax(14rem, 4fr) minmax(10rem, 3fr) minmax(10rem, 2fr) minmax(4.5rem, max-content) max-content;
+        grid-template-columns: 5rem minmax(14rem, 3fr) minmax(12rem, 3fr) minmax(12rem, 2fr) minmax(4.5rem, max-content) minmax(var(--player-track-action-size), max-content);
     }
 
     .player-track-grid--network.player-track-grid--no-album {
-        grid-template-columns: 3rem minmax(14rem, 5fr) minmax(10rem, 3fr) minmax(4.5rem, max-content) max-content;
+        grid-template-columns: 5rem minmax(14rem, 3fr) minmax(12rem, 3fr) minmax(4.5rem, max-content) minmax(var(--player-track-action-size), max-content);
     }
 
     .player-track-grid--local {
-        grid-template-columns: 3rem minmax(14rem, 4fr) minmax(10rem, 2fr) minmax(10rem, 2fr) minmax(10rem, 1.5fr) max-content;
+        --player-track-action-size: 12.5rem;
+        grid-template-columns: 5rem minmax(14rem, 3fr) minmax(12rem, 2fr) minmax(12rem, 2fr) minmax(11rem, 1.5fr) minmax(var(--player-track-action-size), max-content);
     }
 
     .player-track-album {

@@ -1252,7 +1252,7 @@ function renderArtistSongsUI(list, page) {
 
     let html = `
         <!-- 表头 -->
-        <div class="player-track-grid player-track-grid--network px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm list-results-header">
+        <div class="player-track-grid player-track-grid--network player-track-grid--header px-3 py-1.5 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm list-results-header">
             <div class="player-track-index list-header-leading">
                 <div class="list-header-actions" role="group" aria-label="列表操作">
                     <button data-event-click-action="toggleBatchMode" data-list-action="batch"
@@ -1920,7 +1920,7 @@ function renderResults(list) {
         const isCurrentMatch = window.ListSearch.isCurrentMatch(actualIndexInOriginal);
         const isSelected = window.selectedItems.has(itemIdValue);
 
-        let rowClass = `player-track-grid player-track-grid--network p-2.5 sm:p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer min-h-[50px] items-center touch-manipulation ${showAlbum ? '' : 'player-track-grid--no-album '}`;
+        let rowClass = `player-track-grid player-track-grid--network p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer min-h-[50px] items-center touch-manipulation ${showAlbum ? '' : 'player-track-grid--no-album '}`;
         if (isCurrentMatch) rowClass += 'search-current ';
         else if (isMatched) rowClass += 'search-match ';
         if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';

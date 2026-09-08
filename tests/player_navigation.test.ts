@@ -97,10 +97,19 @@ describe('Player Navigation and State Restoration Safety', () => {
 
         expect(html).toContain('class="playlist-card-grid"');
         expect(html).toContain('class="w-56 shrink-0');
-        expect(css).toContain('grid-template-columns: 2.25rem minmax(0, 1fr) max-content');
+        expect(css).toContain('--player-track-index-size: 5rem');
+        expect(css).toContain('--player-track-action-size: 5rem');
+        expect(css).toContain('grid-template-columns: var(--player-track-index-size) minmax(0, 1fr) minmax(var(--player-track-action-size), max-content)');
+        expect(css).toContain('grid-template-columns: 5rem minmax(14rem, 3fr) minmax(12rem, 3fr) minmax(4.5rem, max-content) minmax(var(--player-track-action-size), max-content)');
+        expect(css).toContain('grid-template-columns: 5rem minmax(14rem, 3fr) minmax(12rem, 3fr) minmax(12rem, 2fr) minmax(4.5rem, max-content) minmax(var(--player-track-action-size), max-content)');
+        expect(css).toContain('--player-track-action-size: 12.5rem');
         expect(css).toContain('grid-template-columns: repeat(auto-fill, minmax(10rem, 13.75rem))');
         expect(css).toContain('min-inline-size: max-content');
         expect(css).toContain('flex-wrap: nowrap');
+        expect(css).toContain('white-space: nowrap');
+        expect(css).toContain('#search-results-header');
+        expect(css).toContain('margin-inline: 0.5rem');
+        expect(html).toContain('player-track-grid--header');
         expect(css).toContain('.favorite-sidebar-item.active-sub-item');
         for (const source of rendererSources) {
             expect(source).toContain('player-track-grid');

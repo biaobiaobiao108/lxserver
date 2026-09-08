@@ -6,6 +6,7 @@ describe('Player Navigation and State Restoration Safety', () => {
     const playerSrcPath = path.join(import.meta.dir, '../frontend/player/src/index.ts');
     const playbackSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/playback.ts');
     const searchSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/search.ts');
+    const librarySrcPath = path.join(import.meta.dir, '../frontend/player/src/features/library.ts');
     const customSelectSrcPath = path.join(import.meta.dir, '../frontend/player/src/custom_select.ts');
     const playerCssPath = path.join(import.meta.dir, '../public/music/css/app.css');
     const playerDistPath = path.join(import.meta.dir, '../public/music/app.js');
@@ -160,7 +161,8 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(artistSongsSection).not.toContain('group-hover:block');
         expect(searchContent).toContain('class="artist-detail-tabs-bar flex items-center');
         expect(searchContent).toContain('style="min-height: 40px; height: 40px;"');
-        expect(searchContent).toContain("const tabsClass = isArtistFolded ? 'mt-1' : '';");
+        expect(searchContent).toContain("const tabsClass = '';");
+        expect(searchContent).toContain("tabsBar.classList.remove('mt-8', 'mt-1');");
         expect(searchContent).toContain('class="artist-tabs-group flex items-center');
         expect(searchContent).toContain('class="artist-albums-grid p-2 md:p-4');
         expect(artistSongsSection).toContain('getArtistSongsPageMetrics');
@@ -179,6 +181,64 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(css).toContain('scrollbar-width: none');
         expect(css).toContain('scrollbar-gutter: auto');
         expect(html).toContain('overflow-y-auto no-scrollbar');
+    });
+
+    it('search favorite controls do not activate their parent detail cards', () => {
+        const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
+        const singerSection = searchContent.match(/function renderSingerResults[\s\S]*?function renderAlbumResults/)?.[0] ?? '';
+        const albumSection = searchContent.match(/function renderAlbumResults[\s\S]*?function formatPlayCount/)?.[0] ?? '';
+
+        expect(searchContent).toContain('function isSearchResultFavoriteTarget');
+        expect(searchContent).toContain("typeof (target as Element).closest === 'function'");
+        expect(searchContent).toContain('event.composedPath().some');
+        expect(singerSection).toContain('const activateSinger = (event?: Event)');
+        expect(singerSection).toContain('if (isSearchResultFavoriteTarget(event)) return;');
+        expect(singerSection).toContain('search-result-favorite-btn');
+        expect(singerSection).toContain('favoriteButton?.addEventListener(\'click\', event =>');
+        expect(singerSection).toContain('event.stopPropagation();');
+        expect(albumSection).toContain('const activateAlbum = (event?: Event)');
+        expect(albumSection).toContain('if (isSearchResultFavoriteTarget(event)) return;');
+        expect(albumSection).toContain('search-result-favorite-btn');
+        expect(albumSection).toContain('favoriteButton?.addEventListener(\'click\', event =>');
+    });
+
+    it('favorite library views have guarded loading, active data, and save rollback', () => {
+        const libraryContent = fs.readFileSync(librarySrcPath, 'utf8');
+        const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
+
+        expect(libraryContent).toContain('let libraryLoadSerial = 0;');
+        expect(libraryContent).toContain('let libraryLoadController: AbortController | null = null;');
+        expect(libraryContent).toContain('function getActiveLibraryList(kind: LibraryKind)');
+        expect(libraryContent).toContain('if (!response.ok) throw new Error(await response.text());');
+        expect(libraryContent).toContain('function renderLibraryLoadError(kind: LibraryKind)');
+        expect(libraryContent).toContain('data-event-click-action="reloadLibraryData"');
+        expect(libraryContent).toContain('const previousList = [...targetList];');
+        expect(libraryContent).toContain('if (!await saveLibraryArtists(targetList))');
+        expect(libraryContent).toContain('if (!await saveLibraryAlbums(targetList))');
+        expect(libraryContent).toContain('async function handleArtistLibraryClick()');
+        expect(libraryContent).toContain('async function handleAlbumLibraryClick()');
+        expect(searchContent).toContain('const paginationBar = document.getElementById(\'search-pagination-bar\');');
+        expect(searchContent).toContain('paginationBar.classList.toggle(\'hidden\', searchDetailOpen)');
+    });
+
+    it('artist details keep a single bounded scroll container and restore search pagination', () => {
+        const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
+        const css = fs.readFileSync(playerCssPath, 'utf8');
+        const distContent = fs.readFileSync(playerDistPath, 'utf8');
+
+        expect(searchContent).toContain('id="artist-detail-view" class="artist-detail-view flex flex-1 min-h-0 flex-col overflow-hidden"');
+        expect(searchContent).toContain('container.classList.add(\'artist-detail-active\');');
+        expect(searchContent).toContain('container.classList.remove(\'artist-detail-active\');');
+        expect(searchContent).toContain("tabsBar.classList.remove('mt-8', 'mt-1');");
+        expect(css).toContain('#search-results.artist-detail-active');
+        expect(css).toContain('#search-results.artist-detail-active > .artist-detail-view');
+        expect(css).toContain('#search-results.artist-detail-active #artist-detail-content');
+        expect(css).toContain('overflow-y: auto;');
+        expect(css).toContain('#search-pagination-bar.hidden');
+        expect(css).toContain('display: none !important;');
+        expect(css).toContain('margin-block: 0;');
+        expect(distContent).toContain('artist-detail-active');
+        expect(distContent).toContain('reloadLibraryData');
     });
 
     it('all player list surfaces use the same header and pagination boundaries', () => {

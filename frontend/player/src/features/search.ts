@@ -64,7 +64,7 @@ export function initSearchFeature(context: SearchFeatureContext) {
     const hideSearchSuggestions = () => (window as any).hideSearchSuggestions?.();
     let currentSearch = { name: '', source: 'wy' };
 
-    registerPlayerEventAction('search-toggle-artist-favorite', async (_event, element, args) => {
+    const applyArtistFavoriteToggle = async (element, args) => {
         const [id, source, name, image] = args.map(String);
         const toggle = (window as any).toggleArtistFavorite;
         if (typeof toggle !== 'function') return;
@@ -73,18 +73,28 @@ export function initSearchFeature(context: SearchFeatureContext) {
         const isHeader = button.id === 'artist-header-fav-btn';
         button.className = isHeader
             ? `absolute top-2 right-12 md:top-4 md:right-16 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full transition-all z-30 shadow-sm active:scale-90 ${favorited ? 'bg-rose-500 text-white' : 'bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 t-text-main'}`
-            : `absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}`;
+            : `search-result-favorite-btn absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}`;
         button.title = favorited ? '取消收藏' : '收藏歌手';
+        button.setAttribute('aria-label', favorited ? '取消收藏' : '收藏歌手');
+    };
+
+    registerPlayerEventAction('search-toggle-artist-favorite', async (_event, element, args) => {
+        await applyArtistFavoriteToggle(element, args);
     });
 
-    registerPlayerEventAction('search-toggle-album-favorite', async (_event, element, args) => {
+    const applyAlbumFavoriteToggle = async (element, args) => {
         const [id, source, name, image, artistName] = args.map(String);
         const toggle = (window as any).toggleAlbumFavorite;
         if (typeof toggle !== 'function') return;
         const favorited = await toggle(id, source, name, image, artistName);
         const button = element as HTMLButtonElement;
-        button.className = `absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}`;
+        button.className = `search-result-favorite-btn absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}`;
         button.title = favorited ? '取消收藏' : '收藏专辑';
+        button.setAttribute('aria-label', favorited ? '取消收藏' : '收藏专辑');
+    };
+
+    registerPlayerEventAction('search-toggle-album-favorite', async (_event, element, args) => {
+        await applyAlbumFavoriteToggle(element, args);
     });
 
     registerPlayerEventAction('search-row-activate', (_event, _element, args) => {
@@ -289,11 +299,16 @@ type SearchDetailHistoryState = {
 function syncSearchDetailHeaderVisibility() {
     const header = document.getElementById('search-results-header');
     if (header) header.classList.toggle('hidden', searchDetailOpen);
+    const paginationBar = document.getElementById('search-pagination-bar');
+    if (paginationBar) paginationBar.classList.toggle('hidden', searchDetailOpen);
 }
 
 function setSearchDetailOpen(value: boolean) {
     searchDetailOpen = value;
     syncSearchDetailHeaderVisibility();
+    if (!value) {
+        document.getElementById('search-results')?.classList.remove('artist-detail-active');
+    }
 }
 
 function renderTrackListHeader({ includeBackToolbar = false, extraClass = '' } = {}) {
@@ -367,15 +382,15 @@ async function doSearch(page = 1, append = false, prefetch = false) {
 
     if (isLibrarySearch || isLocalSongSearch) {
         if (!input) {
-            if (window.currentSearchScope === 'lib_artists') renderLibraryArtists(window.libraryData.artists);
-            else if (window.currentSearchScope === 'lib_albums') renderLibraryAlbums(window.libraryData.albums);
+            if (window.currentSearchScope === 'lib_artists') renderLibraryArtists((window as any).getActiveLibraryList?.('artists') || window.libraryData.artists);
+            else if (window.currentSearchScope === 'lib_albums') renderLibraryAlbums((window as any).getActiveLibraryList?.('albums') || window.libraryData.albums);
             else renderResults((window as any).viewingPlaylist);
             return;
         }
 
         let targets = [];
-        if (window.currentSearchScope === 'lib_artists') targets = window.libraryData.artists;
-        else if (window.currentSearchScope === 'lib_albums') targets = window.libraryData.albums;
+        if (window.currentSearchScope === 'lib_artists') targets = (window as any).getActiveLibraryList?.('artists') || window.libraryData.artists;
+        else if (window.currentSearchScope === 'lib_albums') targets = (window as any).getActiveLibraryList?.('albums') || window.libraryData.albums;
         else if (window.currentSearchScope === 'local_list') {
             const listId = window.currentViewingListId || 'default';
             if (context.getCurrentListData()) {
@@ -787,10 +802,20 @@ function makeKeyboardActivatable(element, label, activate) {
     });
 }
 
+function isSearchResultFavoriteTarget(event?: Event) {
+    const target = event?.target;
+    if (target && typeof (target as Element).closest === 'function'
+        && (target as Element).closest('.search-result-favorite-btn')) return true;
+    return typeof event?.composedPath === 'function'
+        && event.composedPath().some(item => item && typeof (item as Element).matches === 'function'
+            && (item as Element).matches('.search-result-favorite-btn'));
+}
+
 
 
 function renderSingerResults(list) {
     const container = document.getElementById('search-results');
+    container.classList.remove('artist-detail-active');
     const header = document.getElementById('search-results-header');
     if (header) header.classList.add('hidden');
     // 搜索歌手时隐藏底部分页栏
@@ -811,8 +836,12 @@ function renderSingerResults(list) {
         div.style.setProperty('--player-motion-index', String(Math.min(idx, 7)));
         div.dataset.singerId = singerId;
         div.dataset.singerSource = singerSource;
-        div.onclick = () => enterArtist(singerId, singerSource);
-        makeKeyboardActivatable(div, `打开歌手 ${singerName}`, () => enterArtist(singerId, singerSource));
+        const activateSinger = (event?: Event) => {
+            if (isSearchResultFavoriteTarget(event)) return;
+            enterArtist(singerId, singerSource);
+        };
+        div.onclick = activateSinger;
+        makeKeyboardActivatable(div, `打开歌手 ${singerName}`, activateSinger);
         const aliasHtml = singer.alias && singer.alias.length
             ? `<span class="text-[9px] md:text-[10px] t-text-muted text-center truncate w-full mt-0.5 md:mt-1">${escapeHtmlText(singer.alias[0])}</span>`
             : '';
@@ -823,7 +852,7 @@ function renderSingerResults(list) {
                          data-event-error-action="fallback-image"
                          class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
                 </div>
-                <button id="singer-fav-${escapeHtmlText(singerId)}" class="absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${isArtistFavorited(singerId, singerSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
+                <button type="button" id="singer-fav-${escapeHtmlText(singerId)}" aria-label="${isArtistFavorited(singerId, singerSource) ? '取消收藏' : '收藏歌手'}" class="search-result-favorite-btn absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${isArtistFavorited(singerId, singerSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
                         title="${isArtistFavorited(singerId, singerSource) ? '取消收藏' : '收藏歌手'}"
                         data-event-click-action="search-toggle-artist-favorite" data-event-click-args="[${safeInlineString(singerId)}, ${safeInlineString(singerSource)}, ${safeInlineString(singerName)}, ${safeInlineString(singer.picUrl || '')}]" data-event-stop="true">
                     <i class="fas fa-heart text-[10px]"></i>
@@ -838,12 +867,18 @@ function renderSingerResults(list) {
                 ${escapeHtmlText(singer.albumSize || 0)} 专辑
             </span>
         `;
+        const favoriteButton = div.querySelector('.search-result-favorite-btn');
+        favoriteButton?.addEventListener('click', event => {
+            event.stopPropagation();
+            void applyArtistFavoriteToggle(favoriteButton, [singerId, singerSource, singerName, singer.picUrl || '']);
+        });
         grid.appendChild(div);
     });
 }
 
 function renderAlbumResults(list) {
     const container = document.getElementById('search-results');
+    container.classList.remove('artist-detail-active');
     const header = document.getElementById('search-results-header');
     if (header) header.classList.add('hidden');
     // 搜索专辑时隐藏底部分页栏
@@ -862,15 +897,19 @@ function renderAlbumResults(list) {
         const div = document.createElement('div');
         div.className = 'player-motion-item group flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20';
         div.style.setProperty('--player-motion-index', String(Math.min(index, 7)));
-        div.onclick = () => enterAlbum(albumId, albumSource);
-        makeKeyboardActivatable(div, `打开专辑 ${albumName}`, () => enterAlbum(albumId, albumSource));
+        const activateAlbum = (event?: Event) => {
+            if (isSearchResultFavoriteTarget(event)) return;
+            enterAlbum(albumId, albumSource);
+        };
+        div.onclick = activateAlbum;
+        makeKeyboardActivatable(div, `打开专辑 ${albumName}`, activateAlbum);
         const publishDate = item.publishTime ? new Date(item.publishTime).toLocaleDateString() : '';
         div.innerHTML = `
             <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative">
                 <img src="${escapeHtmlText(albumImage)}" alt="${escapeHtmlText(albumName)}封面" width="320" height="320" loading="lazy" decoding="async"
                      data-event-error-action="fallback-image"
                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                <button id="album-fav-${escapeHtmlText(albumId)}" class="absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${isAlbumFavorited(albumId, albumSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
+                <button type="button" id="album-fav-${escapeHtmlText(albumId)}" aria-label="${isAlbumFavorited(albumId, albumSource) ? '取消收藏' : '收藏专辑'}" class="search-result-favorite-btn absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${isAlbumFavorited(albumId, albumSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
                         title="${isAlbumFavorited(albumId, albumSource) ? '取消收藏' : '收藏专辑'}"
                         data-event-click-action="search-toggle-album-favorite" data-event-click-args="[${safeInlineString(albumId)}, ${safeInlineString(albumSource)}, ${safeInlineString(albumName)}, ${safeInlineString(item.picUrl || '')}, ${safeInlineString(item.artistName || '')}]" data-event-stop="true">
                     <i class="fas fa-heart text-xs"></i>
@@ -882,6 +921,11 @@ function renderAlbumResults(list) {
                 <span class="text-[10px] t-text-muted ml-2">${escapeHtmlText(publishDate)}</span>
             </div>
         `;
+        const favoriteButton = div.querySelector('.search-result-favorite-btn');
+        favoriteButton?.addEventListener('click', event => {
+            event.stopPropagation();
+            void applyAlbumFavoriteToggle(favoriteButton, [albumId, albumSource, albumName, item.picUrl || '', item.artistName || '']);
+        });
         grid.appendChild(div);
     });
 }
@@ -1041,9 +1085,12 @@ function renderArtistHeader(info, activeTab, order) {
     const nameTransform = isArtistFolded
         ? (isMobile ? 'translate(40px, -30px) scale(0.65)' : 'translate(30px, 0px) scale(0.65)')
         : 'translate(0, 0) scale(1)';
-    const tabsClass = isArtistFolded ? 'mt-1' : '';
+    const tabsClass = '';
+
+    container.classList.add('artist-detail-active');
 
     let headerHtml = `
+        <div id="artist-detail-view" class="artist-detail-view flex flex-1 min-h-0 flex-col overflow-hidden">
         <div id="artist-detail-header" class="relative ${headerPadding} is-folded t-bg-panel/50 border-b t-border-main transition-all duration-500 ease-in-out overflow-hidden group/header" style="${isArtistFolded ? 'min-height: ' + (isMobile ? '0px' : '90px') + ';' : ''}">
             <!-- Small Absolute Back Button -->
             <button data-event-click-action="goBackToSearch" class="absolute top-2 left-2 md:top-4 md:left-4 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-emerald-500/80 hover:bg-emerald-500 text-white transition-all z-30 shadow-md active:scale-90" title="返回搜索">
@@ -1122,6 +1169,7 @@ function renderArtistHeader(info, activeTab, order) {
                 <i class="fas fa-spinner fa-spin text-2xl text-emerald-500"></i>
             </div>
         </div>
+        </div>
     `;
     container.innerHTML = headerHtml;
 }
@@ -1162,8 +1210,7 @@ function toggleArtistFold() {
         collapsible.style.opacity = '0';
         collapsible.style.marginTop = '0';
 
-        tabsBar.classList.remove('mt-8');
-        tabsBar.classList.add('mt-1');
+        tabsBar.classList.remove('mt-8', 'mt-1');
 
         // 响应式偏移
         if (isMobile) {
@@ -1195,8 +1242,7 @@ function toggleArtistFold() {
         collapsible.style.opacity = '1';
         collapsible.style.marginTop = '';
 
-        tabsBar.classList.add('mt-8');
-        tabsBar.classList.remove('mt-1');
+        tabsBar.classList.remove('mt-8', 'mt-1');
 
         name.style.transform = 'translate(0, 0) scale(1)';
         name.style.marginBottom = '';
@@ -1905,6 +1951,7 @@ function getImgUrl(item) {
 // List search logic is now handled by ListSearch service in list_search.js
 function renderResults(list) {
     const container = document.getElementById('search-results');
+    container.classList.remove('artist-detail-active');
     const header = document.getElementById('search-results-header');
     // 搜索歌曲时恢复底部分页栏显示
     const paginationBar = document.getElementById('search-pagination-bar');

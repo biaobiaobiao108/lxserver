@@ -1,4 +1,4 @@
-import { safeImageUrl, safeInlineString } from '../player_security';
+import { escapeHtmlText, safeImageUrl, safeInlineString } from '../player_security';
 
 export interface LibraryFeatureContext {
     getCredential: (key: string) => string | null;
@@ -41,12 +41,36 @@ export function initLibraryFeature(context: LibraryFeatureContext) {
 /** 全局 library 数据 */
 window.libraryData = { artists: [], albums: [] };
 
+type LibraryKind = 'artists' | 'albums';
+
+let libraryLoadSerial = 0;
+let libraryLoadController: AbortController | null = null;
+
+function getActiveLibraryData() {
+    if (isUserLoggedIn() && window.isViewingPublicFavorites && window.myPersonalLibraryData) {
+        return window.myPersonalLibraryData;
+    }
+    return window.libraryData;
+}
+
+function getActiveLibraryList(kind: LibraryKind) {
+    const data = getActiveLibraryData();
+    return Array.isArray(data?.[kind]) ? data[kind] : [];
+}
+window.getActiveLibraryList = getActiveLibraryList;
+
 /** 批量选中的 library 条目（id 集合） */
 window.libraryBatchSelected = new Set();
 window.libraryBatchMode = false; // 'artist' | 'album' | false
 
 /** 从后端加载两个 library 文件（自动感知公开收藏状态） */
 async function loadLibraryData() {
+    libraryLoadController?.abort();
+    const controller = new AbortController();
+    libraryLoadController = controller;
+    const serial = ++libraryLoadSerial;
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+
     try {
         const isPublic = window.isViewingPublicFavorites === true || !isUserLoggedIn();
         let headers = {};
@@ -64,12 +88,22 @@ async function loadLibraryData() {
             headers = getUserAuthHeaders();
         }
 
-        const [ar, al] = await Promise.all([
-            fetch(artistsUrl, { headers }).then(r => r.ok ? r.json() : []),
-            fetch(albumsUrl,  { headers }).then(r => r.ok ? r.json() : [])
+        const [artistsResponse, albumsResponse] = await Promise.all([
+            fetch(artistsUrl, { headers, signal: controller.signal }),
+            fetch(albumsUrl,  { headers, signal: controller.signal })
         ]);
-        window.libraryData.artists = Array.isArray(ar) ? ar : [];
-        window.libraryData.albums  = Array.isArray(al) ? al : [];
+        if (!artistsResponse.ok || !albumsResponse.ok) {
+            throw new Error(`收藏数据加载失败 (${artistsResponse.status}/${albumsResponse.status})`);
+        }
+
+        const [artistsPayload, albumsPayload] = await Promise.all([
+            artistsResponse.json(),
+            albumsResponse.json(),
+        ]);
+        if (serial !== libraryLoadSerial || controller.signal.aborted) return false;
+
+        window.libraryData.artists = Array.isArray(artistsPayload) ? artistsPayload : [];
+        window.libraryData.albums  = Array.isArray(albumsPayload) ? albumsPayload : [];
 
         if (!isPublic && isUserLoggedIn()) {
             window.myPersonalLibraryData = {
@@ -81,12 +115,26 @@ async function loadLibraryData() {
         // 刷新侧边栏数量
         refreshLibrarySidebarCount();
         if (window.currentViewingListId === '__lib_artists__' && typeof renderLibraryArtists === 'function') {
-            renderLibraryArtists(window.libraryData.artists);
+            renderLibraryArtists(getActiveLibraryList('artists'));
         } else if (window.currentViewingListId === '__lib_albums__' && typeof renderLibraryAlbums === 'function') {
-            renderLibraryAlbums(window.libraryData.albums);
+            renderLibraryAlbums(getActiveLibraryList('albums'));
         }
+        return true;
     } catch (e) {
-        console.warn('[Library] 加载失败:', e);
+        if (serial !== libraryLoadSerial) return false;
+        if (e?.name === 'AbortError') {
+            console.warn('[Library] 加载超时或已取消');
+        } else {
+            console.warn('[Library] 加载失败:', e);
+        }
+        const currentKind = window.currentViewingListId === '__lib_artists__'
+            ? 'artists'
+            : window.currentViewingListId === '__lib_albums__' ? 'albums' : null;
+        if (currentKind) renderLibraryLoadError(currentKind);
+        return false;
+    } finally {
+        window.clearTimeout(timeout);
+        if (serial === libraryLoadSerial) libraryLoadController = null;
     }
 }
 window.loadLibraryData = loadLibraryData;
@@ -96,8 +144,8 @@ window.loadLibraryData = loadLibraryData;
 function refreshLibrarySidebarCount() {
     const artCount = document.getElementById('lib-artist-count');
     const albCount = document.getElementById('lib-album-count');
-    if (artCount) artCount.textContent = window.libraryData.artists.length;
-    if (albCount) albCount.textContent = window.libraryData.albums.length;
+    if (artCount) artCount.textContent = getActiveLibraryList('artists').length;
+    if (albCount) albCount.textContent = getActiveLibraryList('albums').length;
 }
 
 /** 持久化 artists 到后端（自动感知公开收藏状态） */
@@ -115,9 +163,15 @@ async function saveLibraryArtists(customList = null) {
         } else {
             headers = { 'Content-Type': 'application/json', ...getUserAuthHeaders() };
         }
-        await fetch(url, { method: 'POST', headers, body: JSON.stringify(listToSave) });
+        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(listToSave) });
+        if (!response.ok) throw new Error(await response.text());
         refreshLibrarySidebarCount();
-    } catch (e) { console.error('[Library] 保存歌手失败:', e); }
+        return true;
+    } catch (e) {
+        console.error('[Library] 保存歌手失败:', e);
+        showError(`保存收藏歌手失败：${e?.message || '请稍后重试'}`);
+        return false;
+    }
 }
 
 /** 持久化 albums 到后端（自动感知公开收藏状态） */
@@ -135,9 +189,15 @@ async function saveLibraryAlbums(customList = null) {
         } else {
             headers = { 'Content-Type': 'application/json', ...getUserAuthHeaders() };
         }
-        await fetch(url, { method: 'POST', headers, body: JSON.stringify(listToSave) });
+        const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(listToSave) });
+        if (!response.ok) throw new Error(await response.text());
         refreshLibrarySidebarCount();
-    } catch (e) { console.error('[Library] 保存专辑失败:', e); }
+        return true;
+    } catch (e) {
+        console.error('[Library] 保存专辑失败:', e);
+        showError(`保存收藏专辑失败：${e?.message || '请稍后重试'}`);
+        return false;
+    }
 }
 
 
@@ -147,31 +207,45 @@ async function toggleArtistFavorite(id, source, name, picUrl) {
         const targetList = (window.isViewingPublicFavorites && window.myPersonalLibraryData)
             ? window.myPersonalLibraryData.artists
             : window.libraryData.artists;
+        const previousList = [...targetList];
 
         const idx = targetList.findIndex(a => String(a.id) === String(id) && a.source === source);
         if (idx >= 0) {
             targetList.splice(idx, 1);
-            await saveLibraryArtists(targetList);
+            if (!await saveLibraryArtists(targetList)) {
+                targetList.splice(0, targetList.length, ...previousList);
+                return true;
+            }
             showInfo(`已取消收藏歌手「${name}」`);
             return false;
         } else {
             targetList.push({ id, source, name, picUrl: picUrl || '' });
-            await saveLibraryArtists(targetList);
+            if (!await saveLibraryArtists(targetList)) {
+                targetList.splice(0, targetList.length, ...previousList);
+                return false;
+            }
             showSuccess(`已收藏歌手「${name}」`);
             return true;
         }
     } else {
         if (!(await requireAdminForOpenWrite('修改公开收藏歌手'))) return false;
         const list = window.libraryData.artists;
+        const previousList = [...list];
         const idx = list.findIndex(a => String(a.id) === String(id) && a.source === source);
         if (idx >= 0) {
             list.splice(idx, 1);
-            await saveLibraryArtists(list);
+            if (!await saveLibraryArtists(list)) {
+                list.splice(0, list.length, ...previousList);
+                return true;
+            }
             showInfo(`已取消公开收藏歌手「${name}」`);
             return false;
         } else {
             list.push({ id, source, name, picUrl: picUrl || '' });
-            await saveLibraryArtists(list);
+            if (!await saveLibraryArtists(list)) {
+                list.splice(0, list.length, ...previousList);
+                return false;
+            }
             showSuccess(`已收藏公开歌手「${name}」`);
             return true;
         }
@@ -181,9 +255,7 @@ window.toggleArtistFavorite = toggleArtistFavorite;
 
 /** 检查歌手是否已收藏 */
 function isArtistFavorited(id, source) {
-    const list = (isUserLoggedIn() && window.isViewingPublicFavorites && window.myPersonalLibraryData)
-        ? window.myPersonalLibraryData.artists
-        : window.libraryData.artists;
+    const list = getActiveLibraryList('artists');
     return list.some(a => String(a.id) === String(id) && a.source === source);
 }
 window.isArtistFavorited = isArtistFavorited;
@@ -194,11 +266,15 @@ async function toggleAlbumFavorite(id, source, name, picUrl, artistName) {
         const targetList = (window.isViewingPublicFavorites && window.myPersonalLibraryData)
             ? window.myPersonalLibraryData.albums
             : window.libraryData.albums;
+        const previousList = [...targetList];
 
         const idx = targetList.findIndex(a => String(a.id) === String(id) && a.source === source);
         if (idx >= 0) {
             targetList.splice(idx, 1);
-            await saveLibraryAlbums(targetList);
+            if (!await saveLibraryAlbums(targetList)) {
+                targetList.splice(0, targetList.length, ...previousList);
+                return true;
+            }
             showInfo(`已取消收藏专辑「${name}」`);
             return false;
         } else {
@@ -211,17 +287,24 @@ async function toggleAlbumFavorite(id, source, name, picUrl, artistName) {
                 interval: '00:00',
                 meta: { albumId: id, picUrl: picUrl || '', albumName: name }
             });
-            await saveLibraryAlbums(targetList);
+            if (!await saveLibraryAlbums(targetList)) {
+                targetList.splice(0, targetList.length, ...previousList);
+                return false;
+            }
             showSuccess(`已收藏专辑「${name}」`);
             return true;
         }
     } else {
         if (!(await requireAdminForOpenWrite('修改公开收藏专辑'))) return false;
         const list = window.libraryData.albums;
+        const previousList = [...list];
         const idx = list.findIndex(a => String(a.id) === String(id) && a.source === source);
         if (idx >= 0) {
             list.splice(idx, 1);
-            await saveLibraryAlbums(list);
+            if (!await saveLibraryAlbums(list)) {
+                list.splice(0, list.length, ...previousList);
+                return true;
+            }
             showInfo(`已取消公开收藏专辑「${name}」`);
             return false;
         } else {
@@ -234,7 +317,10 @@ async function toggleAlbumFavorite(id, source, name, picUrl, artistName) {
                 interval: '00:00',
                 meta: { albumId: id, picUrl: picUrl || '', albumName: name }
             });
-            await saveLibraryAlbums(list);
+            if (!await saveLibraryAlbums(list)) {
+                list.splice(0, list.length, ...previousList);
+                return false;
+            }
             showSuccess(`已收藏公开专辑「${name}」`);
             return true;
         }
@@ -247,8 +333,8 @@ window.toggleAlbumFavorite = toggleAlbumFavorite;
  * [新增] 当加载专辑详情后，更新收藏库中该专辑的元数据（如音质列表、时长等）
  */
 async function updateAlbumLibraryMeta(id, source, data) {
-    if (!window.libraryData || !window.libraryData.albums) return;
-    const album = window.libraryData.albums.find(a => String(a.id) === String(id) && a.source === source);
+    const albums = getActiveLibraryList('albums');
+    const album = albums.find(a => String(a.id) === String(id) && a.source === source);
     if (!album) return;
 
     const info = data.info || {};
@@ -276,7 +362,7 @@ async function updateAlbumLibraryMeta(id, source, data) {
     }
 
     try {
-        await saveLibraryAlbums();
+        await saveLibraryAlbums(albums);
         console.log(`[Library] 已成功丰富专辑「${album.name}」的歌曲列表 (${songList.length} 首)`);
     } catch (e) {
         console.error('[Library] 自动更新专辑元数据失败:', e);
@@ -288,8 +374,8 @@ window.updateAlbumLibraryMeta = updateAlbumLibraryMeta;
  * [新增] 一键同步所有收藏专辑的歌曲列表
  */
 async function syncAllLibraryAlbums() {
-    if (!window.libraryData || !window.libraryData.albums.length) return;
-    const list = window.libraryData.albums;
+    const list = getActiveLibraryList('albums');
+    if (!list.length) return;
 
     const btn = document.getElementById('sync-all-albums-btn');
     if (!btn) return;
@@ -320,7 +406,7 @@ async function syncAllLibraryAlbums() {
         showSuccess(`同步完成！成功更新 ${successCount} 个专辑的数据。`);
         // 重新渲染当前视图
         if (window.currentSearchScope === 'lib_albums') {
-            renderLibraryAlbums(window.libraryData.albums);
+            renderLibraryAlbums(getActiveLibraryList('albums'));
         }
     } catch (err) {
         showError('全量同步过程中发生异常');
@@ -334,12 +420,44 @@ window.syncAllLibraryAlbums = syncAllLibraryAlbums;
 
 /** 检查专辑是否已收藏 */
 function isAlbumFavorited(id, source) {
-    const list = (isUserLoggedIn() && window.isViewingPublicFavorites && window.myPersonalLibraryData)
-        ? window.myPersonalLibraryData.albums
-        : window.libraryData.albums;
+    const list = getActiveLibraryList('albums');
     return list.some(a => String(a.id) === String(id) && a.source === source);
 }
 window.isAlbumFavorited = isAlbumFavorited;
+
+function renderLibraryLoading(kind: LibraryKind) {
+    const container = document.getElementById('search-results');
+    if (!container) return;
+    container.classList.remove('artist-detail-active');
+    container.innerHTML = `
+        <div class="flex h-full flex-col items-center justify-center gap-3 t-text-muted">
+            <i class="fas fa-spinner fa-spin text-2xl text-emerald-500" aria-hidden="true"></i>
+            <p>正在加载收藏${kind === 'artists' ? '歌手' : '专辑'}...</p>
+        </div>`;
+}
+
+function renderLibraryLoadError(kind: LibraryKind) {
+    const container = document.getElementById('search-results');
+    if (!container) return;
+    container.classList.remove('artist-detail-active');
+    container.innerHTML = `
+        <div class="flex h-full flex-col items-center justify-center gap-3 p-6 text-center t-text-muted">
+            <i class="fas fa-exclamation-triangle text-2xl text-amber-500" aria-hidden="true"></i>
+            <p>收藏${kind === 'artists' ? '歌手' : '专辑'}加载失败，请重试。</p>
+            <button type="button" data-event-click-action="reloadLibraryData"
+                data-event-click-args="[&quot;${kind}&quot;]"
+                class="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-600">
+                重新加载
+            </button>
+        </div>`;
+}
+
+async function reloadLibraryData(kind: LibraryKind) {
+    if (kind === 'artists') renderLibraryLoading('artists');
+    else renderLibraryLoading('albums');
+    await loadLibraryData();
+}
+window.reloadLibraryData = reloadLibraryData;
 
 /**
  * 渲染收藏歌手列表（带批量操作支持）
@@ -347,6 +465,7 @@ window.isAlbumFavorited = isAlbumFavorited;
  */
 function renderLibraryArtists(list) {
     const container = document.getElementById('search-results');
+    container.classList.remove('artist-detail-active');
     const header = document.getElementById('search-results-header');
     const paginationBar = document.getElementById('search-pagination-bar');
     if (header) header.classList.add('hidden');
@@ -433,6 +552,7 @@ window.renderLibraryArtists = renderLibraryArtists;
 /** 渲染收藏专辑列表（带批量操作支持） */
 function renderLibraryAlbums(list) {
     const container = document.getElementById('search-results');
+    container.classList.remove('artist-detail-active');
     const header = document.getElementById('search-results-header');
     const paginationBar = document.getElementById('search-pagination-bar');
     if (header) header.classList.add('hidden');
@@ -533,7 +653,7 @@ function renderLibraryAlbums(list) {
 window.renderLibraryAlbums = renderLibraryAlbums;
 
 /** 点击侧边栏"收藏歌手"，切换到展示视图 */
-function handleArtistLibraryClick() {
+async function handleArtistLibraryClick() {
     leaveSearchNavigation?.();
     exitListSecondaryModes && exitListSecondaryModes();
     document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
@@ -560,12 +680,15 @@ function handleArtistLibraryClick() {
 
     setCurrentSearchScope('lib_artists');
     window.currentViewingListId = '__lib_artists__';
-    renderLibraryArtists(window.libraryData.artists);
+    const cachedArtists = getActiveLibraryList('artists');
+    if (cachedArtists.length > 0) renderLibraryArtists(cachedArtists);
+    else renderLibraryLoading('artists');
+    await loadLibraryData();
 }
 window.handleArtistLibraryClick = handleArtistLibraryClick;
 
 /** 点击侧边栏"收藏专辑"，切换到展示视图 */
-function handleAlbumLibraryClick() {
+async function handleAlbumLibraryClick() {
     leaveSearchNavigation?.();
     exitListSecondaryModes && exitListSecondaryModes();
     document.querySelectorAll('[id^="view-"]').forEach(el => el.classList.add('hidden'));
@@ -592,7 +715,10 @@ function handleAlbumLibraryClick() {
 
     setCurrentSearchScope('lib_albums');
     window.currentViewingListId = '__lib_albums__';
-    renderLibraryAlbums(window.libraryData.albums);
+    const cachedAlbums = getActiveLibraryList('albums');
+    if (cachedAlbums.length > 0) renderLibraryAlbums(cachedAlbums);
+    else renderLibraryLoading('albums');
+    await loadLibraryData();
 }
 window.handleAlbumLibraryClick = handleAlbumLibraryClick;
 
@@ -633,7 +759,7 @@ function toggleLibArtistBatchSelect(id) {
     updateLibArtistBatchCount();
 }
 function libSelectAllArtists() {
-    window.libraryData.artists.forEach(a => window.libraryBatchSelected.add(String(a.id)));
+    getActiveLibraryList('artists').forEach(a => window.libraryBatchSelected.add(String(a.id)));
     document.querySelectorAll('#lib-artist-grid .lib-batch-check').forEach(el => { el.classList.remove('hidden'); el.classList.add('flex'); });
     updateLibArtistBatchCount();
 }
@@ -653,20 +779,26 @@ async function libDeleteSelectedArtists() {
     }
     const confirmed = await showSelect('删除收藏歌手', `确定删除选中的 ${window.libraryBatchSelected.size} 位歌手吗？`, { danger: true });
     if (!confirmed) return;
-    window.libraryData.artists = window.libraryData.artists.filter(a => !window.libraryBatchSelected.has(String(a.id)));
-    await saveLibraryArtists();
+    const list = getActiveLibraryList('artists');
+    const previousList = [...list];
+    list.splice(0, list.length, ...list.filter(a => !window.libraryBatchSelected.has(String(a.id))));
+    const saved = await saveLibraryArtists(list);
+    if (!saved) list.splice(0, list.length, ...previousList);
     exitLibraryArtistBatch();
-    renderLibraryArtists(window.libraryData.artists);
-    showSuccess('已删除所选歌手');
+    renderLibraryArtists(getActiveLibraryList('artists'));
+    if (saved) showSuccess('已删除所选歌手');
 }
 async function removeLibraryArtist(id, source) {
     if (window.isViewingPublicFavorites || !isUserLoggedIn()) {
         if (!(await requireAdminForOpenWrite('删除公开收藏歌手'))) return;
     }
-    window.libraryData.artists = window.libraryData.artists.filter(a => !(String(a.id) === String(id) && a.source === source));
-    await saveLibraryArtists();
-    renderLibraryArtists(window.libraryData.artists);
-    showInfo('已取消收藏');
+    const list = getActiveLibraryList('artists');
+    const previousList = [...list];
+    list.splice(0, list.length, ...list.filter(a => !(String(a.id) === String(id) && a.source === source)));
+    const saved = await saveLibraryArtists(list);
+    if (!saved) list.splice(0, list.length, ...previousList);
+    renderLibraryArtists(getActiveLibraryList('artists'));
+    if (saved) showInfo('已取消收藏');
 }
 window.enterLibraryArtistBatch = enterLibraryArtistBatch;
 window.exitLibraryArtistBatch = exitLibraryArtistBatch;
@@ -709,7 +841,7 @@ function toggleLibAlbumBatchSelect(id) {
     updateLibAlbumBatchCount();
 }
 function libSelectAllAlbums() {
-    window.libraryData.albums.forEach(a => window.libraryBatchSelected.add(String(a.id)));
+    getActiveLibraryList('albums').forEach(a => window.libraryBatchSelected.add(String(a.id)));
     document.querySelectorAll('#lib-album-grid .lib-batch-check').forEach(el => { el.classList.remove('hidden'); el.classList.add('flex'); });
     updateLibAlbumBatchCount();
 }
@@ -729,20 +861,26 @@ async function libDeleteSelectedAlbums() {
     }
     const confirmed = await showSelect('删除收藏专辑', `确定删除选中的 ${window.libraryBatchSelected.size} 张专辑吗？`, { danger: true });
     if (!confirmed) return;
-    window.libraryData.albums = window.libraryData.albums.filter(a => !window.libraryBatchSelected.has(String(a.id)));
-    await saveLibraryAlbums();
+    const list = getActiveLibraryList('albums');
+    const previousList = [...list];
+    list.splice(0, list.length, ...list.filter(a => !window.libraryBatchSelected.has(String(a.id))));
+    const saved = await saveLibraryAlbums(list);
+    if (!saved) list.splice(0, list.length, ...previousList);
     exitLibraryAlbumBatch();
-    renderLibraryAlbums(window.libraryData.albums);
-    showSuccess('已删除所选专辑');
+    renderLibraryAlbums(getActiveLibraryList('albums'));
+    if (saved) showSuccess('已删除所选专辑');
 }
 async function removeLibraryAlbum(id, source) {
     if (window.isViewingPublicFavorites || !isUserLoggedIn()) {
         if (!(await requireAdminForOpenWrite('删除公开收藏专辑'))) return;
     }
-    window.libraryData.albums = window.libraryData.albums.filter(a => !(String(a.id) === String(id) && a.source === source));
-    await saveLibraryAlbums();
-    renderLibraryAlbums(window.libraryData.albums);
-    showInfo('已取消收藏');
+    const list = getActiveLibraryList('albums');
+    const previousList = [...list];
+    list.splice(0, list.length, ...list.filter(a => !(String(a.id) === String(id) && a.source === source)));
+    const saved = await saveLibraryAlbums(list);
+    if (!saved) list.splice(0, list.length, ...previousList);
+    renderLibraryAlbums(getActiveLibraryList('albums'));
+    if (saved) showInfo('已取消收藏');
 }
 
 window.enterLibraryAlbumBatch = enterLibraryAlbumBatch;

@@ -32,10 +32,19 @@ const isPrivateIpv4 = (value: string): boolean => {
 }
 
 const isPrivateIpv6 = (value: string): boolean => {
-  const normalized = value.toLowerCase().replace(/^\[|\]$/g, '').split('%')[0]
-  if (normalized.includes('.')) {
-    const mapped = normalized.slice(normalized.lastIndexOf(':') + 1)
-    if (isPrivateIpv4(mapped)) return true
+  const address = value.replace(/^\[|\]$/g, '').split('%')[0]
+  let normalized: string
+  try {
+    // Canonicalize expanded and dotted IPv4-mapped IPv6 forms alike.
+    normalized = new URL(`http://[${address}]/`).hostname.slice(1, -1)
+  } catch {
+    return true
+  }
+  const mapped = normalized.match(/^::ffff:([\da-f]+):([\da-f]+)$/)
+  if (mapped) {
+    const high = parseInt(mapped[1], 16)
+    const low = parseInt(mapped[2], 16)
+    return isPrivateIpv4(`${high >> 8}.${high & 255}.${low >> 8}.${low & 255}`)
   }
   return normalized === '::' || normalized === '::1' || normalized.startsWith('fc') || normalized.startsWith('fd')
     || /^fe[89ab]/.test(normalized) || normalized.startsWith('ff')
@@ -56,7 +65,7 @@ const isSyntheticDnsAddress = (value: string): boolean => {
 }
 
 const isPrivateAddress = (value: string): boolean => {
-  if (value.includes('.')) return isPrivateIpv4(value)
+  if (isIP(value) === 4) return isPrivateIpv4(value)
   return isPrivateIpv6(value)
 }
 

@@ -5,7 +5,4 @@ module.exports = {
     './frontend/admin/src/**/*.{ts,tsx}',
     './public/js/**/*.js',
   ],
-  corePlugins: {
-    preflight: false,
-  },
 };

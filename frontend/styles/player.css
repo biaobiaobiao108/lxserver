@@ -1,3 +1,2 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@config "../../tailwind.player.config.cjs";
+@import "tailwindcss";

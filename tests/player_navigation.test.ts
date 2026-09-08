@@ -114,10 +114,15 @@ describe('Player Navigation and State Restoration Safety', () => {
         for (const source of rendererSources) {
             expect(source).toContain('player-track-grid');
             expect(source).toContain('player-track-actions');
+            expect(source).toContain('player-motion-item');
         }
+        expect(rendererSources[0]).toContain('hot-search-item player-motion-item');
+        expect(rendererSources[2]).toContain('lb-board-item player-motion-item');
+        expect(rendererSources[0]).toContain("div.className = 'player-motion-item group flex flex-col");
     });
 
     it('search detail views keep one local track header and preserve navigation', () => {
+        const playerContent = fs.readFileSync(playerSrcPath, 'utf8');
         const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
         const css = fs.readFileSync(playerCssPath, 'utf8');
 
@@ -129,6 +134,9 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(searchContent).toContain('renderTrackListHeader({ extraClass:');
         expect(searchContent).toContain('container.insertAdjacentHTML(\'beforeend\', emptyState)');
         expect(searchContent).toContain('paginationBar.classList.toggle(\'hidden\', searchDetailOpen)');
+        expect(playerContent).toContain('transitionPlayerView(activeView, getPlayerViewDirection(tabId))');
+        expect(playerContent).toContain('startViewTransition.call(document');
+        expect(playerContent).toContain('types: [direction]');
         expect(css).toContain('#search-results-header.hidden');
         expect(css).toContain('display: none !important');
         expect(css).toContain('.player-detail-list-toolbar');
@@ -145,16 +153,38 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(artistSongsSection).toContain('<span class="index-num">${index + 1}</span>');
         expect(artistSongsSection).not.toContain('group-hover:block');
         expect(searchContent).toContain('class="artist-detail-tabs-bar flex items-center');
-        expect(searchContent).toContain('style="min-height: 48px; height: 48px;"');
+        expect(searchContent).toContain('style="min-height: 40px; height: 40px;"');
         expect(searchContent).toContain('class="artist-albums-grid p-2 md:p-4');
         expect(css).toContain('#artist-tabs-bar');
-        expect(css).toContain('block-size: 3rem');
+        expect(css).toContain('block-size: 2.5rem');
+        expect(css).toContain('align-items: center');
+        expect(css).toContain('padding-block: 0');
         expect(css).toContain('.artist-albums-grid');
         expect(css).toContain('grid-template-columns: repeat(auto-fill, minmax(10rem, 13.75rem))');
         expect(css).toContain('max-inline-size: 13.75rem');
         expect(css).toContain('#main-sidebar nav::-webkit-scrollbar');
         expect(css).toContain('scrollbar-width: none');
         expect(css).toContain('scrollbar-gutter: auto');
+    });
+
+    it('player motion is progressive, directional, and reduced-motion aware', () => {
+        const source = fs.readFileSync(playerSrcPath, 'utf8');
+        const css = fs.readFileSync(playerCssPath, 'utf8');
+
+        expect(source).toContain('function prefersReducedPlayerMotion()');
+        expect(source).toContain('function transitionPlayerView');
+        expect(source).toContain('updatePlayerViewVisibility(activeView, direction, true)');
+        expect(css).toContain('--motion-duration-panel: 320ms');
+        expect(css).toContain('--motion-ease-emphasized');
+        expect(css).toContain('@keyframes player-view-enter-forward');
+        expect(css).toContain('@keyframes player-view-enter-backward');
+        expect(css).toContain('@keyframes player-list-item-enter');
+        expect(css).toContain('.player-detail-content-entering');
+        expect(css).toContain('@supports (view-transition-name: none)');
+        expect(css).toContain('active-view-transition-type(forward)');
+        expect(css).toContain('prefers-reduced-motion: reduce');
+        expect(css).toContain('animation: none !important');
+        expect(css).toContain('transition-property: transform, box-shadow, background-color, border-color, color, opacity');
     });
 
     it('mobile player footer uses explicit rows and keeps every control touchable', () => {

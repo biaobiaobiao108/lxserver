@@ -1343,6 +1343,73 @@ function changeQualityPreference(quality) {
 }
 
 
+type PlayerViewTransitionDirection = 'forward' | 'backward';
+
+type PlayerViewTransitionDocument = Document & {
+    startViewTransition?: (options: {
+        update: () => void;
+        types?: string[];
+    }) => unknown;
+};
+
+const PLAYER_VIEW_ORDER = ['search', 'songlist', 'leaderboard', 'localmusic', 'settings', 'about'];
+const PLAYER_MAIN_VIEW_SELECTOR = '#view-search, #view-songlist, #view-leaderboard, #view-localmusic, #view-settings, #view-about';
+const PLAYER_VIEW_MOTION_DURATION = 320;
+
+function prefersReducedPlayerMotion() {
+    return typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function getPlayerViewDirection(tabId: string): PlayerViewTransitionDirection {
+    const currentView = Array.from(document.querySelectorAll<HTMLElement>(PLAYER_MAIN_VIEW_SELECTOR))
+        .find(view => !view.classList.contains('hidden'));
+    const currentTabId = currentView?.id.replace(/^view-/, '');
+    const currentIndex = currentTabId ? PLAYER_VIEW_ORDER.indexOf(currentTabId) : -1;
+    const targetIndex = PLAYER_VIEW_ORDER.indexOf(tabId);
+
+    return targetIndex >= currentIndex ? 'forward' : 'backward';
+}
+
+function updatePlayerViewVisibility(activeView: HTMLElement, direction: PlayerViewTransitionDirection, fallbackMotion: boolean) {
+    document.querySelectorAll<HTMLElement>(PLAYER_MAIN_VIEW_SELECTOR).forEach(view => {
+        view.classList.remove('player-view-entering');
+        if (view !== activeView) {
+            view.classList.add('hidden', 'opacity-0');
+            view.classList.remove('opacity-100');
+        }
+    });
+
+    activeView.dataset.playerViewDirection = direction;
+    activeView.classList.remove('hidden', 'opacity-0');
+    activeView.classList.add('opacity-100');
+
+    if (fallbackMotion && !prefersReducedPlayerMotion()) {
+        activeView.classList.add('player-view-entering');
+        window.setTimeout(() => {
+            if (activeView.isConnected) activeView.classList.remove('player-view-entering');
+        }, PLAYER_VIEW_MOTION_DURATION);
+    }
+}
+
+function transitionPlayerView(activeView: HTMLElement, direction: PlayerViewTransitionDirection) {
+    const startViewTransition = (document as PlayerViewTransitionDocument).startViewTransition;
+    if (!prefersReducedPlayerMotion() && typeof startViewTransition === 'function') {
+        try {
+            startViewTransition.call(document, {
+                update: () => updatePlayerViewVisibility(activeView, direction, false),
+                types: [direction],
+            });
+            return;
+        } catch {
+            // Fall through to the CSS animation path when the browser exposes
+            // an incompatible or partially implemented View Transitions API.
+        }
+    }
+
+    updatePlayerViewVisibility(activeView, direction, true);
+}
+
 // Tab Switching
 function switchTab(tabId, preserveSearchNavigation = false) {
     // Favorites is a sidebar group toggle, not a main content view.
@@ -1355,23 +1422,20 @@ function switchTab(tabId, preserveSearchNavigation = false) {
     // 路由恢复时保留当前 History 项，否则会把正在恢复的详情替换掉。
     if (!preserveSearchNavigation) clearSearchNavigation();
 
-    document.querySelectorAll('[id^="view-"]').forEach(el => {
-        el.classList.add('hidden');
-        el.classList.remove('opacity-100');
-        el.classList.add('opacity-0');
-    });
-
     const activeView = document.getElementById(`view-${tabId}`);
     if (!activeView) return;
 
-    activeView.classList.remove('hidden');
-    // small delay to allow display block to apply before opacity transition
-    setTimeout(() => {
-        activeView.classList.remove('opacity-0');
-        activeView.classList.add('opacity-100');
+    transitionPlayerView(activeView, getPlayerViewDirection(tabId));
+    if (!prefersReducedPlayerMotion()) {
+        window.setTimeout(() => {
+            if (!activeView.isConnected) return;
+            // [新增] 切换 Tab 时顺便检查并更新一次用户状态
+            if (typeof updateUserUI === 'function') updateUserUI();
+        }, 10);
+    } else {
         // [新增] 切换 Tab 时顺便检查并更新一次用户状态
         if (typeof updateUserUI === 'function') updateUserUI();
-    }, 10);
+    }
 
     // [新增] 切换到设置页面时刷新一次管理员状态和设置项 UI
     if (tabId === 'settings') {
@@ -4944,6 +5008,8 @@ window.getCurrentActiveListId = function () {
 // ========================================
 
 // Mobile Sidebar Toggle
+let sidebarCloseTimer: number | null = null;
+
 function toggleSidebar(forceState?: boolean) {
     const sidebar = document.getElementById('main-sidebar');
     const backdrop = document.getElementById('mobile-sidebar-backdrop');
@@ -4952,19 +5018,41 @@ function toggleSidebar(forceState?: boolean) {
 
     const isCurrentlyClosed = sidebar.classList.contains('-translate-x-full');
     const shouldOpen = typeof forceState === 'boolean' ? forceState : isCurrentlyClosed;
+    const motionDuration = prefersReducedPlayerMotion() ? 0 : 280;
+
+    if (sidebarCloseTimer !== null) {
+        window.clearTimeout(sidebarCloseTimer);
+        sidebarCloseTimer = null;
+    }
 
     if (shouldOpen) {
         // Open
         sidebar.classList.remove('-translate-x-full');
         sidebar.classList.add('translate-x-0');
-        if (backdrop) backdrop.classList.remove('hidden');
+        if (backdrop) {
+            backdrop.classList.remove('hidden');
+            backdrop.classList.remove('is-visible');
+            requestAnimationFrame(() => {
+                if (sidebar.classList.contains('translate-x-0')) backdrop.classList.add('is-visible');
+            });
+        }
         if (menuBtn) menuBtn.setAttribute('aria-expanded', 'true');
         document.body.classList.add('sidebar-open');
     } else {
         // Close
         sidebar.classList.remove('translate-x-0');
         sidebar.classList.add('-translate-x-full');
-        if (backdrop) backdrop.classList.add('hidden');
+        if (backdrop) {
+            backdrop.classList.remove('is-visible');
+            if (motionDuration === 0) {
+                backdrop.classList.add('hidden');
+            } else {
+                sidebarCloseTimer = window.setTimeout(() => {
+                    sidebarCloseTimer = null;
+                    if (sidebar.classList.contains('-translate-x-full')) backdrop.classList.add('hidden');
+                }, motionDuration);
+            }
+        }
         if (menuBtn) menuBtn.setAttribute('aria-expanded', 'false');
         document.body.classList.remove('sidebar-open');
     }
@@ -4978,8 +5066,16 @@ window.addEventListener('resize', () => {
 
     if (sidebar && window.innerWidth >= 1025) {
         // Reset styles for desktop
+        if (sidebarCloseTimer !== null) {
+            window.clearTimeout(sidebarCloseTimer);
+            sidebarCloseTimer = null;
+        }
         sidebar.classList.remove('-translate-x-full', 'translate-x-0');
-        if (backdrop) backdrop.classList.add('hidden');
+        if (backdrop) {
+            backdrop.classList.remove('is-visible');
+            backdrop.classList.add('hidden');
+        }
+        document.body.classList.remove('sidebar-open');
     } else if (sidebar) {
         // Ensure default closed state for mobile if not explicitly open
         if (!sidebar.classList.contains('translate-x-0')) {

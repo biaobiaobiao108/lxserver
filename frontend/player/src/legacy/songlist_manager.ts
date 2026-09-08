@@ -461,8 +461,8 @@ export function createSongListManager(context: SongListManagerContext) {
             return;
         }
 
-        container.innerHTML = currentState.list.map(item => `
-            <div role="button" tabindex="0" aria-label="打开歌单 ${item.name || ''}" class="playlist-card group cursor-pointer"
+        container.innerHTML = currentState.list.map((item, index) => `
+            <div role="button" tabindex="0" aria-label="打开歌单 ${item.name || ''}" class="playlist-card player-motion-item group cursor-pointer" style="--player-motion-index: ${Math.min(index, 7)};"
                  data-songlist-action="open-detail" data-id="${item.id}" data-source="${currentState.source}">
                 <div class="relative aspect-square overflow-hidden rounded-2xl shadow-md transition-all group-hover:shadow-xl group-hover:-translate-y-1">
                     <img data-src="${item.img || '/music/assets/logo.svg'}" src="/music/assets/logo.svg" alt="${item.name || '歌单'}封面" width="320" height="320" loading="lazy" decoding="async"
@@ -595,7 +595,7 @@ export function createSongListManager(context: SongListManagerContext) {
             // - Current Match: Strong border and subtle background
             // - Matched: Subtle background
             // - Selected: Theme background (will be defined in CSS)
-            let rowClass = 'player-track-grid player-track-grid--network p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer ';
+            let rowClass = 'player-track-grid player-track-grid--network player-motion-item p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer ';
             if (isCurrentMatch) rowClass += 'search-current ';
             else if (isMatched) rowClass += 'search-match ';
             if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
@@ -608,7 +608,7 @@ export function createSongListManager(context: SongListManagerContext) {
             return `
             <div id="sl-row-${index}" role="button" tabindex="0" aria-label="${window.batchMode ? `${selectionLabel} ${song.name || '未命名歌曲'}` : `播放 ${song.name || '未命名歌曲'}`}" ${selectionAttributes}
                  data-selection-state="${isSelected ? 'selected' : 'unselected'}"
-                 class="${rowClass}" data-song-id="${String(song.id)}"
+                 class="${rowClass}" style="--player-motion-index: ${Math.min(displayIdx, 7)};" data-song-id="${String(song.id)}"
                  data-songlist-action="row" data-index="${index}">
                 <div class="player-track-index text-center text-gray-400 font-mono text-xs flex items-center justify-center">
                     ${window.batchMode ? `

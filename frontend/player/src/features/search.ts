@@ -611,7 +611,7 @@ function renderHotSearch(data) {
                     const escapedKeyword = escapeHtmlText(keywordText);
                     return `
                     <button data-event-click-action="handleHotSearchClick" data-event-click-args="[${safeInlineString(keywordText)}]"
-                            class="hot-search-item group flex items-center px-2.5 py-3 md:p-3 t-bg-panel hover:bg-emerald-50 border t-border-main hover:border-emerald-400 rounded-lg transition-all shadow-sm hover:shadow-md overflow-hidden h-14">
+                            class="hot-search-item player-motion-item group flex items-center px-2.5 py-3 md:p-3 t-bg-panel hover:bg-emerald-50 border t-border-main hover:border-emerald-400 rounded-lg transition-all shadow-sm hover:shadow-md overflow-hidden h-14" style="--player-motion-index: ${Math.min(index, 7)};">
                         <span class="rank flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold mr-3 ${index < 3 ? 'bg-gradient-to-r from-orange-400 to-red-500 text-white' : 'bg-gray-100 text-gray-500'
         }">
                             ${index + 1}
@@ -807,7 +807,8 @@ function renderSingerResults(list) {
         const singerName = String(singer.name || '未命名歌手');
         const singerImage = safeImageUrl(singer.picUrl);
         const div = document.createElement('div');
-        div.className = 'group flex flex-col items-center p-2 md:p-4 rounded-2xl transition-all hover:t-bg-panel hover:shadow-md cursor-pointer border border-transparent hover:border-emerald-500/30';
+        div.className = 'player-motion-item group flex flex-col items-center p-2 md:p-4 rounded-2xl transition-all hover:t-bg-panel hover:shadow-md cursor-pointer border border-transparent hover:border-emerald-500/30';
+        div.style.setProperty('--player-motion-index', String(Math.min(idx, 7)));
         div.dataset.singerId = singerId;
         div.dataset.singerSource = singerSource;
         div.onclick = () => enterArtist(singerId, singerSource);
@@ -853,13 +854,14 @@ function renderAlbumResults(list) {
 
     container.innerHTML = '<div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 p-6"></div>';
     const grid = container.querySelector('div');
-    list.forEach((item) => {
+    list.forEach((item, index) => {
         const albumId = String(item.id ?? '');
         const albumSource = String(item.source || 'wy');
         const albumName = String(item.name || '未命名专辑');
         const albumImage = safeImageUrl(item.picUrl);
         const div = document.createElement('div');
-        div.className = 'group flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20';
+        div.className = 'player-motion-item group flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20';
+        div.style.setProperty('--player-motion-index', String(Math.min(index, 7)));
         div.onclick = () => enterAlbum(albumId, albumSource);
         makeKeyboardActivatable(div, `打开专辑 ${albumName}`, () => enterAlbum(albumId, albumSource));
         const publishDate = item.publishTime ? new Date(item.publishTime).toLocaleDateString() : '';
@@ -1087,7 +1089,7 @@ function renderArtistHeader(info, activeTab, order) {
                 </div>
             </div>
             
-            <div id="artist-tabs-bar" class="artist-detail-tabs-bar flex items-center justify-between ${tabsClass} border-t t-border-main transition-all duration-500 relative z-40" style="min-height: 48px; height: 48px;">
+            <div id="artist-tabs-bar" class="artist-detail-tabs-bar flex items-center justify-between ${tabsClass} border-t t-border-main transition-all duration-500 relative z-40" style="min-height: 40px; height: 40px;">
                 <div class="flex gap-8">
                     <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, &quot;songs&quot;]"
                             class="pb-2 text-sm font-bold transition-all relative ${activeTab === 'songs' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
@@ -1260,6 +1262,16 @@ function renderArtistSongsLoading() {
     `;
 }
 
+function animateArtistDetailContent(content: HTMLElement) {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    content.classList.remove('player-detail-content-entering');
+    void content.offsetWidth;
+    content.classList.add('player-detail-content-entering');
+    window.setTimeout(() => {
+        if (content.isConnected) content.classList.remove('player-detail-content-entering');
+    }, 240);
+}
+
 function renderArtistSongsUI(list, page) {
     const content = document.getElementById('artist-detail-content');
     if (!content) return;
@@ -1309,7 +1321,7 @@ function renderArtistSongsUI(list, page) {
         const isMatched = window.ListSearch && window.ListSearch.isMatched(index);
         const isCurrentMatch = window.ListSearch && window.ListSearch.isCurrentMatch(index);
 
-        let rowClass = 'player-track-grid player-track-grid--network p-3 rounded-xl hover:t-bg-panel transition-all group cursor-pointer border border-transparent ';
+        let rowClass = 'player-track-grid player-track-grid--network player-motion-item p-3 rounded-xl hover:t-bg-panel transition-all group cursor-pointer border border-transparent ';
         if (isCurrentMatch) rowClass += 'search-current ';
         else if (isMatched) rowClass += 'search-match ';
         if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
@@ -1323,7 +1335,7 @@ function renderArtistSongsUI(list, page) {
         return `
                 <div role="button" tabindex="0" aria-label="${window.batchMode ? `${selectionLabel} ${itemName}` : `播放 ${itemName}`}" ${selectionAttributes}
                      data-selection-state="${isSelected ? 'selected' : 'unselected'}"
-                     class="${rowClass}" data-song-id="${itemId}"
+                     class="${rowClass}" style="--player-motion-index: ${Math.min(displayIndex, 7)};" data-song-id="${itemId}"
                      data-event-click-action="search-row-activate" data-event-click-args="[${itemIdArg}, ${index}]"
                      data-event-keydown-action="search-row-activate" data-event-keydown-args="[${itemIdArg}, ${index}]" data-event-keys="Enter, " data-event-target-self="true" data-event-prevent="true">
                     <!-- Index -->
@@ -1401,6 +1413,7 @@ function renderArtistSongsUI(list, page) {
         </div>
     `;
     content.innerHTML = html;
+    animateArtistDetailContent(content);
 
     // Init Marquee if needed (though we use truncate here)
     if (window.applyMarqueeChecks) applyMarqueeChecks();
@@ -1536,7 +1549,7 @@ function renderArtistAlbumsUI(list) {
                 const albumName = album.name || '未知专辑';
                 const favorited = isAlbumFavorited(albumId, albumSource);
                 return `
-                <div class="artist-album-card group flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20" data-album-index="${index}">
+                <div class="artist-album-card player-motion-item group flex flex-col p-3 rounded-2xl transition-all hover:t-bg-panel hover:shadow-lg cursor-pointer border border-transparent hover:border-emerald-500/20" style="--player-motion-index: ${Math.min(index, 7)};" data-album-index="${index}">
                     <div class="aspect-square rounded-xl overflow-hidden shadow-md mb-3 relative bg-gray-100 dark:bg-gray-800">
                         <img src="${escapeHtmlText(getImgUrl(album))}" alt="${escapeHtmlText(albumName)}封面" width="320" height="320" loading="lazy" decoding="async"
                              data-event-error-action="fallback-image"
@@ -1566,6 +1579,7 @@ function renderArtistAlbumsUI(list) {
         </div>
     `;
     content.innerHTML = html;
+    animateArtistDetailContent(content);
 
     content.querySelectorAll('.artist-album-card').forEach(card => {
         card.addEventListener('click', () => {
@@ -1944,13 +1958,14 @@ function renderResults(list) {
         const isCurrentMatch = window.ListSearch.isCurrentMatch(actualIndexInOriginal);
         const isSelected = window.selectedItems.has(itemIdValue);
 
-        let rowClass = `player-track-grid player-track-grid--network p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer min-h-[50px] items-center touch-manipulation ${showAlbum ? '' : 'player-track-grid--no-album '}`;
+        let rowClass = `player-track-grid player-track-grid--network player-motion-item p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer min-h-[50px] items-center touch-manipulation ${showAlbum ? '' : 'player-track-grid--no-album '}`;
         if (isCurrentMatch) rowClass += 'search-current ';
         else if (isMatched) rowClass += 'search-match ';
         if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
 
         const selectionLabel = isSelected ? '取消选择' : '选择';
         row.className = rowClass;
+        row.style.setProperty('--player-motion-index', String(Math.min(pageIndex, 7)));
         row.setAttribute('role', 'button');
         row.tabIndex = 0;
         row.dataset.selectionState = isSelected ? 'selected' : 'unselected';

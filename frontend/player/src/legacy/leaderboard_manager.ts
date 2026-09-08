@@ -156,7 +156,7 @@ window.LeaderboardManager = (function () {
         container.innerHTML = boards.map((board, i) => `
             <div id="lb-board-${board.bangid}"
                 data-event-click-action="window.LeaderboardManager.selectBoard" data-event-click-args="[${safeInlineString(board.bangid)}, ${safeInlineString(board.name)}]"
-                class="lb-board-item flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 group ${state.currentBangid == board.bangid ? 'active-option' : 'hover:t-bg-panel t-text-muted'}">
+                class="lb-board-item player-motion-item flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-200 group ${state.currentBangid == board.bangid ? 'active-option' : 'hover:t-bg-panel t-text-muted'}" style="--player-motion-index: ${Math.min(i, 7)};">
                 <span class="text-xs font-mono w-5 text-center flex-shrink-0 ${i < 3 ? 'text-emerald-600 dark:text-emerald-500 font-bold' : 't-text-muted'}">${i + 1}</span>
                 <span class="text-sm font-medium truncate flex-1 ${state.currentBangid == board.bangid ? '' : 't-text-main group-hover:t-text-main'}">${board.name}</span>
                 <i class="fas fa-chevron-right text-[10px] t-text-muted opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"></i>
@@ -190,12 +190,12 @@ window.LeaderboardManager = (function () {
         const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
         const pageList = displayList.slice(startIndex, endIndex);
 
-        container.innerHTML = pageList.map(({ item: song, originalIndex: index }) => {
+        container.innerHTML = pageList.map(({ item: song, originalIndex: index }, pageIndex) => {
             const isSelected = window.selectedItems && window.selectedItems.has(String(song.id));
             const isMatched = window.ListSearch && window.ListSearch.isMatched(index);
             const isCurrentMatch = window.ListSearch && window.ListSearch.isCurrentMatch(index);
 
-            let rowClass = 'player-track-grid player-track-grid--network p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer ';
+            let rowClass = 'player-track-grid player-track-grid--network player-motion-item p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer ';
             if (isCurrentMatch) rowClass += 'search-current ';
             else if (isMatched) rowClass += 'search-match ';
             if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
@@ -212,7 +212,7 @@ window.LeaderboardManager = (function () {
 
             return `
             <div id="lb-row-${index}" role="button" tabindex="0" aria-label="${window.batchMode ? `${selectionLabel} ${song.name || '未命名歌曲'}` : `播放 ${song.name || '未命名歌曲'}`}" ${selectionAttributes}
-                 data-selection-state="${isSelected ? 'selected' : 'unselected'}" class="${rowClass}" data-song-id="${String(song.id)}"
+                 data-selection-state="${isSelected ? 'selected' : 'unselected'}" class="${rowClass}" style="--player-motion-index: ${Math.min(pageIndex, 7)};" data-song-id="${String(song.id)}"
                  data-event-click-action="window.LeaderboardManager.handleRowClick" data-event-click-args="[${index}]"
                  data-event-keydown-action="window.LeaderboardManager.handleRowClick" data-event-keydown-args="[${index}]" data-event-keys="Enter, " data-event-target-self="true" data-event-prevent="true">
                 <!-- 序号 -->

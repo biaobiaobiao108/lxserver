@@ -73,7 +73,7 @@ const saveUsers = () => {
   }
 }
 
-const resolveSnapshotUsername = (ctx: HttpContext, userParam: string): string | null => {
+const resolveSnapshotUsername = (ctx: HttpContext, userParam: string, write = false): string | null => {
   const isAdmin = verifyAdminAuth(ctx.request)
   if (isAdmin) {
     if (userParam === 'default' || userParam === 'open' || userParam === '_open') return '_open'
@@ -81,6 +81,7 @@ const resolveSnapshotUsername = (ctx: HttpContext, userParam: string): string | 
   }
 
   if (userParam === 'default' || userParam === 'open' || userParam === '_open') {
+    if (write) return null
     const config = (global.lx?.config ?? {}) as any
     const tokenUser = verifyUserAuth(ctx)
     const canAccessOpen = config['user.enablePublicFavorites'] && (
@@ -563,7 +564,7 @@ export const createUserRouter = (): Router => {
     const userParam = ctx.query.get('user')
     if (!userParam) return ctx.text('Missing user param', 400)
 
-    const verifiedUser = resolveSnapshotUsername(ctx, userParam)
+    const verifiedUser = resolveSnapshotUsername(ctx, userParam, true)
     if (!verifiedUser) return ctx.text('Forbidden', 403)
 
     try {
@@ -581,7 +582,7 @@ export const createUserRouter = (): Router => {
     const userParam = ctx.query.get('user')
     if (!userParam) return ctx.text('Missing user param', 400)
 
-    const verifiedUser = resolveSnapshotUsername(ctx, userParam)
+    const verifiedUser = resolveSnapshotUsername(ctx, userParam, true)
     if (!verifiedUser) return ctx.text('Forbidden', 403)
 
     try {
@@ -602,7 +603,7 @@ export const createUserRouter = (): Router => {
 
     if (!userParam || !filename) return ctx.text('Missing parameters', 400)
 
-    const verifiedUser = resolveSnapshotUsername(ctx, userParam)
+    const verifiedUser = resolveSnapshotUsername(ctx, userParam, true)
     if (!verifiedUser) return ctx.text('Forbidden', 403)
 
     try {

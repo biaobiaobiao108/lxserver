@@ -339,17 +339,28 @@ export function createSongListManager(context: SongListManagerContext) {
         if (page === 1) {
             detailView.classList.remove('hidden');
             setTimeout(() => detailView.classList.remove('translate-x-full'), 10);
+            const scrollContainer = document.getElementById('sl-detail-scroll-container');
+            if (scrollContainer) scrollContainer.scrollTop = 0;
             listContainer.innerHTML = '<div class="flex items-center justify-center py-20"><i class="fas fa-spinner fa-spin text-4xl text-emerald-500"></i></div>';
 
             // Clear old data to prevent flickering
             detailState.info = null;
             detailState.list = [];
-            document.getElementById('sl-detail-name').innerText = '正在加载...';
-            document.getElementById('sl-detail-title').innerText = '加载中...';
+            const nameEl = document.getElementById('sl-detail-name');
+            if (nameEl) nameEl.innerText = '正在加载...';
+            const titleEl = document.getElementById('sl-detail-title');
+            if (titleEl) titleEl.innerText = '加载中...';
             if (window.setImg) window.setImg('sl-detail-cover', '/music/assets/logo.svg');
-            else document.getElementById('sl-detail-cover').src = '/music/assets/logo.svg';
-            document.getElementById('sl-detail-author').innerText = '';
-            document.getElementById('sl-detail-subtitle').innerText = '正在加载歌单详情...';
+            else {
+                const cover = document.getElementById('sl-detail-cover') as HTMLImageElement | null;
+                if (cover) cover.src = '/music/assets/logo.svg';
+            }
+            const authorEl = document.getElementById('sl-detail-author');
+            if (authorEl) authorEl.innerText = '';
+            const subtitleEl = document.getElementById('sl-detail-subtitle');
+            if (subtitleEl) subtitleEl.innerText = '正在加载歌单详情...';
+            const countBadge = document.getElementById('sl-detail-count-badge');
+            if (countBadge) countBadge.innerText = '';
             const descEl = document.getElementById('sl-detail-desc');
             if (descEl) descEl.innerText = '正在拉取详情，请稍后...';
             const statsEl = document.getElementById('sl-detail-stats');
@@ -363,7 +374,6 @@ export function createSongListManager(context: SongListManagerContext) {
                 header.classList.add('max-h-[1000px]', 'p-4', 'md:p-6', 'border-b');
                 icon.style.transform = 'rotate(0deg)';
             }
-
         }
 
 
@@ -559,7 +569,31 @@ export function createSongListManager(context: SongListManagerContext) {
         const countEl = document.getElementById('sl-detail-count');
         if (countEl) countEl.style.display = 'none';
 
-        document.getElementById('sl-detail-subtitle').innerText = `${info.author ? info.author + ' · ' : ''}${totalSongs} 首`;
+        const countBadge = document.getElementById('sl-detail-count-badge');
+        if (countBadge) countBadge.innerText = `${totalSongs} 首`;
+
+        const subtitleEl = document.getElementById('sl-detail-subtitle');
+        if (subtitleEl) subtitleEl.innerText = `${info.author ? info.author + ' · ' : ''}${totalSongs} 首`;
+
+        // Update collect button state if already collected
+        const activeListData = typeof (window as any).isUserLoggedIn === 'function' && (window as any).isUserLoggedIn()
+            ? ((window as any).myPersonalListData || (window as any).currentListData)
+            : (window as any).currentListData;
+        const isCollected = Boolean(activeListData?.userList?.some((l: any) => String(l.sourceListId) === String(detailState.id) && l.source === detailState.source));
+        const collectBtn = document.getElementById('sl-detail-collect');
+        if (collectBtn) {
+            if (isCollected) {
+                collectBtn.className = 'absolute top-2 right-2 md:top-4 md:right-4 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-rose-500 text-white transition-all z-30 shadow-sm active:scale-90';
+                collectBtn.innerHTML = '<i class="fas fa-heart"></i>';
+                collectBtn.title = '已收藏歌单';
+                collectBtn.setAttribute('aria-label', '已收藏歌单');
+            } else {
+                collectBtn.className = 'absolute top-2 right-2 md:top-4 md:right-4 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 t-text-main transition-all z-30 shadow-sm active:scale-90';
+                collectBtn.innerHTML = '<i class="far fa-heart"></i>';
+                collectBtn.title = '收藏歌单';
+                collectBtn.setAttribute('aria-label', '收藏歌单');
+            }
+        }
 
         const descEl = document.getElementById('sl-detail-desc');
         const descBtn = document.getElementById('sl-detail-desc-btn');

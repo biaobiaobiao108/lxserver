@@ -485,25 +485,28 @@ function renderLibraryArtists(list) {
         return;
     }
 
+    container.classList.add('lib-view-active');
     container.innerHTML = `
-        <div class="p-3 md:p-4 border-b t-border-main t-bg-main flex items-center justify-between">
-            <span class="text-sm font-bold t-text-main">收藏歌手 <span class="text-emerald-500">${list.length}</span> 位</span>
-            <div class="flex items-center gap-2">
-                <button data-event-click-action="enterLibraryArtistBatch" class="text-xs px-3 py-1.5 border t-border-main rounded-lg t-text-muted hover:text-emerald-600 hover:border-emerald-400 transition-all flex items-center gap-1">
-                    <i class="fas fa-tasks"></i> 批量管理
+        <div class="lib-sticky-header sticky top-0 z-20 t-bg-main">
+            <div class="px-3 py-1.5 min-h-[42px] border-b t-border-main flex items-center justify-between">
+                <span class="text-sm font-bold t-text-main">收藏歌手 <span class="text-emerald-500">${list.length}</span> 位</span>
+                <div class="flex items-center gap-2">
+                    <button data-event-click-action="enterLibraryArtistBatch" class="text-xs px-2.5 py-1 border t-border-main rounded-lg t-text-muted hover:text-emerald-600 hover:border-emerald-400 transition-all flex items-center gap-1">
+                        <i class="fas fa-tasks"></i> 批量管理
+                    </button>
+                </div>
+            </div>
+            <div id="lib-artist-batch-bar" class="hidden bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 px-3 py-1.5 flex items-center justify-between">
+                <div class="flex items-center gap-2 sm:gap-3">
+                    <span class="text-xs sm:text-sm text-emerald-700 dark:text-emerald-300">已选: <span id="lib-artist-sel-count" class="font-bold">0</span></span>
+                    <button data-event-click-action="libSelectAllArtists" class="text-xs px-2.5 py-0.5 sm:py-1 t-bg-panel border border-emerald-300 dark:border-emerald-700 rounded hover:bg-emerald-50 text-emerald-700 dark:text-emerald-300">全选</button>
+                    <button data-event-click-action="libDeselectAllArtists" class="text-xs px-2.5 py-0.5 sm:py-1 t-bg-panel border t-border-main rounded hover:t-bg-track t-text-muted">清空</button>
+                    <button data-event-click-action="exitLibraryArtistBatch" class="text-xs px-2.5 py-0.5 sm:py-1 t-bg-panel border border-red-300 rounded hover:bg-red-50 text-red-600">退出</button>
+                </div>
+                <button data-event-click-action="libDeleteSelectedArtists" class="text-xs px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded transition-colors flex items-center gap-1">
+                    <i class="fas fa-trash text-[10px]"></i> 删除所选
                 </button>
             </div>
-        </div>
-        <div id="lib-artist-batch-bar" class="hidden bg-emerald-50 border-b border-emerald-200 p-3 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <span class="text-sm text-emerald-700">已选: <span id="lib-artist-sel-count" class="font-bold">0</span></span>
-                <button data-event-click-action="libSelectAllArtists" class="text-xs px-3 py-1 t-bg-panel border border-emerald-300 rounded hover:bg-emerald-50 text-emerald-700">全选</button>
-                <button data-event-click-action="libDeselectAllArtists" class="text-xs px-3 py-1 t-bg-panel border t-border-main rounded hover:t-bg-track t-text-muted">清空</button>
-                <button data-event-click-action="exitLibraryArtistBatch" class="text-xs px-3 py-1 t-bg-panel border border-red-300 rounded hover:bg-red-50 text-red-600">退出</button>
-            </div>
-            <button data-event-click-action="libDeleteSelectedArtists" class="text-xs px-4 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded transition-colors flex items-center gap-1">
-                <i class="fas fa-trash"></i> 删除所选
-            </button>
         </div>
         <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 md:gap-4 p-3 md:p-6" id="lib-artist-grid"></div>`;
 
@@ -572,28 +575,31 @@ function renderLibraryAlbums(list) {
         return;
     }
 
+    container.classList.add('lib-view-active');
     container.innerHTML = `
-        <div class="p-3 md:p-4 border-b t-border-main t-bg-main flex items-center justify-between">
-            <span class="text-sm font-bold t-text-main">收藏专辑 <span class="text-emerald-500">${list.length}</span> 张</span>
-            <div class="flex items-center gap-2">
-                <button id="sync-all-albums-btn" data-event-click-action="syncAllLibraryAlbums" class="text-xs px-3 py-1.5 border t-border-main rounded-lg t-text-muted hover:text-blue-500 hover:border-blue-400 transition-all flex items-center gap-1">
-                    <i class="fas fa-sync-alt"></i> 同步所有
-                </button>
-                <button data-event-click-action="enterLibraryAlbumBatch" class="text-xs px-3 py-1.5 border t-border-main rounded-lg t-text-muted hover:text-emerald-600 hover:border-emerald-400 transition-all flex items-center gap-1">
-                    <i class="fas fa-tasks"></i> 批量管理
+        <div class="lib-sticky-header sticky top-0 z-20 t-bg-main">
+            <div class="px-3 py-1.5 min-h-[42px] border-b t-border-main flex items-center justify-between">
+                <span class="text-sm font-bold t-text-main">收藏专辑 <span class="text-emerald-500">${list.length}</span> 张</span>
+                <div class="flex items-center gap-2">
+                    <button id="sync-all-albums-btn" data-event-click-action="syncAllLibraryAlbums" class="text-xs px-2.5 py-1 border t-border-main rounded-lg t-text-muted hover:text-blue-500 hover:border-blue-400 transition-all flex items-center gap-1">
+                        <i class="fas fa-sync-alt"></i> 同步所有
+                    </button>
+                    <button data-event-click-action="enterLibraryAlbumBatch" class="text-xs px-2.5 py-1 border t-border-main rounded-lg t-text-muted hover:text-emerald-600 hover:border-emerald-400 transition-all flex items-center gap-1">
+                        <i class="fas fa-tasks"></i> 批量管理
+                    </button>
+                </div>
+            </div>
+            <div id="lib-album-batch-bar" class="hidden bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 px-3 py-1.5 flex items-center justify-between">
+                <div class="flex items-center gap-2 sm:gap-3">
+                    <span class="text-xs sm:text-sm text-emerald-700 dark:text-emerald-300">已选: <span id="lib-album-sel-count" class="font-bold">0</span></span>
+                    <button data-event-click-action="libSelectAllAlbums" class="text-xs px-2.5 py-0.5 sm:py-1 t-bg-panel border border-emerald-300 dark:border-emerald-700 rounded hover:bg-emerald-50 text-emerald-700 dark:text-emerald-300">全选</button>
+                    <button data-event-click-action="libDeselectAllAlbums" class="text-xs px-2.5 py-0.5 sm:py-1 t-bg-panel border t-border-main rounded hover:t-bg-track t-text-muted">清空</button>
+                    <button data-event-click-action="exitLibraryAlbumBatch" class="text-xs px-2.5 py-0.5 sm:py-1 t-bg-panel border border-red-300 rounded hover:bg-red-50 text-red-600">退出</button>
+                </div>
+                <button data-event-click-action="libDeleteSelectedAlbums" class="text-xs px-3 py-1 bg-red-500 hover:bg-red-600 text-white rounded transition-colors flex items-center gap-1">
+                    <i class="fas fa-trash text-[10px]"></i> 删除所选
                 </button>
             </div>
-        </div>
-        <div id="lib-album-batch-bar" class="hidden bg-emerald-50 border-b border-emerald-200 p-3 flex items-center justify-between">
-            <div class="flex items-center gap-3">
-                <span class="text-sm text-emerald-700">已选: <span id="lib-album-sel-count" class="font-bold">0</span></span>
-                <button data-event-click-action="libSelectAllAlbums" class="text-xs px-3 py-1 t-bg-panel border border-emerald-300 rounded hover:bg-emerald-50 text-emerald-700">全选</button>
-                <button data-event-click-action="libDeselectAllAlbums" class="text-xs px-3 py-1 t-bg-panel border t-border-main rounded hover:t-bg-track t-text-muted">清空</button>
-                <button data-event-click-action="exitLibraryAlbumBatch" class="text-xs px-3 py-1 t-bg-panel border border-red-300 rounded hover:bg-red-50 text-red-600">退出</button>
-            </div>
-            <button data-event-click-action="libDeleteSelectedAlbums" class="text-xs px-4 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded transition-colors flex items-center gap-1">
-                <i class="fas fa-trash"></i> 删除所选
-            </button>
         </div>
         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6 p-6" id="lib-album-grid"></div>`;
 

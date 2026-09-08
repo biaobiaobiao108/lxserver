@@ -816,6 +816,7 @@ function isSearchResultFavoriteTarget(event?: Event) {
 function renderSingerResults(list) {
     const container = document.getElementById('search-results');
     container.classList.remove('artist-detail-active');
+    container.classList.remove('lib-view-active');
     const header = document.getElementById('search-results-header');
     if (header) header.classList.add('hidden');
     // 搜索歌手时隐藏底部分页栏
@@ -879,6 +880,7 @@ function renderSingerResults(list) {
 function renderAlbumResults(list) {
     const container = document.getElementById('search-results');
     container.classList.remove('artist-detail-active');
+    container.classList.remove('lib-view-active');
     const header = document.getElementById('search-results-header');
     if (header) header.classList.add('hidden');
     // 搜索专辑时隐藏底部分页栏
@@ -1087,6 +1089,7 @@ function renderArtistHeader(info, activeTab, order) {
         : 'translate(0, 0) scale(1)';
     const tabsClass = '';
 
+    container.classList.remove('lib-view-active');
     container.classList.add('artist-detail-active');
 
     let headerHtml = `
@@ -1963,6 +1966,7 @@ function getImgUrl(item) {
 function renderResults(list) {
     const container = document.getElementById('search-results');
     container.classList.remove('artist-detail-active');
+    container.classList.remove('lib-view-active');
     const header = document.getElementById('search-results-header');
     // 搜索歌曲时恢复底部分页栏显示
     const paginationBar = document.getElementById('search-pagination-bar');

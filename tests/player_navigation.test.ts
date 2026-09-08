@@ -428,6 +428,28 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(indexHtmlContent.includes('id="queue-badge-count-mobile"')).toBe(true);
         expect(indexHtmlContent.includes('id="queue-badge-count"')).toBe(true);
     });
+
+    it('library cards and songlist detail use sticky headers aligned with standard list height', () => {
+        const libraryContent = fs.readFileSync(path.join(import.meta.dir, '../frontend/player/src/features/library.ts'), 'utf8');
+        const songlistMgrContent = fs.readFileSync(path.join(import.meta.dir, '../frontend/player/src/legacy/songlist_manager.ts'), 'utf8');
+        const indexHtmlContent = fs.readFileSync(path.join(import.meta.dir, '../public/music/index.html'), 'utf8');
+        const cssContent = fs.readFileSync(playerCssPath, 'utf8');
+
+        // Library artist/album sticky headers & height alignment
+        expect(libraryContent).toContain('lib-sticky-header sticky top-0 z-20');
+        expect(libraryContent).toContain('px-3 py-1.5 min-h-[42px] border-b t-border-main');
+        expect(cssContent).toContain('.lib-sticky-header');
+        expect(cssContent).toContain('#search-results:has(> .lib-sticky-header)');
+
+        // Songlist detail unified scroll and sticky controls block
+        expect(indexHtmlContent).toContain('id="sl-detail-scroll-container"');
+        expect(indexHtmlContent).toContain('id="sl-detail-sticky-wrap"');
+        expect(indexHtmlContent).toContain('id="sl-detail-tabs-bar"');
+        expect(indexHtmlContent).toContain('id="sl-detail-count-badge"');
+        expect(songlistMgrContent).toContain('sl-detail-scroll-container');
+        expect(cssContent).toContain('#sl-detail-scroll-container');
+        expect(cssContent).toContain('#sl-detail-sticky-wrap');
+    });
 });
 
 describe('Update Notification Engine & PostHog Removal', () => {

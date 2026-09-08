@@ -677,6 +677,39 @@ html, body {
     overflow: visible;
 }
 
+/* Library favorites (Artists & Albums) sticky header styling */
+#search-results:has(> .lib-sticky-header),
+#search-results.lib-view-active {
+    padding-top: 0 !important;
+}
+
+.lib-sticky-header {
+    inline-size: 100%;
+    min-inline-size: 0;
+    box-sizing: border-box;
+}
+
+/* Playlist detail view (Songlist) unified scroll and sticky controls */
+#songlist-detail-view {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+}
+
+#sl-detail-scroll-container {
+    inline-size: 100%;
+    min-inline-size: 0;
+    box-sizing: border-box;
+    overscroll-behavior: contain;
+}
+
+#sl-detail-sticky-wrap {
+    inline-size: 100%;
+    min-inline-size: 0;
+    position: sticky;
+    top: 0;
+    z-index: 30;
+}
+
 #search-pagination-bar.hidden {
     display: none !important;
 }

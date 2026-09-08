@@ -1152,15 +1152,29 @@ function renderArtistHeader(info, activeTab, order) {
             </div>
             
             ${activeTab === 'songs' ? `
-            <div class="artist-tabs-sort flex items-center p-0.5 t-bg-panel rounded-lg border t-border-main shadow-sm relative z-30">
-                <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;hot&quot;, &quot;songs&quot;]"
-                        class="px-3 py-1 text-xs font-bold rounded-md transition-all ${order === 'hot' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
-                    热门
-                </button>
-                <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;time&quot;, &quot;songs&quot;]"
-                        class="px-3 py-1 text-xs font-bold rounded-md transition-all ${order === 'time' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
-                    最新
-                </button>
+            <div class="flex items-center gap-2 relative z-30">
+                <div class="artist-tabs-sort flex items-center p-0.5 t-bg-panel rounded-lg border t-border-main shadow-sm">
+                    <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;hot&quot;, &quot;songs&quot;]"
+                            class="px-3 py-1 text-xs font-bold rounded-md transition-all ${order === 'hot' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
+                        热门
+                    </button>
+                    <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, &quot;time&quot;, &quot;songs&quot;]"
+                            class="px-3 py-1 text-xs font-bold rounded-md transition-all ${order === 'time' ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-bg-track'}">
+                        最新
+                    </button>
+                </div>
+                <div class="artist-action-capsule flex items-center p-0.5 t-bg-panel rounded-lg border t-border-main shadow-sm">
+                    <button type="button" data-event-click-action="toggleBatchMode" data-list-action="batch"
+                            class="w-7 h-7 flex items-center justify-center rounded-md transition-all ${window.batchMode ? 'bg-emerald-500 text-white shadow-sm' : 't-text-muted hover:t-text-main hover:t-bg-track'}"
+                            title="多选操作" aria-label="多选操作" aria-pressed="${window.batchMode ? 'true' : 'false'}">
+                        <i class="fas fa-tasks text-xs" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" data-event-click-action="ListSearch.toggleBar" data-list-action="search"
+                            class="w-7 h-7 flex items-center justify-center rounded-md transition-all t-text-muted hover:t-text-main hover:t-bg-track"
+                            title="搜索当前列表" aria-label="搜索当前列表">
+                        <i class="fas fa-search text-xs" aria-hidden="true"></i>
+                    </button>
+                </div>
             </div>
             ` : ''}
         </div>
@@ -1356,10 +1370,7 @@ function renderArtistSongsUI(list, page) {
     const indexedDisplayList = displayList.slice(startIndex, endIndex);
 
     let html = `
-        <!-- 表头 -->
-        ${renderTrackListHeader({ extraClass: 'px-3 py-1.5 sticky top-[40px] z-20 rounded-t-xl overflow-hidden shadow-sm' })}
-
-        <div class="space-y-1 mt-2">
+        <div class="space-y-1">
             ${indexedDisplayList.map((obj, displayIndex) => {
         const { item, originalIndex: index } = obj;
         const itemIdValue = String(item.id ?? '');
@@ -1971,10 +1982,7 @@ function renderResults(list) {
     }
 
     container.innerHTML = searchDetailOpen
-        ? renderTrackListHeader({
-            includeBackToolbar: true,
-            extraClass: `${showAlbum ? '' : 'player-track-grid--no-album '}px-3 py-1.5 rounded-t-2xl shadow-sm`,
-        })
+        ? renderTrackListHeader({ extraClass: `${showAlbum ? '' : 'player-track-grid--no-album '}px-3 py-1.5 rounded-t-2xl shadow-sm`, includeBackToolbar: true })
         : '';
 
     // [Fix] 确保每个歌曲都有唯一的 ID，防止批量操作时因为 ID 缺失(undefined)导致只能选中一个

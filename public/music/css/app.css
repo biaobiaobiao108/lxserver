@@ -665,12 +665,6 @@ html, body {
     overflow: visible;
 }
 
-#search-results.artist-detail-active .player-track-list-header {
-    position: sticky;
-    top: 40px;
-    z-index: 20;
-}
-
 #search-pagination-bar.hidden {
     display: none !important;
 }

@@ -137,6 +137,26 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(css).toContain('min-inline-size: 14rem');
     });
 
+    it('artist detail tabs and album cards keep stable, non-overlapping layout', () => {
+        const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
+        const css = fs.readFileSync(playerCssPath, 'utf8');
+        const artistSongsSection = searchContent.match(/function renderArtistSongsUI[\s\S]*?window\.renderArtistSongsUI/)?.[0] ?? '';
+
+        expect(artistSongsSection).toContain('<span class="index-num">${index + 1}</span>');
+        expect(artistSongsSection).not.toContain('group-hover:block');
+        expect(searchContent).toContain('class="artist-detail-tabs-bar flex items-center');
+        expect(searchContent).toContain('style="min-height: 48px; height: 48px;"');
+        expect(searchContent).toContain('class="artist-albums-grid p-2 md:p-4');
+        expect(css).toContain('#artist-tabs-bar');
+        expect(css).toContain('block-size: 3rem');
+        expect(css).toContain('.artist-albums-grid');
+        expect(css).toContain('grid-template-columns: repeat(auto-fill, minmax(10rem, 13.75rem))');
+        expect(css).toContain('max-inline-size: 13.75rem');
+        expect(css).toContain('#main-sidebar nav::-webkit-scrollbar');
+        expect(css).toContain('scrollbar-width: none');
+        expect(css).toContain('scrollbar-gutter: auto');
+    });
+
     it('mobile player footer uses explicit rows and keeps every control touchable', () => {
         const playerHtmlPath = path.join(import.meta.dir, '../public/music/index.html');
         const html = fs.readFileSync(playerHtmlPath, 'utf8');

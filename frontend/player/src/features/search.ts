@@ -1039,7 +1039,7 @@ function renderArtistHeader(info, activeTab, order) {
     const nameTransform = isArtistFolded
         ? (isMobile ? 'translate(40px, -30px) scale(0.65)' : 'translate(30px, 0px) scale(0.65)')
         : 'translate(0, 0) scale(1)';
-    const tabsClass = isArtistFolded ? 'mt-1 pt-2' : 'mt-8 pt-6';
+    const tabsClass = isArtistFolded ? 'mt-1' : 'mt-8';
 
     let headerHtml = `
         <div id="artist-detail-header" class="relative ${headerPadding} is-folded t-bg-panel/50 border-b t-border-main transition-all duration-500 ease-in-out overflow-hidden group/header" style="${isArtistFolded ? 'min-height: ' + (isMobile ? '0px' : '90px') + ';' : ''}">
@@ -1087,7 +1087,7 @@ function renderArtistHeader(info, activeTab, order) {
                 </div>
             </div>
             
-            <div id="artist-tabs-bar" class="flex items-end justify-between ${tabsClass} border-t t-border-main transition-all duration-500 relative z-40" style="min-height: 48px;">
+            <div id="artist-tabs-bar" class="artist-detail-tabs-bar flex items-center justify-between ${tabsClass} border-t t-border-main transition-all duration-500 relative z-40" style="min-height: 48px; height: 48px;">
                 <div class="flex gap-8">
                     <button data-event-click-action="enterArtist" data-event-click-args="[${artistIdArg}, ${artistSourceArg}, ${artistOrderArg}, &quot;songs&quot;]"
                             class="pb-2 text-sm font-bold transition-all relative ${activeTab === 'songs' ? 't-text-main' : 't-text-muted hover:t-text-main'}">
@@ -1160,8 +1160,8 @@ function toggleArtistFold() {
         collapsible.style.opacity = '0';
         collapsible.style.marginTop = '0';
 
-        tabsBar.classList.remove('mt-8', 'pt-6');
-        tabsBar.classList.add('mt-1', 'pt-2');
+        tabsBar.classList.remove('mt-8');
+        tabsBar.classList.add('mt-1');
 
         // 响应式偏移
         if (isMobile) {
@@ -1193,8 +1193,8 @@ function toggleArtistFold() {
         collapsible.style.opacity = '1';
         collapsible.style.marginTop = '';
 
-        tabsBar.classList.add('mt-8', 'pt-6');
-        tabsBar.classList.remove('mt-1', 'pt-2');
+        tabsBar.classList.add('mt-8');
+        tabsBar.classList.remove('mt-1');
 
         name.style.transform = 'translate(0, 0) scale(1)';
         name.style.marginBottom = '';
@@ -1336,7 +1336,7 @@ function renderArtistSongsUI(list, page) {
                                    aria-checked="${isSelected}"
                                    aria-label="${selectionLabel} ${itemName}"
                             data-event-click-action="handleBatchSelect" data-event-click-args="[${itemIdArg}, &quot;@checked&quot;]" data-event-stop="true">
-                        ` : `<span class="index-num group-hover:hidden">${index + 1}</span><i class="fas fa-play text-emerald-500 hidden group-hover:block text-[10px]"></i>`}
+                        ` : `<span class="index-num">${index + 1}</span>`}
                     </div>
 
                     <!-- Title -->
@@ -1529,7 +1529,7 @@ function renderArtistAlbumsUI(list) {
 
     const artistName = currentArtistInfo?.name || '';
     const html = `
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 p-2 md:p-4 animate-in fade-in duration-300">
+        <div class="artist-albums-grid p-2 md:p-4 animate-in fade-in duration-300">
             ${list.map((album, index) => {
                 const albumId = album.id ?? album.mid;
                 const albumSource = album.source || window.currentArtistSource || 'wy';

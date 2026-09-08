@@ -2229,7 +2229,15 @@ aside {
 #main-sidebar nav {
     min-inline-size: 0;
     overflow-x: clip;
-    scrollbar-gutter: stable;
+    scrollbar-gutter: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+#main-sidebar nav::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
 }
 
 .netease-nav-item {
@@ -2435,6 +2443,47 @@ aside {
     --player-track-action-size: 7rem;
 }
 
+/* 歌手详情标签固定高度，避免歌曲/专辑切换时内容上下跳动 */
+#artist-tabs-bar {
+    align-items: center;
+    block-size: 3rem;
+    min-block-size: 3rem;
+    box-sizing: border-box;
+    padding-block: 0;
+}
+
+#artist-tabs-bar > :first-child {
+    min-inline-size: 0;
+}
+
+#artist-tabs-bar > :last-child {
+    margin-block: 0;
+    white-space: nowrap;
+}
+
+/* 歌手专辑使用稳定的卡片宽度，避免封面随详情容器被放大 */
+.artist-albums-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(10rem, 13.75rem));
+    justify-content: space-between;
+    align-items: start;
+    gap: 1rem;
+    min-inline-size: 0;
+    box-sizing: border-box;
+}
+
+.artist-album-card {
+    inline-size: 100%;
+    max-inline-size: 13.75rem;
+    min-inline-size: 0;
+    box-sizing: border-box;
+}
+
+.artist-album-card > .aspect-square {
+    inline-size: 100%;
+    aspect-ratio: 1;
+}
+
 .playlist-card-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(10rem, 13.75rem));
@@ -2614,6 +2663,16 @@ aside {
     }
 
     .playlist-card {
+        max-inline-size: none;
+    }
+
+    .artist-albums-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.75rem;
+        padding-inline: 0.25rem;
+    }
+
+    .artist-album-card {
         max-inline-size: none;
     }
 }

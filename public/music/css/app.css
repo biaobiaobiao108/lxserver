@@ -634,6 +634,7 @@ html, body {
     flex-direction: column;
     min-block-size: 0;
     overflow: hidden;
+    padding: 0 !important;
 }
 
 #search-results.artist-detail-active > .artist-detail-view {

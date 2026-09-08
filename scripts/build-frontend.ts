@@ -7,6 +7,8 @@ async function build() {
   const startTime = performance.now()
   const adminEntry = path.join(import.meta.dir, '../frontend/admin/src/index.ts')
   const playerEntry = path.join(import.meta.dir, '../frontend/player/src/index.ts')
+  const playerVendorEntry = path.join(import.meta.dir, '../frontend/player/src/vendor_bridge.ts')
+  const shouldMinify = process.env.NODE_ENV === 'production' || !isWatch
 
   const stylesProcess = Bun.spawn(['bun', 'run', 'scripts/build-styles.ts'], {
     stdout: 'inherit',
@@ -19,7 +21,20 @@ async function build() {
     return
   }
 
-  const shouldMinify = process.env.NODE_ENV === 'production' || !isWatch
+  const vendorResult = await Bun.build({
+    entrypoints: [playerVendorEntry],
+    outdir: path.join(import.meta.dir, '../public/music/js'),
+    naming: 'vendor-bridge.js',
+    format: 'iife',
+    minify: shouldMinify,
+    target: 'browser',
+    sourcemap: isWatch ? 'inline' : 'none',
+  })
+  if (!vendorResult.success) {
+    console.error('[Bun Bundler] Player vendor build failed:', vendorResult.logs)
+    if (!isWatch) process.exit(1)
+    return
+  }
 
   // 1. Build Admin Panel
   const adminResult = await Bun.build({

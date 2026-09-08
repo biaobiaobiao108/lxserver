@@ -1,3 +1,10 @@
+import './legacy/quality';
+import './legacy/idb_store';
+import './legacy/list_search';
+import './legacy/pwa';
+import './legacy/theme_manager';
+import './legacy/common_ui';
+import './legacy/ios_background_audio';
 import { initAccessibleOverlays } from './accessible_overlays';
 import {
     ensureLeaderboardLoaded,

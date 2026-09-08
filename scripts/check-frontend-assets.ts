@@ -18,6 +18,17 @@ const serviceWorkerFiles = [
 const deletedResourceNames = [
   'tailwindcss.js',
   'tailwind_setup.js',
+  'quality.js',
+  'idb_store.js',
+  'list_search.js',
+  'pwa.js',
+  'theme_manager.js',
+  'ios-background-audio.js',
+  'common_ui.js',
+  'crypto-js.min.js',
+  'Sortable.min.js',
+  'NoSleep.min.js',
+  'marked.min.js',
 ];
 
 function readText(path: string): string {
@@ -147,6 +158,7 @@ const trackedFiles = collectTrackedFiles();
 const generatedFiles = [
   'public/app.js',
   'public/music/app.js',
+  'public/music/js/vendor-bridge.js',
   'public/music/css/tailwind.generated.css',
 ];
 const trackedGeneratedFiles = generatedFiles.filter((file) => trackedFiles.has(file));

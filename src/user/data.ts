@@ -48,8 +48,13 @@ export const syncUsersToDatabase = (users: LX.Config['users']): void => {
   const now = Date.now()
   const tx = db.transaction(() => {
     const stmt = db.prepare(`
-      INSERT OR REPLACE INTO users (name, password, max_snapshot_num, add_music_location_type, created_at, updated_at)
-      VALUES (?, ?, ?, ?, COALESCE((SELECT created_at FROM users WHERE name = ?), ?), ?)
+      INSERT INTO users (name, password, max_snapshot_num, add_music_location_type, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(name) DO UPDATE SET
+        password = excluded.password,
+        max_snapshot_num = excluded.max_snapshot_num,
+        add_music_location_type = excluded.add_music_location_type,
+        updated_at = excluded.updated_at
     `)
     for (const user of users) {
       stmt.run(
@@ -57,7 +62,6 @@ export const syncUsersToDatabase = (users: LX.Config['users']): void => {
         '',
         user.maxSnapshotNum ?? 10,
         user['list.addMusicLocationType'] ?? 'bottom',
-        user.name,
         now,
         now,
       )

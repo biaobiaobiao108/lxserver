@@ -1,4 +1,5 @@
 const lazyScriptPromises = new Map<string, Promise<void>>();
+const lazyModulePromises = new Map<string, Promise<void>>();
 let markedPromise: Promise<void> | undefined;
 
 function loadLazyScript(src: string, globalName?: string): Promise<void> {
@@ -17,6 +18,23 @@ function loadLazyScript(src: string, globalName?: string): Promise<void> {
     return promise;
 }
 
+function loadLazyModule(
+    key: string,
+    loader: () => Promise<unknown>,
+    globalName: string,
+): Promise<void> {
+    if ((window as any)[globalName]) return Promise.resolve();
+    if (lazyModulePromises.has(key)) return lazyModulePromises.get(key)!;
+
+    const promise = loader().then(() => {
+        if (!(window as any)[globalName]) {
+            throw new Error(`懒加载模块未注册全局接口: ${globalName}`);
+        }
+    });
+    lazyModulePromises.set(key, promise);
+    return promise;
+}
+
 export function ensureMarkedLoaded() {
     if ((window as any).marked) return Promise.resolve();
     if (!markedPromise) {
@@ -29,23 +47,43 @@ export function ensureMarkedLoaded() {
 
 export function ensureVisualizerLoaded() {
     return loadLazyScript('js/wave.js', 'Wave')
-        .then(() => loadLazyScript('js/visualizer.js', 'musicVisualizer'));
+        .then(() => loadLazyModule(
+            'visualizer',
+            () => import('./legacy/visualizer'),
+            'musicVisualizer',
+        ));
 }
 
 export function ensureLeaderboardLoaded() {
-    return loadLazyScript('js/leaderboard_manager.js', 'LeaderboardManager');
+    return loadLazyModule(
+        'leaderboard',
+        () => import('./legacy/leaderboard_manager'),
+        'LeaderboardManager',
+    );
 }
 
 export function ensureLocalMusicLoaded() {
-    return loadLazyScript('js/local_music.js', 'LocalMusicManager');
+    return loadLazyModule(
+        'local-music',
+        () => import('./legacy/local_music'),
+        'LocalMusicManager',
+    );
 }
 
 export function ensureLyricCardLoaded() {
-    return loadLazyScript('js/lyric-card.js', 'lyricCard');
+    return loadLazyModule(
+        'lyric-card',
+        () => import('./legacy/lyric_card'),
+        'lyricCard',
+    );
 }
 
 export function ensureSoundEffectsLoaded() {
-    return loadLazyScript('js/sound-effects.js', 'soundEffects');
+    return loadLazyModule(
+        'sound-effects',
+        () => import('./legacy/sound_effects'),
+        'soundEffects',
+    );
 }
 
 function showError(message: string) {

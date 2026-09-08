@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This legacy-compatible module is compiled as an isolated browser bundle.
 /**
  * Download Manager for LX Server Web Frontend
  * Manages parallel downloads, progress tracking, pausing, resuming, retries using Fetch + ReadableStream.
@@ -1750,3 +1752,4 @@ window.openDownloadManager = function () {
 
 // Initialize globally
 window.SystemDownloadManager = new DownloadManager();
+

@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This legacy-compatible module is compiled as an isolated browser bundle.
 /**
  * Music Visualizer Integration using Wave.js
  * Manages independent footer and detail view canvases and syncs with theme color.
@@ -320,3 +322,4 @@ const musicVisualizer = (function () {
 })();
 
 window.musicVisualizer = musicVisualizer;
+

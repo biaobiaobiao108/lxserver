@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This legacy-compatible module is compiled as an isolated browser bundle.
 /**
  * Leaderboard Manager for LX Music Web
  * 排行榜功能模块 — 风格与 SongListManager 保持一致
@@ -545,3 +547,4 @@ function toggleLbSidebar(force) {
     }
 }
 window.toggleLbSidebar = toggleLbSidebar;
+

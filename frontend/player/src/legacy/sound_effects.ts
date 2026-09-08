@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This legacy-compatible module is compiled as an isolated browser bundle.
 /**
  * Sound Effects Manager for LX Music Web Player
  * Handles EQ, 3D Surround, Pitch Shifting, and Environment Reverb.
@@ -726,3 +728,4 @@ window.soundEffects = (function () {
 
     return manager;
 })();
+

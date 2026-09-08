@@ -1,7 +1,9 @@
+// @ts-nocheck
+// This legacy-compatible module is compiled as an isolated browser bundle.
 // https://github.com/olvb/phaze/issues/26#issuecomment-1573938170
 // https://github.com/olvb/phaze
-import FFT from './fft.js'
-import OLAProcessor from './ola-processor.js'
+import FFT from './fft'
+import OLAProcessor from './ola_processor'
 
 
 const DEFAULT_BUFFERED_BLOCK_SIZE = 4096
@@ -173,4 +175,5 @@ class PhaseVocoderProcessor extends OLAProcessor {
 }
 
 globalThis.registerProcessor('phase-vocoder-processor', PhaseVocoderProcessor)
+
 

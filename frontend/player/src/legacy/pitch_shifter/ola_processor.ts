@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This legacy-compatible module is compiled as an isolated browser bundle.
 /* eslint-disable no-var */
 
 const WEBAUDIO_BLOCK_SIZE = 128
@@ -222,3 +224,4 @@ class OLAProcessor extends globalThis.AudioWorkletProcessor {
 }
 
 export default OLAProcessor
+

@@ -8,6 +8,11 @@ async function build() {
   const adminEntry = path.join(import.meta.dir, '../frontend/admin/src/index.ts')
   const playerEntry = path.join(import.meta.dir, '../frontend/player/src/index.ts')
   const playerVendorEntry = path.join(import.meta.dir, '../frontend/player/src/vendor_bridge.ts')
+  const playerLegacyEntries = [
+    ['songlist_manager.ts', 'songlist_manager.js'],
+    ['download_manager.ts', 'download_manager.js'],
+  ] as const
+  const playerWorkletEntry = path.join(import.meta.dir, '../frontend/player/src/legacy/pitch_shifter/phase_vocoder.ts')
   const shouldMinify = process.env.NODE_ENV === 'production' || !isWatch
 
   const stylesProcess = Bun.spawn(['bun', 'run', 'scripts/build-styles.ts'], {
@@ -32,6 +37,38 @@ async function build() {
   })
   if (!vendorResult.success) {
     console.error('[Bun Bundler] Player vendor build failed:', vendorResult.logs)
+    if (!isWatch) process.exit(1)
+    return
+  }
+
+  for (const [sourceName, outputName] of playerLegacyEntries) {
+    const legacyResult = await Bun.build({
+      entrypoints: [path.join(import.meta.dir, `../frontend/player/src/legacy/${sourceName}`)],
+      outdir: path.join(import.meta.dir, '../public/music/js'),
+      naming: outputName,
+      format: 'iife',
+      minify: shouldMinify,
+      target: 'browser',
+      sourcemap: isWatch ? 'inline' : 'none',
+    })
+    if (!legacyResult.success) {
+      console.error(`[Bun Bundler] Player legacy build failed (${sourceName}):`, legacyResult.logs)
+      if (!isWatch) process.exit(1)
+      return
+    }
+  }
+
+  const workletResult = await Bun.build({
+    entrypoints: [playerWorkletEntry],
+    outdir: path.join(import.meta.dir, '../public/music/js/pitch-shifter'),
+    naming: 'phase-vocoder.js',
+    format: 'esm',
+    minify: shouldMinify,
+    target: 'browser',
+    sourcemap: isWatch ? 'inline' : 'none',
+  })
+  if (!workletResult.success) {
+    console.error('[Bun Bundler] Player audio worklet build failed:', workletResult.logs)
     if (!isWatch) process.exit(1)
     return
   }

@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This legacy-compatible module is compiled as an isolated browser bundle.
 /**
  * Song List Manager for LX Music Web
  * Handles fetching, rendering and interactions for the "Song List" (Playlist) feature.
@@ -839,3 +841,4 @@ function toggleSlDetailHeader() {
         trigger?.setAttribute('aria-expanded', 'false');
     }
 }
+

@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This legacy-compatible module is compiled as an isolated browser bundle.
 // https://github.com/indutny/fft.js
 
 
@@ -498,3 +500,4 @@ FFT.prototype._singleRealTransform4 = function _singleRealTransform4(outOff,
 }
 
 export default FFT
+

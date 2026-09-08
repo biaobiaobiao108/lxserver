@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This legacy-compatible module is compiled as an isolated browser bundle.
 /**
  * LocalMusicManager (本地音乐模块)
  * 处理在本地音乐Tab下的列表加载、刷选、删除功能
@@ -3170,3 +3172,4 @@ setTimeout(() => {
         window.LocalMusicManager.init();
     }
 }, 500);
+

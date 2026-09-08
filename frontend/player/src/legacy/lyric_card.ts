@@ -1,3 +1,5 @@
+// @ts-nocheck
+// This legacy-compatible module is compiled as an isolated browser bundle.
 /**
  * Lyric Card Share Manager
  * 歌词卡片分享功能 - 将当前播放歌曲渲染为海报图片
@@ -563,3 +565,4 @@
     }
     window.lyricCard = { open, close, setLayout, setColorTheme, setLyricLines, setFontSize, setLineSpacing, setFontFamily, toggleOption, download, copyToClipboard, scheduleRender };
 })();
+

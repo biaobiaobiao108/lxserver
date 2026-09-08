@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lx-music-web-v26';
+const CACHE_NAME = 'lx-music-web-v27';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -8,21 +8,14 @@ const ASSETS_TO_CACHE = [
     './css/theme_variables.css',
     './assets/fontawesome/css/all.min.css',
     // 核心 JS
-    './js/lyric-card.js',
     './js/songlist_manager.js',
-    './js/leaderboard_manager.js',
-    './js/local_music.js',
     './js/download_manager.js',
     './css/tailwind.generated.css',
     // 第三方库
     './js/vendor-bridge.js',
     // 音频效果
-    './js/sound-effects.js',
-    './js/visualizer.js',
     './js/wave.js',
     // 变调器
-    './js/pitch-shifter/fft.js',
-    './js/pitch-shifter/ola-processor.js',
     './js/pitch-shifter/phase-vocoder.js',
     // 静态资源
     './assets/logo.svg',

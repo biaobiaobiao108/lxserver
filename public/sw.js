@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lx-sync-server-v4';
+const CACHE_NAME = 'lx-sync-server-v5';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -7,9 +7,8 @@ const ASSETS_TO_CACHE = [
     './js/ui-utils.js',
     './icon.svg',
     './manifest.json',
-    './vendor/js/marked.min.js',
     './vendor/fonts/inter.css',
-    './music/assets/tailwindcss.js',
+    './tailwind.generated.css',
     './music/assets/fontawesome/css/all.min.css'
 ];
 

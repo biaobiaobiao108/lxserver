@@ -1,4 +1,5 @@
 const lazyScriptPromises = new Map<string, Promise<void>>();
+let markedPromise: Promise<void> | undefined;
 
 function loadLazyScript(src: string, globalName?: string): Promise<void> {
     if (globalName && (window as any)[globalName]) return Promise.resolve();
@@ -17,7 +18,13 @@ function loadLazyScript(src: string, globalName?: string): Promise<void> {
 }
 
 export function ensureMarkedLoaded() {
-    return loadLazyScript('js/marked.min.js', 'marked');
+    if ((window as any).marked) return Promise.resolve();
+    if (!markedPromise) {
+        markedPromise = import('marked').then(({ marked }) => {
+            (window as any).marked = marked;
+        });
+    }
+    return markedPromise;
 }
 
 export function ensureVisualizerLoaded() {

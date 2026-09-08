@@ -1,3 +1,5 @@
+import { marked } from 'marked';
+
 export const credentialStorage = window.sessionStorage;
 
 export function stringToColor(str: string): string {
@@ -30,12 +32,6 @@ export function safeInlineString(value: unknown): string {
 }
 
 export function renderSafeMarkdown(container: HTMLElement, markdown: string): void {
-    const marked = (window as any).marked;
-    if (!marked) {
-        container.textContent = markdown;
-        return;
-    }
-
     const template = document.createElement('template');
     template.innerHTML = marked.parse(String(markdown ?? ''));
     template.content.querySelectorAll('script, iframe, object, embed, frame, frameset, form, link, meta, base, style').forEach(element => element.remove());

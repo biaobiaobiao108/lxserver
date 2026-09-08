@@ -233,15 +233,10 @@ export function initShellFeature(context: AdminFeatureContext) {
             if (!response.ok) throw new Error('Failed to load about.md');
             const text = await response.text();
 
-            // Render Markdown
-            if (window.marked) {
-                // Replace the build hash placeholder; application version is intentionally not shown in the UI.
-                const buildHash = (window.CONFIG && window.CONFIG.buildHash) || 'unknown';
-                const content = text.replace(/{{buildHash}}/g, buildHash);
-                renderSafeMarkdown(container, content);
-            } else {
-                container.innerText = text;
-            }
+            // Replace the build hash placeholder; application version is intentionally not shown in the UI.
+            const buildHash = (window.CONFIG && window.CONFIG.buildHash) || 'unknown';
+            const content = text.replace(/{{buildHash}}/g, buildHash);
+            renderSafeMarkdown(container, content);
         } catch (e) {
             console.error('Failed to load about content:', e);
             container.innerHTML = '<p style="color: var(--accent-error); text-align: center;">加载关于页面失败</p>';

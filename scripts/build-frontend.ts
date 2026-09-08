@@ -8,6 +8,17 @@ async function build() {
   const adminEntry = path.join(import.meta.dir, '../frontend/admin/src/index.ts')
   const playerEntry = path.join(import.meta.dir, '../frontend/player/src/index.ts')
 
+  const stylesProcess = Bun.spawn(['bun', 'run', 'scripts/build-styles.ts'], {
+    stdout: 'inherit',
+    stderr: 'inherit',
+  })
+  const stylesExitCode = await stylesProcess.exited
+  if (stylesExitCode !== 0) {
+    console.error('[Tailwind] Style build failed')
+    if (!isWatch) process.exit(1)
+    return
+  }
+
   const shouldMinify = process.env.NODE_ENV === 'production' || !isWatch
 
   // 1. Build Admin Panel

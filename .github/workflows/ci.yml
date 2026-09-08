@@ -52,6 +52,9 @@ jobs:
       - name: Build frontend assets
         run: bun run build:frontend
 
+      - name: Check frontend assets
+        run: bun run check:frontend-assets
+
       - name: Run unit tests
         run: bun test
 

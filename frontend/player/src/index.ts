@@ -1474,7 +1474,7 @@ async function loadAboutContent() {
 
         // Render Markdown. The parser is only needed when the About tab is opened.
         await ensureMarkedLoaded().catch(() => undefined);
-        if (window.marked) {
+        if ((window as any).marked) {
             // Replace the build hash placeholder; application version is intentionally not shown in the UI.
             const buildHash = (window.CONFIG && window.CONFIG.buildHash) || 'unknown';
             const content = text.replace(/{{buildHash}}/g, buildHash);

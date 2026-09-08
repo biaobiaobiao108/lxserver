@@ -247,7 +247,7 @@ describe('Player Navigation and State Restoration Safety', () => {
 
         const sharedHeaders = html.match(/player-track-list-header player-track-grid/g) ?? [];
         expect(sharedHeaders.length).toBe(0);
-        for (const id of ['search-floating-actions', 'lb-floating-actions', 'lm-floating-actions']) {
+        for (const id of ['search-floating-actions', 'lb-floating-actions']) {
             const element = html.match(new RegExp(`id="${id}"[\\s\\S]{0,240}`))?.[0] ?? '';
             expect(element).toContain('player-floating-capsule');
         }

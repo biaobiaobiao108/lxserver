@@ -259,7 +259,7 @@
                 <div id="view-search"
                     class="absolute inset-0 flex flex-col px-2 pt-2 md:px-6 md:pt-6 pb-44 md:pb-32 overflow-hidden transition-all duration-300">
                     <!-- Search Input Area -->
-                    <div class="flex flex-col md:flex-row gap-2 md:gap-4 mb-4 md:mb-6">
+                    <div class="player-search-toolbar flex flex-col md:flex-row gap-2 md:gap-4 mb-4 md:mb-6">
                         <!-- Search Input -->
                         <div class="flex-1 relative">
                             <label for="search-input" class="sr-only">搜索歌曲、歌手或专辑</label>
@@ -279,7 +279,7 @@
                         </div>
 
                         <!-- Source Selector & Manage Button -->
-                        <div class="flex items-center gap-2 justify-end">
+                        <div class="player-search-controls flex items-center gap-2 justify-end">
                             <!-- Search Button -->
                             <button data-event-click-action="doSearch" aria-label="搜索"
                                 class="p-2 t-text-main hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition-colors"
@@ -3341,7 +3341,7 @@
 
         <!-- Left: Song Info (Cover + Title + Like) -->
         <div id="player-song-info"
-            class="w-full md:w-[28%] flex items-center gap-2.5 md:gap-3.5 mb-0 pr-2 md:pr-0 transition-all duration-300 min-w-0">
+            class="player-footer-song-info w-full md:w-[28%] flex items-center gap-2.5 md:gap-3.5 mb-0 pr-2 md:pr-0 transition-all duration-300 min-w-0">
             <!-- Cover with Hover Expand -->
             <div
                 class="w-11 h-11 md:w-12 md:h-12 bg-gray-200 dark:bg-gray-800 rounded-lg overflow-hidden shadow-sm relative group flex-shrink-0 cursor-pointer"
@@ -3384,7 +3384,7 @@
 
                 <!-- Mobile More Menu -->
                 <div class="relative md:hidden">
-                    <button id="player-more-btn" type="button" aria-label="更多播放操作" aria-expanded="false"
+                    <button id="player-more-btn" type="button" aria-label="更多播放操作" aria-haspopup="menu" aria-expanded="false"
                         aria-controls="player-more-menu"
                         class="w-8 h-8 flex items-center justify-center text-gray-500 hover:text-emerald-600 rounded-lg transition-colors"
                         data-event-click-action="togglePlayerMoreMenu" data-event-click-args="[&quot;@event&quot;]">
@@ -3418,9 +3418,9 @@
         </div>
 
         <!-- Center: Controls on Top & Sleek Progress Bar Below -->
-        <div class="flex-1 flex flex-col items-center justify-center max-w-xl mx-auto w-full px-0 md:px-4 order-last md:order-none mt-1 md:mt-0">
+        <div class="player-footer-center flex-1 flex flex-col items-center justify-center max-w-xl mx-auto w-full px-0 md:px-4 order-last md:order-none mt-1 md:mt-0">
             <!-- Top Controls Row -->
-            <div class="flex items-center gap-4 md:gap-5 w-full justify-center mb-1 relative">
+            <div class="player-footer-control-row flex items-center gap-4 md:gap-5 w-full justify-center mb-1 relative">
                 <!-- Play Mode Button with Dropdown -->
                 <div class="relative group">
                     <button id="play-mode-btn" aria-label="播放模式" aria-expanded="false" data-event-click-action="togglePlayModeMenu" data-event-click-args="[&quot;@event&quot;]"
@@ -3506,7 +3506,7 @@
             </div>
 
             <!-- Bottom Progress Bar Row -->
-            <div class="w-full flex items-center gap-2 md:gap-3 text-[11px] t-text-muted font-mono relative py-0.5">
+            <div class="player-footer-progress-row w-full flex items-center gap-2 md:gap-3 text-[11px] t-text-muted font-mono relative py-0.5">
                 <span id="time-current" class="tabular-nums">00:00</span>
                 <div class="flex-1 h-4 flex items-center relative group">
                     <!-- Footer Info/Visualizer Canvas -->
@@ -3601,7 +3601,7 @@
 
         <!-- Collapse Panel Button -->
         <button id="btn-collapse-panel" aria-label="收起播放栏" aria-expanded="true"
-            class="absolute right-2 md:right-4 top-2 md:top-1/2 md:-translate-y-1/2 t-text-muted p-2 hover:t-text-muted transition-all z-10"
+            class="player-footer-collapse-button absolute right-2 md:right-4 top-2 md:top-1/2 md:-translate-y-1/2 t-text-muted p-2 hover:t-text-muted transition-all z-10"
             data-event-click-action="togglePlayerPanel">
             <i class="fas fa-chevron-down text-sm"></i>
         </button>

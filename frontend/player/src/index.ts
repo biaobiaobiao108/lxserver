@@ -197,7 +197,7 @@ const queueFeature = initQueueFeature({
     getAudio: () => audio as HTMLMediaElement | null,
     playSong: (song, index) => playSong(song, index),
     savePlaybackState: () => savePlaybackState(),
-    closeMobileSidebar: () => toggleSidebar(),
+    closeMobileSidebar: () => toggleSidebar(false),
     applyMarqueeChecks: () => applyMarqueeChecks(),
     createMarqueeHtml: (text, className) => createMarqueeHtml(text, className),
     escapeHtmlText,
@@ -5079,6 +5079,15 @@ function toggleDetailCover() {
 
 // Initialize mobile gestures & touch interactions
 function initMobileGestures() {
+    // Keep the mobile backdrop in sync with the initial sidebar state. A stale
+    // backdrop must not create an invisible click layer over the player footer.
+    const initialSidebar = document.getElementById('main-sidebar');
+    const initialBackdrop = document.getElementById('mobile-sidebar-backdrop');
+    if (window.innerWidth < 1025 && initialSidebar?.classList.contains('-translate-x-full')) {
+        initialBackdrop?.classList.add('hidden');
+        document.body.classList.remove('sidebar-open');
+    }
+
     // 1. Sidebar Touch Gestures (Swipe left to close)
     const sidebar = document.getElementById('main-sidebar');
     if (sidebar) {
@@ -5145,7 +5154,7 @@ function initMobileGestures() {
     const playerSongInfo = document.getElementById('player-song-info');
     if (playerSongInfo) {
         playerSongInfo.addEventListener('click', (e: MouseEvent) => {
-            if (window.innerWidth < 768) {
+            if (window.innerWidth < 1025) {
                 const target = e.target as HTMLElement | null;
                 if (target && target.closest('button, a, input, select')) return;
                 toggleLyrics();
@@ -5156,6 +5165,15 @@ function initMobileGestures() {
     // 4. Escape key closes mobile sidebar
     document.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Escape') {
+            const moreMenu = document.getElementById('player-more-menu');
+            const moreButton = document.getElementById('player-more-btn');
+            if (moreMenu && !moreMenu.classList.contains('hidden')) {
+                moreMenu.classList.add('hidden');
+                moreButton?.setAttribute('aria-expanded', 'false');
+                moreButton?.focus();
+                return;
+            }
+
             const sidebar = document.getElementById('main-sidebar');
             if (sidebar && !sidebar.classList.contains('-translate-x-full') && window.innerWidth < 1025) {
                 toggleSidebar(false);

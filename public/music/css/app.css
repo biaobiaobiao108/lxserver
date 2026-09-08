@@ -166,143 +166,309 @@ html, body {
     -webkit-tap-highlight-color: transparent;
 }
 
-@media (max-width: 767px) {
-    /* Prevent iOS Safari auto-zoom on input focus */
+@media (max-width: 1024px) {
+    /* Prevent iOS Safari auto-zoom on input focus and keep the page in the viewport. */
     input, select, textarea {
         font-size: 16px !important;
     }
 
-    /* Modern Mini-Player layout on mobile */
-    #player-footer {
-        display: flex !important;
-        flex-direction: row !important;
-        align-items: center !important;
-        justify-content: space-between !important;
-        height: auto !important;
-        min-height: calc(3.85rem + env(safe-area-inset-bottom, 0px)) !important;
-        padding-top: 0.35rem !important;
-        padding-bottom: max(0.35rem, env(safe-area-inset-bottom, 0px)) !important;
-        padding-inline: 0.75rem !important;
-        position: fixed !important;
-        bottom: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        z-index: 60 !important;
-        gap: 0.5rem !important;
+    html,
+    body {
+        inline-size: 100%;
+        max-inline-size: 100dvw;
+        overflow-x: clip;
     }
 
-    #player-footer .player-secondary-action {
+    #player-main-content,
+    #player-main-content > .flex-1,
+    #player-main-content > .flex-1 > .relative {
+        min-inline-size: 0;
+        max-inline-size: 100%;
+    }
+
+    #player-main-content > header {
+        box-sizing: border-box;
+        block-size: auto !important;
+        min-block-size: calc(4rem + env(safe-area-inset-top, 0px));
+        padding-block-start: max(0.5rem, env(safe-area-inset-top, 0px)) !important;
+        padding-block-end: 0.5rem !important;
+        padding-inline-start: max(0.75rem, env(safe-area-inset-left, 0px)) !important;
+        padding-inline-end: max(0.75rem, env(safe-area-inset-right, 0px)) !important;
+        min-inline-size: 0;
+        max-inline-size: 100dvw;
+    }
+
+    #player-main-content > header button {
         min-block-size: 2.75rem;
         min-inline-size: 2.75rem;
     }
 
-    /* Top thin full-width progress bar */
-    #player-footer > .flex-1 > div:first-child {
-        position: absolute !important;
-        top: 0 !important;
-        left: 0 !important;
-        right: 0 !important;
-        width: 100% !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        height: 3px !important;
-        z-index: 30 !important;
-    }
-
-    #player-footer > .flex-1 > div:first-child #time-current,
-    #player-footer > .flex-1 > div:first-child #time-total {
-        display: none !important;
-    }
-
-    #player-footer > .flex-1 > div:first-child .flex-1 {
-        height: 3px !important;
-    }
-
-    #player-footer > .flex-1 > div:first-child #progress-container {
-        height: 3px !important;
-        border-radius: 0 !important;
-        background-color: rgba(156, 163, 175, 0.25) !important;
-    }
-
-    #player-footer > .flex-1 > div:first-child #progress-bar {
-        border-radius: 0 !important;
-    }
-
-    #player-footer > .flex-1 > div:first-child #visualizer-container {
-        display: none !important;
-    }
-
-    /* Song Info Section on Left */
-    #player-song-info {
-        flex: 1 1 auto !important;
-        min-width: 0 !important;
+    /* The footer is intentionally a three-row layout on touch viewports. */
+    #player-footer {
+        box-sizing: border-box;
         display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        justify-content: flex-end !important;
+        inline-size: 100% !important;
+        max-inline-size: 100dvw;
+        min-inline-size: 0;
+        min-block-size: calc(7.5rem + env(safe-area-inset-bottom, 0px)) !important;
+        block-size: auto !important;
+        padding-block-start: 0.35rem !important;
+        padding-block-end: max(0.4rem, env(safe-area-inset-bottom, 0px)) !important;
+        padding-inline-start: max(0.75rem, env(safe-area-inset-left, 0px)) !important;
+        padding-inline-end: max(0.75rem, env(safe-area-inset-right, 0px)) !important;
+        gap: 0 !important;
+        overflow-x: clip !important;
+    }
+
+    #player-footer .player-secondary-action,
+    #player-footer .player-menu-action {
+        min-block-size: 2.75rem;
+        min-inline-size: 2.75rem;
+    }
+
+    #player-footer .player-footer-song-info {
+        box-sizing: border-box;
+        display: flex !important;
+        flex: 0 0 auto !important;
         align-items: center !important;
-        gap: 0.65rem !important;
+        inline-size: 100% !important;
+        min-inline-size: 0 !important;
         margin: 0 !important;
-        padding-right: 0.25rem !important;
-        cursor: pointer !important;
-        -webkit-user-select: none;
+        padding-inline-end: 2.75rem !important;
+        cursor: pointer;
         user-select: none;
         touch-action: manipulation;
     }
 
     #player-song-info > div:first-child {
-        width: 2.75rem !important;
-        height: 2.75rem !important;
+        inline-size: 2.75rem !important;
+        block-size: 2.75rem !important;
         border-radius: 0.6rem !important;
-        flex-shrink: 0 !important;
+        flex: 0 0 auto !important;
         box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12) !important;
+    }
+
+    #player-song-info > div:nth-child(2),
+    #player-song-info > div:nth-child(2) > div,
+    #player-song-info #player-title,
+    #player-song-info #player-artist,
+    #player-song-info #player-album {
+        min-inline-size: 0 !important;
+        max-inline-size: 100%;
     }
 
     #player-song-info #player-like-btn,
     #player-song-info #player-more-btn {
-        display: none !important;
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        min-block-size: 2.75rem !important;
+        min-inline-size: 2.75rem !important;
+        padding: 0.5rem;
+        touch-action: manipulation;
     }
 
-    /* Controls on Right */
-    #player-footer > .flex-1 {
+    #player-song-info #player-more-menu {
+        inset-inline-end: 0;
+        max-inline-size: calc(100dvw - 1rem);
+        max-block-size: calc(100dvh - var(--player-footer-offset, 0px) - 1rem);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    #player-footer .player-footer-center {
+        box-sizing: border-box;
         display: flex !important;
-        flex-direction: row !important;
-        align-items: center !important;
-        justify-content: flex-end !important;
         flex: 0 0 auto !important;
-        max-width: none !important;
-        width: auto !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        justify-content: center !important;
+        order: 0 !important;
+        inline-size: 100% !important;
+        max-inline-size: none !important;
+        min-inline-size: 0 !important;
         margin: 0 !important;
         padding: 0 !important;
     }
 
-    #player-footer > .flex-1 > div:last-child {
-        display: flex !important;
-        align-items: center !important;
-        gap: 0.35rem !important;
-        justify-content: flex-end !important;
-        margin: 0 !important;
-    }
-
-    #player-footer > .flex-1 > div:last-child #play-mode-btn,
-    #player-footer > .flex-1 > div:last-child #playback-rate-btn {
-        display: none !important;
-    }
-
-    #player-footer > .flex-1 > div:last-child button {
-        min-width: 2.4rem !important;
-        min-height: 2.4rem !important;
-        padding: 0.45rem !important;
+    #player-footer .player-footer-control-row {
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
+        flex-wrap: nowrap;
+        inline-size: 100% !important;
+        min-inline-size: 0;
+        margin-block: 0.1rem !important;
+        gap: clamp(0.15rem, 2vw, 0.7rem) !important;
+        overflow: visible;
+    }
+
+    #player-footer .player-footer-control-row > .relative,
+    #player-footer .player-footer-control-row > button {
+        flex: 0 0 auto;
+        min-inline-size: 2.75rem;
+    }
+
+    #player-footer .player-footer-control-row button {
+        box-sizing: border-box;
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+        min-block-size: 2.75rem !important;
+        min-inline-size: 2.75rem !important;
+        padding: 0.5rem !important;
         touch-action: manipulation;
     }
 
-    #player-footer > .flex-1 > div:last-child #btn-play {
-        width: 2.5rem !important;
-        height: 2.5rem !important;
-        min-width: 2.5rem !important;
-        min-height: 2.5rem !important;
+    #player-footer .player-footer-control-row #btn-play {
+        inline-size: 2.75rem !important;
+        block-size: 2.75rem !important;
+        min-inline-size: 2.75rem !important;
+        min-block-size: 2.75rem !important;
         font-size: 1.05rem !important;
         box-shadow: 0 2px 10px rgba(16, 185, 129, 0.4) !important;
+    }
+
+    #player-footer .player-footer-control-row #play-mode-menu,
+    #player-footer .player-footer-control-row #playback-rate-menu {
+        inset-inline-start: 50%;
+        inset-inline-end: auto;
+        max-inline-size: calc(100dvw - 1rem);
+    }
+
+    #player-footer .player-footer-progress-row {
+        display: flex !important;
+        align-items: center !important;
+        inline-size: 100% !important;
+        min-inline-size: 0;
+        margin: 0 !important;
+        padding-block: 0.15rem !important;
+        gap: 0.5rem !important;
+    }
+
+    #player-footer .player-footer-progress-row > .flex-1 {
+        min-inline-size: 0 !important;
+        block-size: 1rem;
+    }
+
+    #player-footer .player-footer-progress-row #progress-container {
+        block-size: 0.25rem !important;
+        border-radius: 999px;
+    }
+
+    #player-footer .player-footer-progress-row #progress-bar {
+        border-radius: 999px;
+    }
+
+    #player-footer .player-footer-progress-row #visualizer-container {
+        display: none !important;
+    }
+
+    #player-footer .player-footer-collapse-button {
+        inset-inline-end: 0.25rem !important;
+        inset-block-start: 0.25rem !important;
+        z-index: 20;
+        min-block-size: 2.25rem;
+        min-inline-size: 2.25rem;
+        padding: 0.5rem;
+    }
+
+    #view-player-detail {
+        padding-block-end: calc(var(--player-footer-offset, 0px) + env(safe-area-inset-bottom, 0px)) !important;
+    }
+
+    #view-search,
+    #view-songlist,
+    #songlist-detail-view,
+    #view-leaderboard,
+    #view-favorites,
+    #view-localmusic,
+    #view-settings,
+    #view-about {
+        min-inline-size: 0;
+        max-inline-size: 100%;
+    }
+
+    #view-search .player-search-toolbar {
+        min-inline-size: 0;
+        margin-block-end: 0.9rem;
+    }
+
+    #view-search .player-search-controls {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        inline-size: 100%;
+        min-inline-size: 0;
+        gap: 0.5rem;
+    }
+
+    #view-search .player-search-controls > * {
+        inline-size: 100%;
+        min-inline-size: 0;
+    }
+
+    #view-search .player-search-controls select,
+    #view-search .player-search-controls button {
+        min-block-size: 2.75rem;
+    }
+
+    #view-search #search-results-header,
+    #view-search #search-pagination-bar {
+        min-inline-size: 0;
+    }
+
+    #view-search #search-pagination-bar button,
+    #view-search #search-pagination-bar [role="button"] {
+        min-block-size: 2.75rem;
+        min-inline-size: 2.75rem;
+    }
+
+    #view-songlist .overflow-x-auto,
+    #view-leaderboard .overflow-x-auto,
+    #view-localmusic .overflow-x-auto {
+        max-inline-size: 100%;
+        overscroll-behavior-inline: contain;
+    }
+
+    #queue-drawer.player-safe-drawer,
+    #cache-drawer.player-safe-drawer,
+    #download-drawer.player-safe-drawer {
+        inline-size: 100% !important;
+        max-inline-size: 100dvw !important;
+    }
+
+    #queue-drawer.player-safe-drawer > div:first-child,
+    #cache-drawer.player-safe-drawer > div:first-child,
+    #download-drawer.player-safe-drawer > div:first-child {
+        padding: 0.85rem 1rem !important;
+    }
+}
+
+@media (max-width: 359px) {
+    #player-footer {
+        min-block-size: calc(7.25rem + env(safe-area-inset-bottom, 0px)) !important;
+        padding-inline-start: max(0.5rem, env(safe-area-inset-left, 0px)) !important;
+        padding-inline-end: max(0.5rem, env(safe-area-inset-right, 0px)) !important;
+    }
+
+    #player-footer .player-footer-control-row {
+        gap: 0.05rem !important;
+    }
+
+    #player-footer .player-footer-control-row > .relative,
+    #player-footer .player-footer-control-row > button,
+    #player-footer .player-footer-control-row button {
+        min-inline-size: 2.5rem !important;
+        min-block-size: 2.5rem !important;
+    }
+
+    #player-footer .player-footer-control-row #btn-play {
+        inline-size: 2.625rem !important;
+        block-size: 2.625rem !important;
     }
 }
 
@@ -520,7 +686,7 @@ html, body {
     }
 }
 
-@media (max-width: 767px) {
+@media (max-width: 1024px) {
     #queue-drawer.player-safe-drawer,
     #cache-drawer.player-safe-drawer,
     #download-drawer.player-safe-drawer {

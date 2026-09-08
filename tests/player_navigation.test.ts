@@ -84,6 +84,35 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(source).toContain('publicFavItem.title = \'公开收藏\';');
     });
 
+    it('mobile player footer uses explicit rows and keeps every control touchable', () => {
+        const playerHtmlPath = path.join(import.meta.dir, '../public/music/index.html');
+        const html = fs.readFileSync(playerHtmlPath, 'utf8');
+        const css = fs.readFileSync(playerCssPath, 'utf8');
+
+        expect(html).toContain('class="player-footer-song-info');
+        expect(html).toContain('class="player-footer-center');
+        expect(html).toContain('class="player-footer-control-row');
+        expect(html).toContain('class="player-footer-progress-row');
+        expect(html).toContain('aria-haspopup="menu" aria-expanded="false"');
+        expect(html).toContain('class="player-footer-collapse-button ');
+        expect(css).toContain('@media (max-width: 1024px)');
+        expect(css).toContain('#player-footer .player-footer-control-row');
+        expect(css).toContain('#player-footer .player-footer-progress-row');
+        expect(css).toContain('min-inline-size: 0');
+        expect(css).toContain('max-inline-size: 100dvw');
+        expect(css).toContain('env(safe-area-inset-bottom');
+        expect(css).not.toContain('#player-footer > .flex-1 > div:first-child');
+        expect(css).not.toContain('#player-footer > .flex-1 > div:last-child #play-mode-btn');
+    });
+
+    it('mobile player menu closes with Escape and supports the tablet breakpoint', () => {
+        const source = fs.readFileSync(playerSrcPath, 'utf8');
+        expect(source).toContain('if (window.innerWidth < 1025)');
+        expect(source).toContain("const moreMenu = document.getElementById('player-more-menu');");
+        expect(source).toContain("moreButton?.focus();");
+        expect(source).toContain('closeMobileSidebar: () => toggleSidebar(false)');
+    });
+
     it('artist and album searches guard favorite callbacks and use the auth bridge', () => {
         const srcContent = fs.readFileSync(playerSrcPath, 'utf8');
         const searchContent = fs.readFileSync(searchSrcPath, 'utf8');

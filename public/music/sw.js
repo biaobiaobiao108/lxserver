@@ -9,8 +9,6 @@ const ASSETS_TO_CACHE = [
     './assets/fontawesome/css/all.min.css',
     // 核心 JS
     './js/lyric-card.js',
-    './js/batch_pagination.js',
-    './js/single_song_ops.js',
     './js/songlist_manager.js',
     './js/leaderboard_manager.js',
     './js/local_music.js',

@@ -1,3 +1,6 @@
+// Single-song operations keep their legacy window exports for inline handlers.
+// @ts-nocheck
+const globalState = window as any;
 function getSongQualitySize(song, quality) {
     const maps = [
         song?._types,
@@ -97,7 +100,7 @@ async function fetchRemoteQualitySize(song, quality) {
     }
 
     try {
-        const authHeaders = typeof getUserAuthHeaders === 'function' ? getUserAuthHeaders() : {};
+        const authHeaders = typeof globalState.getUserAuthHeaders === 'function' ? globalState.getUserAuthHeaders() : {};
         const res = await fetch('/api/music/quality/size', {
             method: 'POST',
             headers: {
@@ -159,21 +162,21 @@ function getSelectableQualityOrder(song = null) {
 
 // Single song deletion
 async function deleteSingleSong(songId) {
-    if (!(await showSelect('删除歌曲', '确定要删除这首歌曲吗?', { danger: true }))) {
+    if (!(await globalState.showSelect('删除歌曲', '确定要删除这首歌曲吗?', { danger: true }))) {
         return;
     }
 
     // 公开列表删除需要管理员权限
-    if (typeof requireAdminForOpenWrite === 'function') {
-        if (!(await requireAdminForOpenWrite('删除公开列表中的歌曲'))) return;
+    if (typeof globalState.requireAdminForOpenWrite === 'function') {
+        if (!(await globalState.requireAdminForOpenWrite('删除公开列表中的歌曲'))) return;
     }
 
     const listContext = typeof window.getEditableListContext === 'function'
         ? window.getEditableListContext()
         : null;
-    const activeListId = listContext?.listId || getCurrentActiveListId();
-    if (!activeListId || !currentListData || (listContext && !Array.isArray(listContext.list))) {
-        showError('无法确定当前列表');
+    const activeListId = listContext?.listId || globalState.getCurrentActiveListId();
+    if (!activeListId || !globalState.currentListData || (listContext && !Array.isArray(listContext.list))) {
+        globalState.showError('无法确定当前列表');
         return;
     }
 
@@ -185,7 +188,7 @@ async function deleteSingleSong(songId) {
         const password = sessionStorage.getItem('lx_sync_pass');
 
         if (!username || !password) {
-            showError('请先登录本地账号');
+            globalState.showError('请先登录本地账号');
             return;
         }
 
@@ -194,7 +197,7 @@ async function deleteSingleSong(songId) {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    ...getUserAuthHeaders()
+                    ...globalState.getUserAuthHeaders()
                 },
                 body: JSON.stringify({
                     listId: activeListId,
@@ -209,19 +212,19 @@ async function deleteSingleSong(songId) {
 
             // Reload data from server
             const data = await window.SyncManager.sync();
-            const oldUsername = currentListData ? currentListData.username : null;
-            currentListData = data;
-            if (oldUsername) currentListData.username = oldUsername; // Preserve username
+            const oldUsername = globalState.currentListData ? globalState.currentListData.username : null;
+            globalState.currentListData = data;
+            if (oldUsername) globalState.currentListData.username = oldUsername; // Preserve username
             await window.ListStore.set(data).catch(e => console.error('[IDBStore] 保存失败:', e));
-            renderMyLists(data);
+            globalState.renderMyLists(data);
 
             // Refresh current view
-            handleListClick(activeListId);
+            globalState.handleListClick(activeListId);
 
             console.log('[Single] 本地模式删除成功');
 
         } catch (e) {
-            showError('删除失败: ' + e.message);
+            globalState.showError('删除失败: ' + e.message);
             console.error('[Single] 删除错误:', e);
         }
     } else if (window.SyncManager.mode === 'remote') {
@@ -237,7 +240,7 @@ async function deleteSingleSong(songId) {
             setListById(activeListId, remainingItems);
 
             // Save to cache
-            await window.ListStore.set(currentListData).catch(e => console.error('[IDBStore] 保存失败:', e));
+            await window.ListStore.set(globalState.currentListData).catch(e => console.error('[IDBStore] 保存失败:', e));
             console.log('[Single] WS模式:已修改缓存,下次连接时将同步');
 
             // If currently connected, push the change immediately
@@ -251,11 +254,11 @@ async function deleteSingleSong(songId) {
             }
 
             // Update UI
-            renderMyLists(currentListData);
-            handleListClick(activeListId);
+            globalState.renderMyLists(globalState.currentListData);
+            globalState.handleListClick(activeListId);
 
         } catch (e) {
-            showError('删除失败: ' + e.message);
+            globalState.showError('删除失败: ' + e.message);
             console.error('[Single] WS删除错误:', e);
         }
     }
@@ -268,7 +271,7 @@ async function deleteSingleSong(songId) {
  * @param {Boolean} force 是否强制同步（忽略设置开关，用于手动点击按钮）
  */
 async function requestServerLyricCache(song, quality = null, force = false) {
-    if (!force && (typeof settings === 'undefined' || settings.enableServerLyricCache === false)) return false;
+    if (!force && (typeof globalState.settings === 'undefined' || globalState.settings.enableServerLyricCache === false)) return false;
 
     console.log(`[Lyric] 尝试同步下载歌词缓存: ${song.name} (${quality || 'auto'})`);
     try {
@@ -299,7 +302,7 @@ async function requestServerLyricCache(song, quality = null, force = false) {
         const cacheUrl = `/api/music/cache/lyric`;
         const headers = {
             'Content-Type': 'application/json',
-            ...getUserAuthHeaders()
+        ...globalState.getUserAuthHeaders()
         };
 
         // 构建包含音质信息的 songInfo
@@ -355,18 +358,18 @@ async function downloadSong(songOrId, forceQuality = null, suppressAlerts = fals
     }
 
     if (!song) {
-        if (!suppressAlerts) showError('未找到歌曲信息');
+        if (!suppressAlerts) globalState.showError('未找到歌曲信息');
         return false;
     }
 
     // 权限校验：公开受限模式下，如果管理员关闭了“缓存歌曲文件”功能，则下载/缓存歌曲需要验证管理员身份
-    const isPublic = !isUserLoggedIn() || !window.currentListData?.username || window.currentListData?.username === 'default' || window.currentListData?.username === '_open';
+    const isPublic = !globalState.isUserLoggedIn() || !window.currentListData?.username || window.currentListData?.username === 'default' || window.currentListData?.username === '_open';
     const enablePublicRestriction = window.lx_config?.['user.enablePublicRestriction'];
     const isAdmin = !!sessionStorage.getItem('lx_admin_password');
     const isServerCacheAllowed = window.settings?.enableServerCache === true;
 
     if (isPublic && enablePublicRestriction && !isServerCacheAllowed && !isAdmin) {
-        showError('权限限制：管理员已关闭缓存歌曲功能，下载歌曲需要验证管理员身份。');
+        globalState.showError('权限限制：管理员已关闭缓存歌曲功能，下载歌曲需要验证管理员身份。');
         if (typeof window.handleAdminAuth === 'function') {
             const authorized = await window.handleAdminAuth('管理员已关闭缓存歌曲文件功能，下载歌曲需要验证管理员身份');
             if (!authorized) return false;
@@ -394,10 +397,10 @@ async function downloadSong(songOrId, forceQuality = null, suppressAlerts = fals
             // [新增] 如果开启了服务器歌词缓存，下载时自动同步
             // requestServerLyricCache(song, targetQuality); // [Removed] Delay until success
 
-            if (!suppressAlerts) showInfo(`已添加任务，您可以在右侧下载管理面板查看进度`);
+            if (!suppressAlerts) globalState.showInfo(`已添加任务，您可以在右侧下载管理面板查看进度`);
             return true;
         } else {
-            showError('下载管理器未就绪');
+            globalState.showError('下载管理器未就绪');
             return false;
         }
     } else if (selected && (selected.startsWith('缓存到服务器') || selected.startsWith('下载到服务器'))) {
@@ -406,11 +409,11 @@ async function downloadSong(songOrId, forceQuality = null, suppressAlerts = fals
         const isCached = checkResult?.exists && !checkResult?.isCollision;
 
         if (!isOnlyDownload && isCached) {
-            showInfo('该歌曲已在服务器缓存');
+            globalState.showInfo('该歌曲已在服务器缓存');
             return false;
         }
         if (isPublic && enablePublicRestriction && !isServerCacheAllowed && !isAdmin) {
-            showError('权限限制：缓存到服务器需要验证管理员。');
+            globalState.showError('权限限制：缓存到服务器需要验证管理员。');
             if (typeof window.handleAdminAuth === 'function') {
                 const authorized = await window.handleAdminAuth('缓存到服务器需要验证管理员身份');
                 if (!authorized) return false;
@@ -428,14 +431,14 @@ async function downloadSong(songOrId, forceQuality = null, suppressAlerts = fals
                     isServer: true,
                     quality: targetQuality // Let DM handle best quality resolution
                 }]);
-                if (!suppressAlerts) showInfo(`已添加云端缓存任务`);
+                if (!suppressAlerts) globalState.showInfo(`已添加云端缓存任务`);
                 return true;
             } else {
-                showError('下载管理器未就绪');
+                globalState.showError('下载管理器未就绪');
                 return false;
             }
         } catch (e) {
-            if (!suppressAlerts) showError('操作失败: ' + e.message);
+            if (!suppressAlerts) globalState.showError('操作失败: ' + e.message);
             return false;
         }
     }
@@ -445,18 +448,18 @@ async function downloadSong(songOrId, forceQuality = null, suppressAlerts = fals
 // Batch download function shared by list selection and album downloads.
 async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
     if (!Array.isArray(songsToDownload) || songsToDownload.length === 0) {
-        showError(batchOptions.emptyMessage || '未找到要下载的歌曲');
+        globalState.showError(batchOptions.emptyMessage || '未找到要下载的歌曲');
         return false;
     }
 
     // 权限校验：公开受限模式下，如果管理员关闭了“缓存歌曲文件”功能，则批量下载/缓存歌曲需要验证管理员身份
-    const isPublic = !isUserLoggedIn() || !window.currentListData?.username || window.currentListData?.username === 'default' || window.currentListData?.username === '_open';
+    const isPublic = !globalState.isUserLoggedIn() || !window.currentListData?.username || window.currentListData?.username === 'default' || window.currentListData?.username === '_open';
     const enablePublicRestriction = window.lx_config?.['user.enablePublicRestriction'];
     const isAdmin = !!sessionStorage.getItem('lx_admin_password');
     const isServerCacheAllowed = window.settings?.enableServerCache === true;
 
     if (isPublic && enablePublicRestriction && !isServerCacheAllowed && !isAdmin) {
-        showError('权限限制：管理员已关闭缓存歌曲功能，批量下载需要验证管理员身份。');
+        globalState.showError('权限限制：管理员已关闭缓存歌曲功能，批量下载需要验证管理员身份。');
         if (typeof window.handleAdminAuth === 'function') {
             const authorized = await window.handleAdminAuth('管理员已关闭缓存歌曲文件功能，批量下载需要验证管理员身份');
             if (!authorized) return false;
@@ -481,7 +484,7 @@ async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
             await window.SystemDownloadManager.addTasks(tasks);
 
             /* // [Removed] Delay until success
-            if (typeof settings !== 'undefined' && settings.enableServerLyricCache !== false) {
+            if (typeof globalState.settings !== 'undefined' && globalState.settings.enableServerLyricCache !== false) {
                 songsToDownload.forEach(s => {
                     const actualQuality = window.QualityManager ? window.QualityManager.getBestQuality(s, targetQuality) : targetQuality;
                     requestServerLyricCache(s, actualQuality);
@@ -489,19 +492,19 @@ async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
             }
             */
 
-            showInfo(`已将 ${songsToDownload.length} 项任务添加到下载列表，您可以前往右侧下载管理面板查看进度`);
+            globalState.showInfo(`已将 ${songsToDownload.length} 项任务添加到下载列表，您可以前往右侧下载管理面板查看进度`);
             if (clearSelection) {
                 if (typeof exitBatchMode === 'function') exitBatchMode();
                 else if (typeof deselectAll === 'function') deselectAll();
             }
             return true;
         } else {
-            showError('下载管理器未就绪');
+            globalState.showError('下载管理器未就绪');
             return false;
         }
     } else if (selectedTarget === 'server') {
         if (isPublic && enablePublicRestriction && !isServerCacheAllowed && !isAdmin) {
-            showError('权限限制：缓存到服务器需要验证管理员。');
+            globalState.showError('权限限制：缓存到服务器需要验证管理员。');
             if (typeof window.handleAdminAuth === 'function') {
                 const authorized = await window.handleAdminAuth('缓存到服务器需要验证管理员身份');
                 if (!authorized) return false;
@@ -511,7 +514,7 @@ async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
         }
 
         if (!window.SystemDownloadManager) {
-            showError('下载管理器未就绪');
+            globalState.showError('下载管理器未就绪');
             return false;
         }
 
@@ -530,7 +533,7 @@ async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
             if (typeof exitBatchMode === 'function') exitBatchMode();
             else if (typeof deselectAll === 'function') deselectAll();
         }
-        showInfo(`已将 ${songsToDownload.length} 首歌曲加入缓存队列`);
+        globalState.showInfo(`已将 ${songsToDownload.length} 首歌曲加入缓存队列`);
         return true;
     }
 
@@ -539,7 +542,7 @@ async function batchDownloadSongs(songsToDownload, batchOptions = {}) {
 
 async function batchDownloadFromList() {
     if (selectedItems.size === 0) {
-        showError('请先选择要下载的歌曲');
+        globalState.showError('请先选择要下载的歌曲');
         return false;
     }
 
@@ -550,13 +553,13 @@ async function batchDownloadFromList() {
     selectedItems.forEach(id => {
         let song = null;
         if (selectedSongObjects && selectedSongObjects.has(id)) song = selectedSongObjects.get(id);
-        if (!song && typeof viewingPlaylist !== 'undefined' && viewingPlaylist) song = findSong(viewingPlaylist, id);
+        if (!song && typeof globalState.viewingPlaylist !== 'undefined' && globalState.viewingPlaylist) song = findSong(globalState.viewingPlaylist, id);
         if (!song && currentPlaylist) song = findSong(currentPlaylist, id);
-        if (!song && currentListData) {
-            if (currentListData.defaultList) song = findSong(currentListData.defaultList, id);
-            if (!song && currentListData.loveList) song = findSong(currentListData.loveList, id);
-            if (!song && currentListData.userList) {
-                for (const uList of currentListData.userList) {
+        if (!song && globalState.currentListData) {
+            if (globalState.currentListData.defaultList) song = findSong(globalState.currentListData.defaultList, id);
+            if (!song && globalState.currentListData.loveList) song = findSong(globalState.currentListData.loveList, id);
+            if (!song && globalState.currentListData.userList) {
+                for (const uList of globalState.currentListData.userList) {
                     song = findSong(uList.list, id);
                     if (song) break;
                 }
@@ -566,7 +569,7 @@ async function batchDownloadFromList() {
     });
 
     if (songsToDownload.length === 0) {
-        showError('未找到选中歌曲的详细信息');
+        globalState.showError('未找到选中歌曲的详细信息');
         return false;
     }
 
@@ -575,19 +578,19 @@ async function batchDownloadFromList() {
 
 // Re-use helper functions from batch_pagination.js
 function getListById(listId) {
-    if (!currentListData) return null;
-    if (listId === 'default') return currentListData.defaultList;
-    if (listId === 'love') return currentListData.loveList;
-    const userList = currentListData.userList.find(l => l.id === listId);
+    if (!globalState.currentListData) return null;
+    if (listId === 'default') return globalState.currentListData.defaultList;
+    if (listId === 'love') return globalState.currentListData.loveList;
+    const userList = globalState.currentListData.userList.find(l => l.id === listId);
     return userList ? userList.list : null;
 }
 
 function setListById(listId, newList) {
-    if (!currentListData) return;
-    if (listId === 'default') currentListData.defaultList = newList;
-    else if (listId === 'love') currentListData.loveList = newList;
+    if (!globalState.currentListData) return;
+    if (listId === 'default') globalState.currentListData.defaultList = newList;
+    else if (listId === 'love') globalState.currentListData.loveList = newList;
     else {
-        const userList = currentListData.userList.find(l => l.id === listId);
+        const userList = globalState.currentListData.userList.find(l => l.id === listId);
         if (userList) userList.list = newList;
     }
 }
@@ -598,3 +601,4 @@ window.downloadSong = downloadSong;
 window.batchDownloadSongs = batchDownloadSongs;
 window.batchDownloadFromList = batchDownloadFromList;
 window.requestServerLyricCache = requestServerLyricCache;
+

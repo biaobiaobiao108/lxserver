@@ -1,6 +1,8 @@
 import './legacy/quality';
 import './legacy/idb_store';
 import './legacy/user_sync';
+import './legacy/batch_pagination';
+import './legacy/single_song_ops';
 import './legacy/list_search';
 import './legacy/pwa';
 import './legacy/theme_manager';
@@ -4510,6 +4512,11 @@ window.showSelect = showSelect;
 window.showSuccess = showSuccess;
 window.showInfo = showInfo;
 window.showError = showError;
+window.showLoading = showLoading;
+window.hideLoading = hideLoading;
+window.getUserAuthHeaders = getUserAuthHeaders;
+window.isUserLoggedIn = isUserLoggedIn;
+window.renderMyLists = renderMyLists;
 
 // Lyrics
 window.toggleLyrics = toggleLyrics;

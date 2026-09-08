@@ -1,3 +1,6 @@
+// Batch list operations retain their window API while using the TypeScript build.
+// @ts-nocheck
+const globalState = window as any;
 // Batch Selection and Deletion Functions
 // Batch Selection and Deletion Functions
 function ensureBatchSelectionState() {
@@ -45,9 +48,9 @@ function handleBatchSelect(songId, isChecked) {
     const id = String(songId); // Force string ID
     if (isChecked) {
         window.selectedItems.add(id);
-        // Cache song object if available in viewingPlaylist
+        // Cache song object if available in globalState.viewingPlaylist
         if (Array.isArray(window.viewingPlaylist)) {
-            // Loose comparison just in case, though viewingPlaylist IDs should match render
+            // Loose comparison just in case, though globalState.viewingPlaylist IDs should match render
             const song = window.viewingPlaylist.find(s => String(s.id) === id);
             if (song) window.selectedSongObjects.set(id, song);
         }
@@ -212,23 +215,23 @@ function updateBatchToolbar() {
 
 async function batchDeleteFromList() {
     if (window.selectedItems.size === 0) {
-        showError('请先选择要删除的歌曲');
+        globalState.showError('请先选择要删除的歌曲');
         return;
     }
 
-    if (!(await showSelect('批量删除', `确定要删除选中的 ${window.selectedItems.size} 首歌曲吗?`, { danger: true }))) {
+    if (!(await globalState.showSelect('批量删除', `确定要删除选中的 ${window.selectedItems.size} 首歌曲吗?`, { danger: true }))) {
         return;
     }
 
     // 公开列表删除需要管理员权限
-    if (typeof requireAdminForOpenWrite === 'function') {
-        if (!(await requireAdminForOpenWrite('删除公开列表中的歌曲'))) return;
+    if (typeof globalState.requireAdminForOpenWrite === 'function') {
+        if (!(await globalState.requireAdminForOpenWrite('删除公开列表中的歌曲'))) return;
     }
 
     // Get current list context
     const activeListId = getCurrentActiveListId();
-    if (!activeListId || !currentListData) {
-        showError('无法确定当前列表');
+    if (!activeListId || !globalState.currentListData) {
+        globalState.showError('无法确定当前列表');
         return;
     }
 
@@ -241,7 +244,7 @@ async function batchDeleteFromList() {
         const password = sessionStorage.getItem('lx_sync_pass');
 
         if (!username || !password) {
-            showError('请先登录本地账号');
+            globalState.showError('请先登录本地账号');
             return;
         }
 
@@ -249,7 +252,7 @@ async function batchDeleteFromList() {
             // Call user-specific API endpoint
             const res = await fetch('/api/music/user/list/remove', {
                 method: 'POST',
-                headers: getUserAuthHeaders(),
+                headers: globalState.getUserAuthHeaders(),
                 body: JSON.stringify({
                     listId: activeListId,
                     songIds: idsToDelete
@@ -263,20 +266,20 @@ async function batchDeleteFromList() {
 
             // Reload data from server
             const data = await window.SyncManager.sync();
-            const oldUsername = currentListData ? currentListData.username : null;
-            currentListData = data;
-            if (oldUsername) currentListData.username = oldUsername; // Preserve username
+            const oldUsername = globalState.currentListData ? globalState.currentListData.username : null;
+            globalState.currentListData = data;
+            if (oldUsername) globalState.currentListData.username = oldUsername; // Preserve username
             await window.ListStore.set(data).catch(e => console.error('[IDBStore] 保存失败:', e));
-            renderMyLists(data);
+            globalState.renderMyLists(data);
 
             // Refresh current view
-            handleListClick(activeListId);
+            globalState.handleListClick(activeListId);
             deleted = true;
 
             console.log('[Batch] 本地模式删除成功');
 
         } catch (e) {
-            showError('批量删除失败: ' + e.message);
+            globalState.showError('批量删除失败: ' + e.message);
             console.error('[Batch] 删除错误:', e);
         }
     } else if (window.SyncManager.mode === 'remote') {
@@ -294,7 +297,7 @@ async function batchDeleteFromList() {
             setListById(activeListId, remainingItems);
 
             // Save to cache
-            await window.ListStore.set(currentListData).catch(e => console.error('[IDBStore] 保存失败:', e));
+            await window.ListStore.set(globalState.currentListData).catch(e => console.error('[IDBStore] 保存失败:', e));
             console.log('[Batch] WS模式:已修改缓存,下次连接时将同步');
 
             // If currently connected, push the change immediately
@@ -308,12 +311,12 @@ async function batchDeleteFromList() {
             }
 
             // Update UI
-            renderMyLists(currentListData);
-            handleListClick(activeListId);
+            globalState.renderMyLists(globalState.currentListData);
+            globalState.handleListClick(activeListId);
             deleted = true;
 
         } catch (e) {
-            showError('批量删除失败: ' + e.message);
+            globalState.showError('批量删除失败: ' + e.message);
             console.error('[Batch] WS删除错误:', e);
         }
     }
@@ -334,7 +337,7 @@ function getCurrentActiveListId() {
 
 function getEditableListContext() {
     const listId = getCurrentActiveListId();
-    if (!listId || !currentListData) return null;
+    if (!listId || !globalState.currentListData) return null;
     const list = getListById(listId);
     if (!Array.isArray(list)) return null;
     return { listId, list };
@@ -342,20 +345,20 @@ function getEditableListContext() {
 
 // Helper: Get list by ID
 function getListById(listId) {
-    if (!currentListData) return null;
-    if (listId === 'default') return currentListData.defaultList;
-    if (listId === 'love') return currentListData.loveList;
-    const userList = (currentListData.userList || []).find(l => String(l.id) === String(listId));
+    if (!globalState.currentListData) return null;
+    if (listId === 'default') return globalState.currentListData.defaultList;
+    if (listId === 'love') return globalState.currentListData.loveList;
+    const userList = (globalState.currentListData.userList || []).find(l => String(l.id) === String(listId));
     return userList ? userList.list : null;
 }
 
 // Helper: Set list by ID
 function setListById(listId, newList) {
-    if (!currentListData) return;
-    if (listId === 'default') currentListData.defaultList = newList;
-    else if (listId === 'love') currentListData.loveList = newList;
+    if (!globalState.currentListData) return;
+    if (listId === 'default') globalState.currentListData.defaultList = newList;
+    else if (listId === 'love') globalState.currentListData.loveList = newList;
     else {
-        const userList = (currentListData.userList || []).find(l => String(l.id) === String(listId));
+        const userList = (globalState.currentListData.userList || []).find(l => String(l.id) === String(listId));
         if (userList) userList.list = newList;
     }
 }
@@ -393,18 +396,18 @@ function updatePaginationInfo(start, end, total, current, totalPages) {
 
 function goToPage(page) {
     currentPage = page;
-    renderResults(window.viewingPlaylist);
+    globalState.renderResults(window.viewingPlaylist);
     scrollToSearchResultsTop();
 }
 
 async function nextPage() {
     const totalItems = window.viewingPlaylist ? window.viewingPlaylist.length : 0;
-    const itemsPerPage = settings.itemsPerPage === 'all' ? totalItems : parseInt(settings.itemsPerPage);
+    const itemsPerPage = globalState.settings.itemsPerPage === 'all' ? totalItems : parseInt(globalState.settings.itemsPerPage);
     const totalPages = Math.ceil((totalItems || 1) / (itemsPerPage || 1));
 
     if (currentPage < totalPages) {
         currentPage++;
-        renderResults(window.viewingPlaylist);
+        globalState.renderResults(window.viewingPlaylist);
         scrollToSearchResultsTop();
     } else if (window.currentSearchScope === 'network') {
         const btn = document.querySelector('button[onclick="nextPage()"]');
@@ -434,7 +437,7 @@ async function nextPage() {
 function prevPage() {
     if (currentPage > 1) {
         currentPage--;
-        renderResults(viewingPlaylist);
+        globalState.renderResults(globalState.viewingPlaylist);
         scrollToSearchResultsTop();
     }
 }
@@ -445,7 +448,7 @@ function jumpToPage() {
     let page = parseInt(input.value);
 
     const totalItems = window.viewingPlaylist ? window.viewingPlaylist.length : 0;
-    const itemsPerPage = settings.itemsPerPage === 'all' ? totalItems : parseInt(settings.itemsPerPage);
+    const itemsPerPage = globalState.settings.itemsPerPage === 'all' ? totalItems : parseInt(globalState.settings.itemsPerPage);
     const totalPages = Math.ceil((totalItems || 1) / (itemsPerPage || 1));
 
     if (isNaN(page) || page < 1) page = 1;
@@ -453,7 +456,7 @@ function jumpToPage() {
 
     if (page !== currentPage) {
         currentPage = page;
-        renderResults(window.viewingPlaylist);
+        globalState.renderResults(window.viewingPlaylist);
         scrollToSearchResultsTop();
     }
     input.value = page;
@@ -465,8 +468,8 @@ function changeItemsPerPage(value) {
     if (typeof window.updateSetting === 'function') {
         window.updateSetting('itemsPerPage', val);
     } else {
-        settings.itemsPerPage = val;
-        localStorage.setItem('lx_settings', JSON.stringify(settings));
+        globalState.settings.itemsPerPage = val;
+        localStorage.setItem('lx_settings', JSON.stringify(globalState.settings));
     }
     currentPage = 1; // Reset to first page
     if (window.ListSearch) {
@@ -485,18 +488,18 @@ function changeItemsPerPage(value) {
     } else if (activeView === 'collection' && window.SongListManager) {
         window.SongListManager.renderCurrentList();
     } else {
-        renderResults(window.viewingPlaylist || viewingPlaylist);
+        globalState.renderResults(window.viewingPlaylist || globalState.viewingPlaylist);
     }
 }
 
-// Load settings from localStorage
+// Load globalState.settings from localStorage
 function loadSettings() {
     const saved = localStorage.getItem('lx_settings');
     if (saved) {
         try {
-            settings = JSON.parse(saved);
+            globalState.settings = JSON.parse(saved);
         } catch (e) {
-            console.error('Failed to load settings:', e);
+            console.error('Failed to load globalState.settings:', e);
         }
     }
 }
@@ -505,7 +508,7 @@ function loadSettings() {
 async function handleBatchCollect() {
     const selectedCount = window.selectedItems.size;
     if (selectedCount === 0) {
-        if (typeof showInfo === 'function') showInfo('请先选择歌曲');
+        if (typeof globalState.showInfo === 'function') globalState.showInfo('请先选择歌曲');
         else alert('请先选择歌曲');
         return;
     }
@@ -513,10 +516,10 @@ async function handleBatchCollect() {
     const musicInfos = Array.from(window.selectedSongObjects.values());
 
     // 复用 app.js 中的歌单选择弹窗
-    if (typeof openPlaylistAddModal === 'function') {
-        openPlaylistAddModal(musicInfos);
+    if (typeof globalState.openPlaylistAddModal === 'function') {
+        globalState.openPlaylistAddModal(musicInfos);
     } else {
-        showError('收藏组件未就绪');
+        globalState.showError('收藏组件未就绪');
     }
 }
 
@@ -536,3 +539,8 @@ window.nextPage = nextPage;
 window.prevPage = prevPage;
 window.jumpToPage = jumpToPage;
 window.changeItemsPerPage = changeItemsPerPage;
+
+
+globalState.getCurrentActiveListId = getCurrentActiveListId;
+globalState.getListById = getListById;
+globalState.setListById = setListById;

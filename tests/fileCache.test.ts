@@ -111,6 +111,42 @@ describe('File Cache Path Traversal Defense', () => {
     }
   })
 
+  it('should save lyrics successfully before the audio file is indexed', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-lyric-cache-before-audio-'))
+    const previousLx = (global as any).lx
+    const dataPath = path.join(root, 'data')
+    const dbPath = path.join(root, 'lxserver.db')
+    try {
+      closeDb()
+      ;(global as any).lx = { dataPath, config: {} }
+      initDatabase(dbPath)
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.DATA)
+
+      const songInfo = {
+        source: 'wy',
+        songmid: '1869271',
+        id: '1869271',
+        name: 'We Will Rock You',
+        singer: 'Queen',
+        album: 'Queen Rocks',
+        quality: 'flac',
+      }
+      const lyric = { lyric: '[00:00.00]We Will Rock You' }
+
+      expect(fileCache.saveLyricCache(songInfo, lyric, 'test-user')).toBe(true)
+
+      const cacheDir = fileCache.getCacheDir('test-user')
+      const lyricPath = path.join(cacheDir, 'We Will Rock You - Queen - flac - Queen Rocks.lrc')
+      expect(fs.existsSync(lyricPath)).toBe(true)
+      expect(fs.readFileSync(lyricPath, 'utf8')).toContain('We Will Rock You')
+    } finally {
+      closeDb()
+      ;(global as any).lx = previousLx
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.ROOT)
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('should remove SQLite index rows when cached files are deleted from disk', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-cache-index-delete-'))
     const previousLx = (global as any).lx

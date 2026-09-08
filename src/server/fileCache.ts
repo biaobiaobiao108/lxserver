@@ -1903,24 +1903,38 @@ export const saveLyricCache = (songInfo: any, lyricsObj: any, username?: string,
         fs.writeFileSync(finalPath, formattedLrc, { encoding: 'utf-8' })
         console.log(`[FileCache] Lyric cached saved to: ${finalPath}`)
 
-        // Update the exact indexed audio item. Prefer the item that owns the
-        // resolved audio path because an older task may have used a different
-        // source-prefixed ID or an automatically downgraded quality.
-        const foldersToUpdate: Array<'cache' | 'music'> = [audioResult.folder, ...(isOnlyDownload ? ['music', 'cache'] : ['cache', 'music'])]
-            .filter((folder, index, folders): folder is 'cache' | 'music' => folders.indexOf(folder) === index)
-        for (const folder of foldersToUpdate) {
-            const root = getCacheDir(normalizedUsername, folder === 'music')
-            const relativeAudioPath = path.relative(root, audioResult.path).replace(/\\/g, '/')
-            const existing = indexManager.getAll(normalizedUsername, folder).find(candidate => (
-                candidate.filename === relativeAudioPath ||
-                (candidate.id === id && candidate.quality === quality)
-            ))
-            if (existing) {
-                existing.lyricFilename = path.relative(root, finalPath).replace(/\\/g, '/')
-                existing.hasLyric = true
-                indexManager.update(normalizedUsername, existing, folder)
-                invalidateCacheListSync(normalizedUsername)
-                break
+        // Update the exact indexed audio item when the audio file is already
+        // present. Lyrics can also be cached before the audio download starts,
+        // in which case audioResult.path is intentionally absent and there is
+        // no index row to update. Do not pass that undefined path to
+        // path.relative(): Node reports it as “The \"to\" property must be of
+        // type string”, even though the lyric file was written successfully.
+        if (audioResult.exists && typeof audioResult.path === 'string' && audioResult.folder) {
+            try {
+                // Prefer the item that owns the resolved audio path because an
+                // older task may have used a different source-prefixed ID or
+                // an automatically downgraded quality.
+                const foldersToUpdate: Array<'cache' | 'music'> = [audioResult.folder, ...(isOnlyDownload ? ['music', 'cache'] : ['cache', 'music'])]
+                    .filter((folder, index, folders): folder is 'cache' | 'music' => folders.indexOf(folder) === index)
+                for (const folder of foldersToUpdate) {
+                    const root = getCacheDir(normalizedUsername, folder === 'music')
+                    const relativeAudioPath = path.relative(root, audioResult.path).replace(/\\/g, '/')
+                    const existing = indexManager.getAll(normalizedUsername, folder).find(candidate => (
+                        candidate.filename === relativeAudioPath ||
+                        (candidate.id === id && candidate.quality === quality)
+                    ))
+                    if (existing) {
+                        existing.lyricFilename = path.relative(root, finalPath).replace(/\\/g, '/')
+                        existing.hasLyric = true
+                        indexManager.update(normalizedUsername, existing, folder)
+                        invalidateCacheListSync(normalizedUsername)
+                        break
+                    }
+                }
+            } catch (err: any) {
+                // The lyric file is already durable. An index repair failure
+                // must not turn a successful lyric save into a false failure.
+                console.warn(`[FileCache] Lyric cache index update failed: ${err?.message || err}`)
             }
         }
         void checkAndCleanupCache(username)

@@ -10,9 +10,7 @@ import { verifyUserAuth } from './auth'
 import * as fileCache from '../fileCache'
 import * as serverDownloadQueue from '../serverDownloadQueue'
 import * as remasterQueue from '../remasterQueue'
-// @ts-ignore
-import musicSdkRaw from '@/modules/utils/musicSdk/index.js'
-const musicSdk = musicSdkRaw as any
+import { getBuiltinSource } from '@/modules/utils/musicSdk'
 import { accessLog } from '@/utils/log4js'
 import { assertSafeRemoteHttpUrl } from '../networkSecurity'
 import { resolveInside } from '@/utils/pathSecurity'
@@ -1261,9 +1259,10 @@ export const createCacheRouter = (): Router => {
                       }
                     }
 
-                    if (embedLyric && lyricSource && lyricSongmid && musicSdk[lyricSource]?.getLyric) {
+                    const lyricApi = lyricSource ? getBuiltinSource(lyricSource) : undefined
+                    if (embedLyric && lyricSongmid && lyricApi?.getLyric) {
                       try {
-                        const lyricReqObj = musicSdk[lyricSource].getLyric({
+                        const lyricReqObj = lyricApi.getLyric({
                           songmid: lyricSongmid,
                           name: songName,
                           singer: artist,

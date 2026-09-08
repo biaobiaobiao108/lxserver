@@ -2,9 +2,8 @@ import { Router, type HttpContext } from '../core'
 import { verifyUserAuth } from './auth'
 import { normalizeSongInfo, resolveServerSong } from '../services/musicResolver'
 import { isSourceSupported, callUserApiGetMusicUrl } from '../userApi'
-// @ts-ignore
-import musicSdkRaw from '@/modules/utils/musicSdk/index.js'
-const musicSdk = musicSdkRaw as any
+import { isRetiredOnlineSource, UnsupportedSourceError } from '@/common/musicSources'
+import { getBuiltinSource } from '@/modules/utils/musicSdk'
 import * as fileCache from '../fileCache'
 import needle from 'needle'
 import fs from 'node:fs'
@@ -118,7 +117,8 @@ export const createMusicRouter = (): Router => {
     if (!name) return ctx.text('Missing name', 400)
 
     try {
-      if (!musicSdk[source]) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi) {
         throw new Error(`Source ${source} is not supported`)
       }
 
@@ -130,29 +130,29 @@ export const createMusicRouter = (): Router => {
         const endPage = page + fetchPages - 1
 
         for (let p = startPage; p <= endPage; p++) {
-          const searchData = await musicSdk[source].musicSearch.search(name, p, PAGE_SIZE)
+          const searchData = await sourceApi.musicSearch!.search(name, p, PAGE_SIZE)
           const pageList: any[] = searchData.list || []
           allSongs = allSongs.concat(pageList)
           if (pageList.length < PAGE_SIZE) break
         }
         result = allSongs.slice(0, limit)
       } else if (type === 'singer') {
-        if (!musicSdk[source].extendSearch || !musicSdk[source].extendSearch.searchSinger) {
+        if (!sourceApi.extendSearch?.searchSinger) {
           throw new Error(`Source ${source} does not support singer search`)
         }
-        const searchData = await musicSdk[source].extendSearch.searchSinger(name, page, limit)
+        const searchData = await sourceApi.extendSearch.searchSinger(name, page, limit)
         result = searchData.list || []
       } else if (type === 'album') {
-        if (!musicSdk[source].extendSearch || !musicSdk[source].extendSearch.searchAlbum) {
+        if (!sourceApi.extendSearch?.searchAlbum) {
           throw new Error(`Source ${source} does not support album search`)
         }
-        const searchData = await musicSdk[source].extendSearch.searchAlbum(name, page, limit)
+        const searchData = await sourceApi.extendSearch.searchAlbum(name, page, limit)
         result = searchData.list || []
       } else if (type === 'playlist') {
-        if (!musicSdk[source].extendSearch || !musicSdk[source].extendSearch.searchPlaylist) {
+        if (!sourceApi.extendSearch?.searchPlaylist) {
           throw new Error(`Source ${source} does not support playlist search`)
         }
-        const searchData = await musicSdk[source].extendSearch.searchPlaylist(name, page, limit)
+        const searchData = await sourceApi.extendSearch.searchPlaylist(name, page, limit)
         result = searchData.list || []
       } else {
         throw new Error(`Invalid search type: ${type}`)
@@ -171,10 +171,11 @@ export const createMusicRouter = (): Router => {
     const source = ctx.query.get('source') || 'wy'
     if (!name) return ctx.json([])
     try {
-      if (!musicSdk[source] || !musicSdk[source].tipSearch) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.tipSearch) {
         return ctx.json([])
       }
-      const tips = await musicSdk[source].tipSearch.search(name)
+      const tips = await sourceApi.tipSearch.search(name)
       return ctx.json(tips || [])
     } catch {
       return ctx.json([])
@@ -187,7 +188,9 @@ export const createMusicRouter = (): Router => {
     const source = ctx.query.get('source') || 'wy'
     if (!id) return ctx.text('Missing id', 400)
     try {
-      const data = await musicSdk[source].extendDetail.getArtistDetail(id)
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.extendDetail?.getArtistDetail) throw new Error(`Source ${source} does not support artist details`)
+      const data = await sourceApi.extendDetail.getArtistDetail(id)
       return ctx.json(data)
     } catch (err: any) {
       return ctx.text(err.message, 500)
@@ -201,7 +204,9 @@ export const createMusicRouter = (): Router => {
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     if (!id) return ctx.text('Missing id', 400)
     try {
-      const data = await musicSdk[source].extendDetail.getArtistAlbums(id, page)
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.extendDetail?.getArtistAlbums) throw new Error(`Source ${source} does not support artist albums`)
+      const data = await sourceApi.extendDetail.getArtistAlbums(id, page)
       return ctx.json(data)
     } catch (err: any) {
       return ctx.text(err.message, 500)
@@ -221,8 +226,10 @@ export const createMusicRouter = (): Router => {
         ? Math.min(Math.floor(configuredMaxPages), 100)
         : 20
       let allSongs: any[] = []
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.extendDetail?.getArtistSongs) throw new Error(`Source ${source} does not support artist songs`)
       for (let p = 1; p <= MAX_PAGES; p++) {
-        const data = await musicSdk[source].extendDetail.getArtistSongs(id, p, PAGE_SIZE, order)
+        const data = await sourceApi.extendDetail.getArtistSongs(id, p, PAGE_SIZE, order)
         const pageList: any[] = data.list || []
         allSongs = allSongs.concat(pageList)
         const total = Number(data.total) || 0
@@ -240,7 +247,9 @@ export const createMusicRouter = (): Router => {
     const source = ctx.query.get('source') || 'wy'
     if (!id) return ctx.text('Missing id', 400)
     try {
-      const data = await musicSdk[source].extendDetail.getAlbumSongs(id)
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.extendDetail?.getAlbumSongs) throw new Error(`Source ${source} does not support album songs`)
+      const data = await sourceApi.extendDetail.getAlbumSongs(id)
       return ctx.json(data)
     } catch (err: any) {
       return ctx.text(err.message, 500)
@@ -340,6 +349,7 @@ export const createMusicRouter = (): Router => {
       }
 
       const source = songInfo.source
+      if (isRetiredOnlineSource(source)) throw new UnsupportedSourceError(source)
       let result: any
       let customSourceError: string | null = null
       let attempts: any[] = []
@@ -470,10 +480,11 @@ export const createMusicRouter = (): Router => {
         throw new Error('Invalid songInfo')
       }
       const source = songInfo.source
-      if (!musicSdk[source] || !musicSdk[source].getLyric) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.getLyric) {
         throw new Error(`Source ${source} not supported`)
       }
-      const result = await musicSdk[source].getLyric(songInfo)
+      const result = await sourceApi.getLyric(songInfo)
       return ctx.json(result)
     } catch (err: any) {
       console.error(err)
@@ -487,6 +498,9 @@ export const createMusicRouter = (): Router => {
 
     if (!source || !rawSongmid) {
       return ctx.text('Missing source or songmid', 400)
+    }
+    if (isRetiredOnlineSource(source)) {
+      return ctx.json({ error: new UnsupportedSourceError(source).message, code: 400 }, 400)
     }
 
     let songmid = String(rawSongmid)
@@ -518,7 +532,8 @@ export const createMusicRouter = (): Router => {
     }
 
     try {
-      if (!musicSdk[source]) throw new Error('Source not supported')
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.getLyric) throw new Error('Source not supported')
 
       const songInfo = {
         songmid,
@@ -533,7 +548,7 @@ export const createMusicRouter = (): Router => {
         trcUrl: ctx.query.get('trcUrl') || '',
       }
 
-      const requestObj = musicSdk[source].getLyric(songInfo)
+      const requestObj = sourceApi.getLyric(songInfo)
       const lyricInfo = await requestObj.promise
 
       return ctx.json(lyricInfo, 200, {
@@ -561,10 +576,11 @@ export const createMusicRouter = (): Router => {
   router.get('/api/music/hotSearch', async (ctx) => {
     const source = ctx.query.get('source') || 'wy'
     try {
-      if (!musicSdk[source] || !musicSdk[source].hotSearch) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.hotSearch) {
         return ctx.json({ error: '该音源不支持热搜功能' }, 404)
       }
-      const result = await musicSdk[source].hotSearch.getList()
+      const result = await sourceApi.hotSearch.getList()
       return ctx.json(result, 200, { 'Cache-Control': 'public, max-age=300' })
     } catch (err: any) {
       console.error('[HotSearch] Error:', err.message)
@@ -576,11 +592,12 @@ export const createMusicRouter = (): Router => {
   router.get('/api/music/songList/tags', async (ctx) => {
     const source = ctx.query.get('source') || 'wy'
     try {
-      if (!musicSdk[source] || !musicSdk[source].songList) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.songList?.getTags) {
         throw new Error(`Source ${source} does not support songList`)
       }
-      const result = await musicSdk[source].songList.getTags()
-      const sortList = musicSdk[source].songList.sortList
+      const result = await sourceApi.songList.getTags()
+      const sortList = sourceApi.songList.sortList
       return ctx.json({ ...result, sortList })
     } catch (err: any) {
       return ctx.json({ error: err.message || '获取歌单标签失败' }, 500)
@@ -594,10 +611,11 @@ export const createMusicRouter = (): Router => {
     const sortId = ctx.query.get('sortId') || 'hot'
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     try {
-      if (!musicSdk[source] || !musicSdk[source].songList) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.songList?.getList) {
         throw new Error(`Source ${source} does not support songList`)
       }
-      const result = await musicSdk[source].songList.getList(sortId, tagId, page)
+      const result = await sourceApi.songList.getList(sortId, tagId, page)
       return ctx.json(result)
     } catch (err: any) {
       return ctx.json({ error: err.message || '获取歌单列表失败' }, 500)
@@ -611,10 +629,11 @@ export const createMusicRouter = (): Router => {
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     if (!id) return ctx.text('Missing id', 400)
     try {
-      if (!musicSdk[source] || !musicSdk[source].songList) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.songList?.getListDetail) {
         throw new Error(`Source ${source} does not support songList`)
       }
-      const result = await musicSdk[source].songList.getListDetail(id, page)
+      const result = await sourceApi.songList.getListDetail(id, page)
       if (result && result.list) {
         result.list = result.list.map(normalizeSongInfo)
       }
@@ -631,10 +650,11 @@ export const createMusicRouter = (): Router => {
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     if (!text) return ctx.text('Missing text', 400)
     try {
-      if (!musicSdk[source] || !musicSdk[source].songList) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.songList?.search) {
         throw new Error(`Source ${source} does not support songList`)
       }
-      const result = await musicSdk[source].songList.search(text, page)
+      const result = await sourceApi.songList.search(text, page)
       return ctx.json(result)
     } catch (err: any) {
       return ctx.json({ error: err.message || '搜索歌单失败' }, 500)
@@ -648,10 +668,11 @@ export const createMusicRouter = (): Router => {
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     if (!uid) return ctx.text('Missing uid', 400)
     try {
-      if (!musicSdk[source] || !musicSdk[source].userPlaylist) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.userPlaylist) {
         throw new Error(`Source ${source} does not support userPlaylist`)
       }
-      const result = await musicSdk[source].userPlaylist.getList(uid, page)
+      const result = await sourceApi.userPlaylist.getList(uid, page)
       return ctx.json(result)
     } catch (err: any) {
       return ctx.json({ error: err.message || '获取用户歌单失败' }, 500)
@@ -662,10 +683,11 @@ export const createMusicRouter = (): Router => {
   router.get('/api/music/leaderboard/boards', async (ctx) => {
     const source = ctx.query.get('source') || 'wy'
     try {
-      if (!musicSdk[source] || !musicSdk[source].leaderboard) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.leaderboard?.getBoards) {
         throw new Error(`Source ${source} does not support leaderboard`)
       }
-      const result = await musicSdk[source].leaderboard.getBoards()
+      const result = await sourceApi.leaderboard.getBoards()
       return ctx.json(result, 200, { 'Cache-Control': 'public, max-age=600' })
     } catch (err: any) {
       return ctx.json({ error: err.message || '获取排行榜列表失败' }, 500)
@@ -679,10 +701,11 @@ export const createMusicRouter = (): Router => {
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     if (!bangid) return ctx.text('Missing bangid', 400)
     try {
-      if (!musicSdk[source] || !musicSdk[source].leaderboard) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.leaderboard?.getList) {
         throw new Error(`Source ${source} does not support leaderboard`)
       }
-      const result = await musicSdk[source].leaderboard.getList(bangid, page)
+      const result = await sourceApi.leaderboard.getList(bangid, page)
       if (result && result.list) {
         result.list = result.list.map(normalizeSongInfo)
       }
@@ -707,16 +730,17 @@ export const createMusicRouter = (): Router => {
       if (!songInfo || !songInfo.source) throw new Error('Invalid songInfo')
       const source = songInfo.source
 
-      if (!musicSdk[source] || !musicSdk[source].comment) {
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.comment) {
         throw new Error(`Source ${source} not supported for comments`)
       }
 
       const method = type === 'hot' ? 'getHotComment' : 'getComment'
-      if (!musicSdk[source].comment[method]) {
+      if (typeof sourceApi.comment[method] !== 'function') {
         throw new Error(`Method ${method} not supported for source ${source}`)
       }
 
-      const result = await musicSdk[source].comment[method](songInfo, page, limit)
+      const result = await sourceApi.comment[method](songInfo, page, limit)
       return ctx.json(result)
     } catch (err: any) {
       return ctx.json({ error: err.message, code: 500 }, 500)

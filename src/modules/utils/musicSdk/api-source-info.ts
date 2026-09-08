@@ -1,32 +1,14 @@
-// Support qualitys: 128k 320k flac flac24bit hires atmos atmos_plus master wav
+import type { BuiltinOnlineSource } from '@/common/musicSources'
 
-const sources: Array<{
+export interface ApiSourceInfo {
   id: string
   name: string
   disabled: boolean
-  supportQualitys: Partial<Record<LX.OnlineSource, LX.Quality[]>>
-}> = [
-  // {
-  //   id: 'test',
-  //   name: '测试接口',
-  //   disabled: false,
-  //   supportQualitys: {
-  //     kw: ['128k'],
-  //     kg: ['128k'],
-  //     tx: ['128k'],
-  //     wy: ['128k'],
-  //     mg: ['128k'],
-  //     // bd: ['128k'],
-  //   },
-  // },
-  // {
-  //   id: 'temp',
-  //   name: '临时接口',
-  //   disabled: false,
-  //   supportQualitys: {
-  //     kw: ['128k'],
-  //   },
-  // },
-]
+  supportQualitys: Partial<Record<BuiltinOnlineSource, LX.Quality[]>>
+}
+
+// Built-in playback URLs are supplied by userApi. Keep this registry typed so
+// custom API metadata can be added without reintroducing platform-specific code.
+const sources: readonly ApiSourceInfo[] = []
 
 export default sources

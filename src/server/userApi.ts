@@ -9,6 +9,7 @@ import { promisify } from 'util'
 import * as tunnel from 'tunnel'
 import { assertSafeRemoteHttpUrl } from './networkSecurity'
 import { assertSafePathSegment, resolveInside } from '@/utils/pathSecurity'
+import { isRetiredOnlineSource, UnsupportedSourceError } from '@/common/musicSources'
 const inflate = promisify(zlib.inflate)
 const deflate = promisify(zlib.deflate)
 
@@ -501,6 +502,9 @@ export async function callUserApiGetMusicUrl(
     onProgress?: (attempt: any) => Promise<void> | void,
     enableAutoSwitchApiSource?: boolean
 ): Promise<{ url: string, type: string, sourceName?: string, attempts?: any[] }> {
+    if (isRetiredOnlineSource(source)) {
+        throw new UnsupportedSourceError(source)
+    }
     if (clientUsername && clientUsername !== 'default' && clientUsername !== 'open' && clientUsername !== '_open') {
         clientUsername = assertSafePathSegment(clientUsername, 'username')
     }
@@ -1023,6 +1027,9 @@ export function getLoadedApis() {
 // 检查某个源是否被支持
 // clientUsername: 调用者的用户名。如果未提供，则只能检查 open 源
 export function isSourceSupported(source: string, clientUsername?: string): boolean {
+    // Retired built-in IDs are never reactivated through userApi. Custom APIs
+    // must use their own ID so historical data cannot silently switch source.
+    if (isRetiredOnlineSource(source)) return false
     for (const [apiId, api] of loadedApis) {
         if (!api.info.enabled || !api.info.sources || !api.info.sources[source]) {
             continue

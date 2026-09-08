@@ -1,6 +1,5 @@
-// @ts-ignore
-import musicSdkRaw from '@/modules/utils/musicSdk/index.js'
-const musicSdk = musicSdkRaw as any
+import { isRetiredOnlineSource, UnsupportedSourceError } from '@/common/musicSources'
+import { getBuiltinSource } from '@/modules/utils/musicSdk'
 import { isSourceSupported, callUserApiGetMusicUrl } from '../userApi'
 import { getDownloadQualityCandidates } from '../downloadQuality'
 import * as fileCache from '../fileCache'
@@ -167,12 +166,14 @@ export const findServerSourceMatches = async (songInfo: any, username: string) =
   }
 
   const searchSources = AUTO_SOURCE_ORDER.filter(source => (
-    source !== songInfo.source && isSourceSupported(source, username) && musicSdk[source]?.musicSearch?.search
+    source !== songInfo.source && isSourceSupported(source, username) && getBuiltinSource(source)?.musicSearch?.search
   ))
   const query = `${songInfo.name} ${songInfo.singer}`
   const promise = Promise.all(searchSources.map(async source => {
     try {
-      const searchData = await musicSdk[source].musicSearch.search(query, 1, 20)
+      const sourceApi = getBuiltinSource(source)
+      if (!sourceApi?.musicSearch?.search) return []
+      const searchData = await sourceApi.musicSearch.search(query, 1, 20)
       const list = Array.isArray(searchData?.list) ? searchData.list : []
       return list.map((item: any) => ({ ...item, source }))
     } catch (err: any) {
@@ -200,6 +201,9 @@ export const resolveServerSong = async (
 ): Promise<ServerSongResolveResult> => {
   const originalSong = normalizeSongInfo({ ...rawSongInfo })
   if (!originalSong?.source) throw new Error('Missing song source')
+  if (isRetiredOnlineSource(originalSong.source)) {
+    throw new UnsupportedSourceError(originalSong.source)
+  }
 
   const qualities = allowQualityFallback
     ? getDownloadQualityCandidates(requestedQuality)

@@ -1,8 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
-// @ts-ignore
-import musicSdkRaw from '@/modules/utils/musicSdk/index.js'
-const musicSdk = musicSdkRaw as any
+import musicSdk, { getBuiltinSource } from '@/modules/utils/musicSdk'
 import { initUserApis } from '../userApi'
 import * as fileCache from '../fileCache'
 import * as serverDownloadQueue from '../serverDownloadQueue'
@@ -75,7 +73,8 @@ export const initMusicServices = async (): Promise<void> => {
   fileCache.setLyricFetcher(async (songInfo: any) => {
     try {
       const source = songInfo.source
-      if (!source || !musicSdk[source] || !musicSdk[source].getLyric) {
+      const sourceApi = source ? getBuiltinSource(source) : undefined
+      if (!sourceApi?.getLyric) {
         return null
       }
       let songmid = String(songInfo.songmid || songInfo.id || songInfo.songId || '')
@@ -83,7 +82,7 @@ export const initMusicServices = async (): Promise<void> => {
       if (songmid.startsWith(sourcePrefix)) songmid = songmid.slice(sourcePrefix.length)
       if (!songmid) return null
 
-      const requestObj = musicSdk[source].getLyric({
+      const requestObj = sourceApi.getLyric({
         songmid,
         name: songInfo.name || '',
         singer: songInfo.singer || '',

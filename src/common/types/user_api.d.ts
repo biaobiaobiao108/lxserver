@@ -10,7 +10,8 @@ declare namespace LX {
       qualitys: LX.Quality[]
     }
 
-    type UserApiSources = Record<LX.Source, UserApiSourceInfo>
+    /** 自定义音源使用动态字符串 ID，与内置 wy/tx 类型隔离。 */
+    type UserApiSources = Record<string, UserApiSourceInfo>
 
 
     interface UserApiInfoFull {

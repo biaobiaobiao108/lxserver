@@ -9,9 +9,7 @@ import { fetchGenres, fetchRadios, fetchPlaylistsByGenre, fetchRadioSongs, fetch
 import fs from 'fs'
 import path from 'path'
 import { BUILTIN_ONLINE_SOURCES, isBuiltinOnlineSource, normalizeOnlineSources } from '@/common/musicSources'
-// @ts-ignore
-import musicSdkRaw from '@/modules/utils/musicSdk/index.js'
-const musicSdk = musicSdkRaw as any
+import { getBuiltinSource } from '@/modules/utils/musicSdk'
 
 /**
  * Subsonic 协议处理器
@@ -779,14 +777,15 @@ class SubsonicHandler {
                     source = parts[1]
                     artistId = parts.slice(2).join('_')
                 }
-                if (musicSdk[source]?.extendDetail) {
+                const sourceApi = getBuiltinSource(source)
+                if (sourceApi?.extendDetail?.getArtistSongs) {
                     try {
                         // [修改] 统一使用 5 页 (500 首) 循环抓取
                         const MAX_PAGES = 5
                         const PAGE_SIZE = 100
                         let all: any[] = []
                         for (let p = 1; p <= MAX_PAGES; p++) {
-                            const data = await musicSdk[source].extendDetail.getArtistSongs(artistId, p, PAGE_SIZE, 'hot')
+                            const data = await sourceApi.extendDetail.getArtistSongs(artistId, p, PAGE_SIZE, 'hot')
                             const pageList = data.list || []
                             all = all.concat(pageList)
                             if (pageList.length < PAGE_SIZE) break
@@ -841,9 +840,10 @@ class SubsonicHandler {
             const realId = parts.slice(2).join('_')
             // console.log(`[Subsonic] getAlbum SDK Route: source=${source}, realId=${realId}`)
 
-            if (musicSdk[source]?.extendDetail?.getAlbumSongs) {
+            const sourceApi = getBuiltinSource(source)
+            if (sourceApi?.extendDetail?.getAlbumSongs) {
                 try {
-                    const data = await musicSdk[source].extendDetail.getAlbumSongs(realId)
+                    const data = await sourceApi.extendDetail.getAlbumSongs(realId)
                     // console.log(`[Subsonic] getAlbum SDK Response: name=${data?.name}, songCount=${data?.list?.length}`)
                     musics = (data.list || []).map((s: any) => ({
                         ...s,
@@ -891,7 +891,7 @@ class SubsonicHandler {
                 const parts = id.split('_')
                 const source = parts[0]
                 const songmid = parts.slice(1).join('_')
-                if (musicSdk[source]) {
+                if (getBuiltinSource(source)) {
                     musics = [{ id, name: 'Unknown', singer: 'Unknown', source, songmid, interval: '0' } as any]
                     listName = 'Single Album'
                 }
@@ -1260,9 +1260,13 @@ class SubsonicHandler {
         let artistPic = ''
 
         try {
-            if (musicSdk[source]?.extendDetail) {
+            const sourceApi = getBuiltinSource(source)
+            if (sourceApi?.extendDetail) {
+                const extendDetail = sourceApi.extendDetail
                 // 1. 先抓取专辑列表 (顺序执行以保证稳定性)
-                const albumData = await musicSdk[source].extendDetail.getArtistAlbums(artistId, 1).catch(() => ({ list: [] }))
+                const albumData = extendDetail.getArtistAlbums
+                    ? await extendDetail.getArtistAlbums(artistId, 1).catch(() => ({ list: [] }))
+                    : { list: [] }
                 const rawAlbums = albumData.list || []
 
                 // 2. 循环抓取多页歌曲 (最多 5 页，共 500 首)
@@ -1272,7 +1276,8 @@ class SubsonicHandler {
                     let all: any[] = []
                     for (let p = 1; p <= MAX_PAGES; p++) {
                         try {
-                            const data = await musicSdk[source].extendDetail.getArtistSongs(artistId, p, PAGE_SIZE, 'hot')
+                            const data = await extendDetail.getArtistSongs?.(artistId, p, PAGE_SIZE, 'hot')
+                            if (!data) break
                             const pageList = data.list || []
                             all = all.concat(pageList)
                             if (pageList.length < PAGE_SIZE) break
@@ -1437,7 +1442,7 @@ class SubsonicHandler {
         if (!cleanQuery) return []
         const results: { music: LX.Music.MusicInfo, listId: string }[] = []
         const validSources = sources.filter((source): source is (typeof BUILTIN_ONLINE_SOURCES)[number] => (
-            isBuiltinOnlineSource(source) && Boolean(musicSdk[source]?.musicSearch?.search)
+            isBuiltinOnlineSource(source) && Boolean(getBuiltinSource(source)?.musicSearch?.search)
         ))
         // [限制] 单个平台最大获取数量上限
         const targetLimit = Math.min(limit, 50)
@@ -1452,7 +1457,9 @@ class SubsonicHandler {
                 const existingIds = new Set<string>()
 
                 for (let page = 1; page <= pagesToFetch; page++) {
-                    const searchRes = await musicSdk[source].musicSearch.search(cleanQuery, page, pageSize)
+                    const sourceApi = getBuiltinSource(source)
+                    if (!sourceApi?.musicSearch?.search) break
+                    const searchRes = await sourceApi.musicSearch.search(cleanQuery, page, pageSize)
                     const list = Array.isArray(searchRes?.list) ? searchRes.list : []
                     if (list.length === 0) break
 
@@ -2055,8 +2062,8 @@ class SubsonicHandler {
             return res.end()
         }
 
-        // 0. 剥离前缀 (al-, ar-, tr-, sg-, mg-) 并处理 URL
-        id = id.replace(/^(al-|ar-|tr-|sg-|mg-)/, '')
+        // 0. 剥离实体前缀 (al-, ar-, tr-, sg-) 并处理 URL
+        id = id.replace(/^(al-|ar-|tr-|sg-)/, '')
         if (id === 'logo') {
             const logoPath = path.join(global.lx.staticPath, 'music/assets/logo.svg')
             if (fs.existsSync(logoPath)) {
@@ -2085,7 +2092,7 @@ class SubsonicHandler {
         // 辅助：通过 SDK 获取封面（带超时保护）
         const getPicViaSDK = async (music: LX.Music.MusicInfo): Promise<string | null> => {
             const source = music.source as string
-            const sdk = musicSdk[source]
+            const sdk = getBuiltinSource(source)
             if (!sdk?.getPic) {
                 // console.log(`[CoverArt] SDK not found or no getPic for source=${source}`)
                 return null
@@ -2157,8 +2164,9 @@ class SubsonicHandler {
             const source = parts[1]
             const realId = parts.slice(2).join('_')
             // console.log(`[CoverArt] Album Route Parse: source=${source}, realId=${realId}`)
-            if (musicSdk[source]?.getPic) {
-                const pic = await musicSdk[source].getPic({ source, albumId: realId, albumMid: realId } as any)
+            const sourceApi = getBuiltinSource(source)
+            if (sourceApi?.getPic) {
+                const pic = await sourceApi.getPic({ source, albumId: realId, albumMid: realId } as any)
                 if (pic && typeof pic === 'string') {
                     // console.log(`[CoverArt] ✓ SDK Album Pic Success: ${pic}`)
                     return this.proxyCoverImage(res, pic)
@@ -2188,7 +2196,7 @@ class SubsonicHandler {
             const source = ['alb', 'art', 'hot-songs'].includes(parts[0]) ? parts[1] : parts[0]
             const songmid = ['alb', 'art', 'hot-songs'].includes(parts[0]) ? parts.slice(2).join('_') : parts.slice(1).join('_')
 
-            if (musicSdk[source]) {
+            if (getBuiltinSource(source)) {
                 const music: any = { source, id, songmid, name: '', singer: '' }
                 const sdkPic = await getPicViaSDK(music as any)
                 if (sdkPic) return this.proxyCoverImage(res, sdkPic)
@@ -2260,14 +2268,16 @@ class SubsonicHandler {
             (artist && (a.name.toLowerCase().includes(artist.toLowerCase()) || artist.toLowerCase().includes(a.name.toLowerCase())))
         )
 
-        if (artistEntry && artistEntry.source && artistEntry.id && musicSdk[artistEntry.source]?.extendDetail) {
+        if (artistEntry && artistEntry.source && artistEntry.id && getBuiltinSource(artistEntry.source)?.extendDetail?.getArtistSongs) {
             try {
                 const source = artistEntry.source
                 const MAX_PAGES = 5
                 const PAGE_SIZE = 100
                 let all: any[] = []
                 for (let p = 1; p <= MAX_PAGES; p++) {
-                    const data = await musicSdk[source].extendDetail.getArtistSongs(artistEntry.id, p, PAGE_SIZE, 'hot')
+                    const sourceApi = getBuiltinSource(source)
+                    if (!sourceApi?.extendDetail?.getArtistSongs) break
+                    const data = await sourceApi.extendDetail.getArtistSongs(artistEntry.id, p, PAGE_SIZE, 'hot')
                     const pageList = data.list || []
                     all = all.concat(pageList)
                     if (pageList.length < PAGE_SIZE) break
@@ -2457,7 +2467,8 @@ class SubsonicHandler {
             songmid = id.substring(index + 1)
         }
 
-        if (!source || !musicSdk[source]) {
+        const sourceApi = source ? getBuiltinSource(source) : undefined
+        if (!sourceApi) {
             return this.sendError(res, 70, 'Song or source not supported: ' + id, format)
         }
 
@@ -2483,7 +2494,8 @@ class SubsonicHandler {
                 lrcUrl: (musicMeta as any).lrcUrl || (musicMeta as any).meta?.lrcUrl || '',
             }
 
-            const requestObj = musicSdk[source].getLyric(songInfo)
+            if (!sourceApi.getLyric) throw new Error('Source does not support lyrics')
+            const requestObj = sourceApi.getLyric(songInfo)
             const lyricInfo = await requestObj.promise
 
             const rawLrc = lyricInfo.lyric || ''

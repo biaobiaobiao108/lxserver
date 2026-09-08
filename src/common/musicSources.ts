@@ -1,11 +1,19 @@
 export const BUILTIN_ONLINE_SOURCES = ['wy', 'tx'] as const
 
+export const RETIRED_ONLINE_SOURCES = ['kg', 'kw', 'mg', 'bd', 'xm'] as const
+
+export type RetiredOnlineSource = (typeof RETIRED_ONLINE_SOURCES)[number]
+
 export type BuiltinOnlineSource = (typeof BUILTIN_ONLINE_SOURCES)[number]
 
 export const DEFAULT_ONLINE_SOURCES: readonly BuiltinOnlineSource[] = ['wy', 'tx']
 
 export const isBuiltinOnlineSource = (value: unknown): value is BuiltinOnlineSource => (
   typeof value === 'string' && (BUILTIN_ONLINE_SOURCES as readonly string[]).includes(value)
+)
+
+export const isRetiredOnlineSource = (value: unknown): value is RetiredOnlineSource => (
+  typeof value === 'string' && (RETIRED_ONLINE_SOURCES as readonly string[]).includes(value)
 )
 
 export const normalizeOnlineSources = (

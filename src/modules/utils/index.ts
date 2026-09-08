@@ -1,7 +1,3 @@
-import crypto from 'node:crypto'
-
-export const toMD5 = (str: string): string => crypto.createHash('md5').update(str).digest('hex')
-
 export const sizeFormate = (size: number): string => {
   if (!size) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB', 'TB']

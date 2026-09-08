@@ -10,7 +10,7 @@ declare namespace LX {
 
 
     interface MusicInfoMetaBase {
-      songId: string | number // 歌曲ID，mg源为copyrightId，local为文件路径
+      songId: string | number // 歌曲ID，local为文件路径
       albumName: string // 歌曲专辑名称
       picUrl?: string | null // 歌曲图片链接
     }
@@ -55,6 +55,18 @@ declare namespace LX {
 
     type MusicInfoOnline = MusicInfo_wy | MusicInfo_tx
     type MusicInfo = MusicInfoOnline | MusicInfoLocal
+
+    /** 历史列表中仍可能存在的、无法再进入播放流程的旧音源数据。 */
+    interface UnsupportedMusicInfo {
+      id: string
+      name?: string
+      singer?: string
+      source: string
+      interval?: string | null
+      meta?: Record<string, unknown>
+    }
+
+    type PersistedMusicInfo = MusicInfo | UnsupportedMusicInfo
 
     interface LyricInfo {
       // 歌曲歌词

@@ -3,9 +3,7 @@
  * 支持从 TX (QQ音乐) 和 WY (网易云音乐) 源获取歌手详细信息
  */
 
-// @ts-ignore
-import musicSdkRaw from '@/modules/utils/musicSdk/index.js'
-const musicSdk = musicSdkRaw as any
+import { getBuiltinSource } from '@/modules/utils/musicSdk'
 
 export interface SingerDetail {
     name: string
@@ -48,7 +46,7 @@ export async function getSingerDetail(singerName: string, sourcePriority?: Array
     // 尝试每一个平台
     for (const source of priority) {
         try {
-            const sdk = musicSdk[source]
+            const sdk = getBuiltinSource(source)
             if (!sdk?.extendSearch?.searchSinger) continue
 
             // 1. 搜索歌手

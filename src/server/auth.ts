@@ -147,16 +147,15 @@ const verifyConnection = (encryptMsg: string, userId: string) => {
 export const authConnect = async (reqOrUrl: http.IncomingMessage | Request | string, remoteAddress?: string) => {
   let ip = getAvailableIP(remoteAddress || reqOrUrl)
   if (ip) {
-    let urlString = typeof reqOrUrl === 'string' ? reqOrUrl : reqOrUrl.url || ''
-    const [pathPart, queryPart] = urlString.split('?')
-    const query = querystring.parse(queryPart || '')
+    const urlString = typeof reqOrUrl === 'string' ? reqOrUrl : reqOrUrl.url || ''
+    const url = new URL(urlString, 'http://localhost')
+    const query = querystring.parse(url.search.slice(1))
     const i = query.i
     const t = query.t
     if (typeof i == 'string' && typeof t == 'string' && verifyConnection(t, i)) {
       // 验证 URL 路径中的用户名是否与连接的客户端所属用户一致
       if (global.lx.config['user.enablePath']) {
-        const path = pathPart || ''
-        const pathParts = path.split('/').filter(p => p)
+        const pathParts = url.pathname.split('/').filter(p => p)
         // 假设路径格式为 /<username>
         // 解码 URL 编码的用户名
         const urlUserName = pathParts[0] ? decodeURIComponent(pathParts[0]) : null

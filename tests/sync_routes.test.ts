@@ -4,6 +4,8 @@ import { createClientKeyInfo, getUserSpace, releaseUserSpace, syncUsersToDatabas
 import { aesDecrypt, aesEncrypt } from '@/utils/tools'
 import { SYNC_CODE } from '@/constants'
 import { createSyncRouter } from '@/server/routes/sync'
+import { authConnect } from '@/server/auth'
+import { handleSocketUpgrade } from '@/server/sync/socketServer'
 
 describe('Client sync authentication', () => {
   let previousLx: typeof global.lx
@@ -57,5 +59,28 @@ describe('Client sync authentication', () => {
       { remoteAddress: '192.0.2.11' })).status).toBe(403)
     expect((await router.handle(new Request(`http://localhost/${username}/ah`),
       { remoteAddress: '192.0.2.12' })).status).toBe(401)
+  })
+
+  test('authenticates both absolute Web Requests and relative legacy URLs', async () => {
+    const query = new URLSearchParams({ i: keyInfo.clientId, t: aesEncrypt(SYNC_CODE.msgConnect, keyInfo.key) })
+    await expect(authConnect(`/${username}?${query}`, '192.0.2.20')).resolves.toBeUndefined()
+    const request = new Request(`http://localhost/${username}?${query}`)
+    let upgraded = false
+    const response = await handleSocketUpgrade(request, {
+      requestIP: () => ({ address: '192.0.2.20' }),
+      upgrade: () => { upgraded = true; return true },
+    } as any)
+    expect(upgraded).toBe(true)
+    expect(response?.status).toBe(200)
+  })
+
+  test('decodes user paths while rejecting credentials belonging to a different user', async () => {
+    const query = new URLSearchParams({ i: keyInfo.clientId, t: aesEncrypt(SYNC_CODE.msgConnect, keyInfo.key) })
+    await expect(authConnect(new Request(`http://localhost/%73ync_test_user?${query}`), '192.0.2.21'))
+      .resolves.toBeUndefined()
+    await expect(authConnect(new Request(`http://localhost/another_user?${query}`), '192.0.2.21'))
+      .rejects.toThrow('User mismatch')
+    await expect(authConnect(new Request(`http://localhost/${username}?i=${encodeURIComponent(keyInfo.clientId)}&t=invalid`), '192.0.2.21'))
+      .rejects.toThrow('failed')
   })
 })

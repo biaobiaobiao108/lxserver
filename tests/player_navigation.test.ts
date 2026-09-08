@@ -62,6 +62,28 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(html.includes('data-event-click-action="toggleSidebar"')).toBe(true);
     });
 
+    it('player sidebar prevents horizontal overflow from long navigation labels', () => {
+        const playerHtmlPath = path.join(import.meta.dir, '../public/music/index.html');
+        const html = fs.readFileSync(playerHtmlPath, 'utf8');
+        const css = fs.readFileSync(playerCssPath, 'utf8');
+        const source = fs.readFileSync(playerSrcPath, 'utf8');
+        const sidebar = html.match(/<aside id="main-sidebar"[\s\S]*?class="([^"]+)"/)?.[1] ?? '';
+        const nav = html.match(/<nav class="([^"]+)"/)?.[1] ?? '';
+        const favoritesButton = html.match(/<button[^>]*id="tab-favorites"[\s\S]*?<\/button>/)?.[0] ?? '';
+
+        expect(sidebar).toContain('shrink-0');
+        expect(sidebar).toContain('min-w-0');
+        expect(nav).toContain('min-w-0');
+        expect(favoritesButton).not.toContain('w-full');
+        expect(favoritesButton).toContain('min-w-0');
+        expect(favoritesButton).toContain('truncate');
+        expect(css).toContain('#main-sidebar nav');
+        expect(css).toContain('overflow-x: clip');
+        expect(css).toContain('min-inline-size: 0');
+        expect(source).toContain('div.title = displayName;');
+        expect(source).toContain('publicFavItem.title = \'公开收藏\';');
+    });
+
     it('artist and album searches guard favorite callbacks and use the auth bridge', () => {
         const srcContent = fs.readFileSync(playerSrcPath, 'utf8');
         const searchContent = fs.readFileSync(searchSrcPath, 'utf8');

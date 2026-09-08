@@ -2026,6 +2026,11 @@ aside {
 }
 
 /* ── 侧边栏网易云导航条目 ── */
+#main-sidebar nav {
+    min-inline-size: 0;
+    overflow-x: clip;
+}
+
 .netease-nav-item {
     border-radius: 8px;
     margin: 2px 10px;
@@ -2037,6 +2042,13 @@ aside {
     gap: 10px;
     transition: all 0.2s ease;
     color: var(--text-muted);
+    min-inline-size: 0;
+    box-sizing: border-box;
+}
+
+.netease-nav-item > span,
+.netease-nav-item > div {
+    min-inline-size: 0;
 }
 
 .netease-nav-item:hover {

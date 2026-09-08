@@ -39,7 +39,7 @@
 
         <!-- Sidebar -->
         <aside id="main-sidebar" aria-label="主导航"
-            class="w-64 t-bg-panel shadow-2xl flex flex-col z-[60] fixed inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 md:z-30 h-full pb-28 pt-[env(safe-area-inset-top,0px)] transition-all duration-300">
+            class="w-64 shrink-0 min-w-0 t-bg-panel shadow-2xl flex flex-col z-[60] fixed inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 md:z-30 h-full pb-28 pt-[env(safe-area-inset-top,0px)] transition-all duration-300">
             <div class="h-16 flex items-center px-6 border-b t-border-main relative gap-3">
                 <div class="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 flex-shrink-0">
                     <i class="fas fa-music text-sm"></i>
@@ -51,7 +51,7 @@
                 </button>
             </div>
 
-            <nav class="flex-1 py-3 overflow-y-auto custom-scrollbar">
+            <nav class="flex-1 min-w-0 py-3 overflow-y-auto custom-scrollbar">
                 <!-- 发现音乐 -->
                 <div class="netease-nav-category">发现音乐</div>
                 <div class="space-y-0.5">
@@ -77,13 +77,13 @@
                 <div class="space-y-0.5">
                     <button type="button" data-event-click-action="handleFavoritesClick" id="tab-favorites"
                         aria-expanded="false" aria-controls="favorites-children"
-                        class="netease-nav-item w-full justify-between cursor-pointer select-none text-left">
-                        <div class="flex items-center gap-2.5">
+                        class="netease-nav-item justify-between cursor-pointer select-none text-left">
+                        <div class="flex min-w-0 flex-1 items-center gap-2.5">
                             <i class="fas fa-heart w-5 text-center text-red-500/80"></i>
-                            <span>我喜欢的音乐</span>
+                            <span class="truncate">我喜欢的音乐</span>
                         </div>
                         <i id="favorites-arrow"
-                            class="fas fa-chevron-down text-xs transition-transform duration-200"></i>
+                            class="fas fa-chevron-down shrink-0 text-xs transition-transform duration-200"></i>
                     </button>
                     <ul id="favorites-children" class="t-bg-main/50 overflow-hidden transition-all duration-300 rounded-lg mx-2.5">
                         <li class="px-3 py-2">

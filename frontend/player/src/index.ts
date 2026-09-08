@@ -3669,7 +3669,8 @@ function renderMyLists(data) {
         const idArg = safeInlineString(idValue);
         const displayName = String(name || '未命名歌单');
         const div = document.createElement('div');
-        div.className = "px-6 py-2 text-sm t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden";
+        div.className = "px-6 py-2 text-sm t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden min-w-0";
+        div.title = displayName;
         div.setAttribute('data-sidebar-list-id', idValue);
         div.setAttribute('data-sidebar-sort-id', idValue);
         const activateList = () => handleListClick(idValue);
@@ -3716,7 +3717,8 @@ function renderMyLists(data) {
     // ---- 常驻：收藏歌手 / 收藏专辑 ----
     const createLibItem = (id, name, icon, countId, clickFn) => {
         const div = document.createElement('div');
-        div.className = "px-6 py-2 text-sm t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden";
+        div.className = "px-6 py-2 text-sm t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden min-w-0";
+        div.title = name;
         div.setAttribute('data-sidebar-list-id', id);
         div.setAttribute('data-sidebar-sort-id', id);
         div.onclick = clickFn;
@@ -3740,7 +3742,8 @@ function renderMyLists(data) {
     if (enablePublicFavorites && isUserLoggedIn) {
         const isPublicActive = window.isViewingPublicFavorites === true;
         const publicFavItem = document.createElement('div');
-        publicFavItem.className = `px-6 py-2 text-sm cursor-pointer flex items-center group transition-colors overflow-hidden ${isPublicActive ? 'text-emerald-500 font-bold bg-emerald-500/10' : 't-text-muted hover:t-bg-main'}`;
+        publicFavItem.className = `px-6 py-2 text-sm cursor-pointer flex items-center group transition-colors overflow-hidden min-w-0 ${isPublicActive ? 'text-emerald-500 font-bold bg-emerald-500/10' : 't-text-muted hover:t-bg-main'}`;
+        publicFavItem.title = '公开收藏';
         publicFavItem.setAttribute('data-sidebar-list-id', '__public_favorites__');
         publicFavItem.setAttribute('data-sidebar-sort-id', '__public_favorites__');
         const activatePublicFavorites = () => handleTogglePublicFavorites();

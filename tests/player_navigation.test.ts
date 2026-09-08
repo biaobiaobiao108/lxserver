@@ -74,7 +74,7 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(sidebar).toContain('shrink-0');
         expect(sidebar).toContain('min-w-0');
         expect(nav).toContain('min-w-0');
-        expect(favoritesButton).not.toContain('w-full');
+        expect(favoritesButton).toContain('netease-nav-item');
         expect(favoritesButton).toContain('min-w-0');
         expect(favoritesButton).toContain('truncate');
         expect(css).toContain('#main-sidebar nav');
@@ -82,6 +82,30 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(css).toContain('min-inline-size: 0');
         expect(source).toContain('div.title = displayName;');
         expect(source).toContain('publicFavItem.title = \'公开收藏\';');
+    });
+
+    it('player list surfaces share stable tracks and constrained playlist cards', () => {
+        const playerHtmlPath = path.join(import.meta.dir, '../public/music/index.html');
+        const html = fs.readFileSync(playerHtmlPath, 'utf8');
+        const css = fs.readFileSync(playerCssPath, 'utf8');
+        const rendererSources = [
+            path.join(import.meta.dir, '../frontend/player/src/features/search.ts'),
+            path.join(import.meta.dir, '../frontend/player/src/legacy/songlist_manager.ts'),
+            path.join(import.meta.dir, '../frontend/player/src/legacy/leaderboard_manager.ts'),
+            path.join(import.meta.dir, '../frontend/player/src/legacy/local_music.ts'),
+        ].map(filePath => fs.readFileSync(filePath, 'utf8'));
+
+        expect(html).toContain('class="playlist-card-grid"');
+        expect(html).toContain('class="w-56 shrink-0');
+        expect(css).toContain('grid-template-columns: 2.25rem minmax(0, 1fr) max-content');
+        expect(css).toContain('grid-template-columns: repeat(auto-fill, minmax(10rem, 13.75rem))');
+        expect(css).toContain('min-inline-size: max-content');
+        expect(css).toContain('flex-wrap: nowrap');
+        expect(css).toContain('.favorite-sidebar-item.active-sub-item');
+        for (const source of rendererSources) {
+            expect(source).toContain('player-track-grid');
+            expect(source).toContain('player-track-actions');
+        }
     });
 
     it('mobile player footer uses explicit rows and keeps every control touchable', () => {

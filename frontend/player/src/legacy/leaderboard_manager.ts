@@ -195,7 +195,7 @@ window.LeaderboardManager = (function () {
             const isMatched = window.ListSearch && window.ListSearch.isMatched(index);
             const isCurrentMatch = window.ListSearch && window.ListSearch.isCurrentMatch(index);
 
-            let rowClass = 'grid grid-cols-12 gap-2 md:gap-4 p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer ';
+            let rowClass = 'player-track-grid player-track-grid--network p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer ';
             if (isCurrentMatch) rowClass += 'search-current ';
             else if (isMatched) rowClass += 'search-match ';
             if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
@@ -216,7 +216,7 @@ window.LeaderboardManager = (function () {
                  data-event-click-action="window.LeaderboardManager.handleRowClick" data-event-click-args="[${index}]"
                  data-event-keydown-action="window.LeaderboardManager.handleRowClick" data-event-keydown-args="[${index}]" data-event-keys="Enter, " data-event-target-self="true" data-event-prevent="true">
                 <!-- 序号 -->
-                <div class="col-span-1 sm:col-span-1 text-center flex items-center justify-center">
+                <div class="player-track-index text-center flex items-center justify-center">
                     ${window.batchMode ? `
                         <input type="checkbox"
                                class="batch-checkbox"
@@ -228,7 +228,7 @@ window.LeaderboardManager = (function () {
                     ` : `<span class="${rankClass}">${rank}</span>`}
                 </div>
                 <!-- 封面 + 歌名 -->
-                <div class="col-span-9 sm:col-span-7 md:col-span-5 lg:col-span-4 flex items-center gap-3 min-w-0">
+                <div class="player-track-title flex items-center gap-3 min-w-0">
                     <div class="w-10 h-10 md:w-12 md:h-12 flex-shrink-0 relative rounded-lg overflow-hidden shadow-sm border t-border-main group-hover:shadow-md transition-all group-hover:scale-105 duration-300">
                         <img data-src="${imgUrl}" src="/music/assets/logo.svg" alt="${song.name || '歌曲'}专辑封面" width="48" height="48" loading="lazy" decoding="async"
                              class="lazy-image w-full h-full object-cover dynamic-logo is-placeholder"
@@ -244,26 +244,26 @@ window.LeaderboardManager = (function () {
                         <div class="flex items-center gap-1 mt-0.5 overflow-hidden">
                             ${window.getSourceTag ? window.getSourceTag(song.source || state.source) : ''}
                             ${window.getQualityTags ? window.getQualityTags(song) : ''}
-                            <div class="md:hidden flex-1 min-w-0">
+                            <div class="player-track-compact-meta flex-1 min-w-0">
                                 ${window.createMarqueeHtml ? window.createMarqueeHtml(song.singer, 'text-[10px] t-text-muted') : `<span class="text-[10px] t-text-muted truncate">${song.singer}</span>`}
                             </div>
                         </div>
                     </div>
                 </div>
                 <!-- 歌手 -->
-                <div class="hidden md:flex md:col-span-3 items-center text-xs t-text-muted overflow-hidden">
+                <div class="player-track-artist items-center text-xs t-text-muted overflow-hidden">
                     ${window.createMarqueeHtml ? window.createMarqueeHtml(song.singer) : `<span class="truncate">${song.singer || '--'}</span>`}
                 </div>
                 <!-- 专辑 -->
-                <div class="hidden lg:flex lg:col-span-2 items-center text-xs t-text-muted truncate">
+                <div class="player-track-album items-center text-xs t-text-muted truncate">
                     ${song.albumName || '--'}
                 </div>
                 <!-- 时长 -->
-                <div class="hidden md:flex md:col-span-2 lg:col-span-1 items-center justify-end text-xs font-mono t-text-muted">
+                <div class="player-track-duration items-center justify-end text-xs font-mono t-text-muted">
                     ${song.interval || '--:--'}
                 </div>
                 <!-- 操作 -->
-                <div class="col-span-2 sm:col-span-1 md:col-span-1 flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                <div class="player-track-actions flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                     <button class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors"
                             title="播放"
                             data-event-click-action="window.LeaderboardManager.playSong" data-event-click-args="[${index}]" data-event-stop="true">

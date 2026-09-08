@@ -3657,7 +3657,7 @@ function renderMyLists(data) {
     container.innerHTML = '';
 
     if (!data) {
-        container.innerHTML = '<div class="px-6 py-2 text-sm t-text-muted">请先在设置中登录</div>';
+        container.innerHTML = '<div class="favorite-sidebar-empty">请先在设置中登录</div>';
         refreshFavoritesChildrenHeight();
         return;
     }
@@ -3669,7 +3669,7 @@ function renderMyLists(data) {
         const idArg = safeInlineString(idValue);
         const displayName = String(name || '未命名歌单');
         const div = document.createElement('div');
-        div.className = "px-6 py-2 text-sm t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden min-w-0";
+        div.className = "favorite-sidebar-item t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden min-w-0";
         div.title = displayName;
         div.setAttribute('data-sidebar-list-id', idValue);
         div.setAttribute('data-sidebar-sort-id', idValue);
@@ -3701,15 +3701,15 @@ function renderMyLists(data) {
         }
 
         div.innerHTML = `
-            <span class="favorite-sidebar-drag-handle cursor-grab t-text-muted/60 hover:text-emerald-500 mr-2 flex-shrink-0 touch-none" title="拖拽排序">
+            <span class="favorite-sidebar-drag-handle cursor-grab t-text-muted/60 hover:text-emerald-500 flex-shrink-0 touch-none" title="拖拽排序">
                 <i class="fas fa-grip-vertical text-xs"></i>
             </span>
             ${opsHtml}
             <i class="fas ${icon} w-5 t-text-muted group-hover:text-emerald-500 transition-colors flex-shrink-0"></i>
             ${displayName.length > 8 ? `<div class="ml-2 flex-1 overflow-hidden">${nameHtml}</div>` : nameHtml}
-            <span class="text-xs text-gray-300 group-hover:t-text-muted mr-2 flex-shrink-0">${count}</span>
+            <span class="favorite-sidebar-count text-xs text-gray-300 group-hover:t-text-muted flex-shrink-0">${count}</span>
             ${typeof listObj !== 'string' ? `<button type="button" class="text-gray-300 hover:text-emerald-500 flex-shrink-0 mr-2 transition-colors" title="重命名歌单" aria-label="重命名歌单" data-event-click-action="handleRenameList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-pen text-[10px]" aria-hidden="true"></i></button>` : ''}
-            ${idValue !== 'default' && idValue !== 'love' ? `<button type="button" class="bg-transparent border-0 p-0 text-gray-300 hover:text-red-500 hidden group-hover:block flex-shrink-0" title="删除歌单" aria-label="删除歌单" data-event-click-action="handleRemoveList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
+            ${idValue !== 'default' && idValue !== 'love' ? `<button type="button" class="favorite-sidebar-delete-btn bg-transparent border-0 p-0 text-gray-300 hover:text-red-500 hidden group-hover:block flex-shrink-0" title="删除歌单" aria-label="删除歌单" data-event-click-action="handleRemoveList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
         `;
         return div;
     };
@@ -3717,19 +3717,19 @@ function renderMyLists(data) {
     // ---- 常驻：收藏歌手 / 收藏专辑 ----
     const createLibItem = (id, name, icon, countId, clickFn) => {
         const div = document.createElement('div');
-        div.className = "px-6 py-2 text-sm t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden min-w-0";
+        div.className = "favorite-sidebar-item t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden min-w-0";
         div.title = name;
         div.setAttribute('data-sidebar-list-id', id);
         div.setAttribute('data-sidebar-sort-id', id);
         div.onclick = clickFn;
         makeKeyboardActivatable(div, `打开${name}`, clickFn);
         div.innerHTML = `
-            <span class="favorite-sidebar-drag-handle cursor-grab t-text-muted/60 hover:text-emerald-500 mr-2 flex-shrink-0 touch-none" title="拖拽排序">
+            <span class="favorite-sidebar-drag-handle cursor-grab t-text-muted/60 hover:text-emerald-500 flex-shrink-0 touch-none" title="拖拽排序">
                 <i class="fas fa-grip-vertical text-xs"></i>
             </span>
             <i class="fas ${icon} w-5 t-text-muted group-hover:text-emerald-500 transition-colors flex-shrink-0"></i>
              <span class="ml-2 flex-1 truncate">${escapeHtmlText(name)}</span>
-            <span id="${countId}" class="text-xs text-gray-300 group-hover:t-text-muted mr-2 flex-shrink-0">0</span>
+             <span id="${countId}" class="favorite-sidebar-count text-xs text-gray-300 group-hover:t-text-muted flex-shrink-0">0</span>
         `;
         return div;
     };
@@ -3742,7 +3742,7 @@ function renderMyLists(data) {
     if (enablePublicFavorites && isUserLoggedIn) {
         const isPublicActive = window.isViewingPublicFavorites === true;
         const publicFavItem = document.createElement('div');
-        publicFavItem.className = `px-6 py-2 text-sm cursor-pointer flex items-center group transition-colors overflow-hidden min-w-0 ${isPublicActive ? 'text-emerald-500 font-bold bg-emerald-500/10' : 't-text-muted hover:t-bg-main'}`;
+        publicFavItem.className = `favorite-sidebar-item cursor-pointer flex items-center group transition-colors overflow-hidden min-w-0 ${isPublicActive ? 'active-sub-item' : 't-text-muted hover:t-bg-main'}`;
         publicFavItem.title = '公开收藏';
         publicFavItem.setAttribute('data-sidebar-list-id', '__public_favorites__');
         publicFavItem.setAttribute('data-sidebar-sort-id', '__public_favorites__');
@@ -3750,7 +3750,7 @@ function renderMyLists(data) {
         publicFavItem.onclick = activatePublicFavorites;
         makeKeyboardActivatable(publicFavItem, '切换公开收藏', activatePublicFavorites);
         publicFavItem.innerHTML = `
-            <span class="favorite-sidebar-drag-handle cursor-grab t-text-muted/60 hover:text-emerald-500 mr-2 flex-shrink-0 touch-none" title="拖拽排序">
+            <span class="favorite-sidebar-drag-handle cursor-grab t-text-muted/60 hover:text-emerald-500 flex-shrink-0 touch-none" title="拖拽排序">
                 <i class="fas fa-grip-vertical text-xs"></i>
             </span>
             <i class="fas fa-globe w-5 ${isPublicActive ? 'text-emerald-500' : 't-text-muted group-hover:text-emerald-500'} transition-colors flex-shrink-0"></i>

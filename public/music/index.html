@@ -39,7 +39,7 @@
 
         <!-- Sidebar -->
         <aside id="main-sidebar" aria-label="主导航"
-            class="w-64 shrink-0 min-w-0 t-bg-panel shadow-2xl flex flex-col z-[60] fixed inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 md:z-30 h-full pb-28 pt-[env(safe-area-inset-top,0px)] transition-all duration-300">
+            class="w-56 shrink-0 min-w-0 t-bg-panel shadow-2xl flex flex-col z-[60] fixed inset-y-0 left-0 transform -translate-x-full md:relative md:translate-x-0 md:z-30 h-full pb-28 pt-[env(safe-area-inset-top,0px)] transition-all duration-300">
             <div class="h-16 flex items-center px-6 border-b t-border-main relative gap-3">
                 <div class="w-8 h-8 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-md shadow-emerald-500/20 flex-shrink-0">
                     <i class="fas fa-music text-sm"></i>
@@ -85,11 +85,11 @@
                         <i id="favorites-arrow"
                             class="fas fa-chevron-down shrink-0 text-xs transition-transform duration-200"></i>
                     </button>
-                    <ul id="favorites-children" class="t-bg-main/50 overflow-hidden transition-all duration-300 rounded-lg mx-2.5">
+                    <ul id="favorites-children" class="favorite-sidebar-children t-bg-main/50 overflow-hidden transition-all duration-300 rounded-lg mx-2.5">
                         <li class="px-3 py-2">
-                            <div id="my-lists-container" class="space-y-1 pb-1">
+                            <div id="my-lists-container" class="favorite-sidebar-list space-y-1 pb-1">
                                 <!-- Lists will be injected here -->
-                                <div class="px-3 py-1.5 text-xs t-text-muted">请先在设置中登录</div>
+                                <div class="favorite-sidebar-empty">请先在设置中登录</div>
                             </div>
                         </li>
                         <li class="px-3 pb-3">
@@ -350,9 +350,8 @@
                         </div>
                         <!-- Header -->
                         <div id="search-results-header"
-                            class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
-                            <div
-                                class="col-span-2 sm:col-span-1 list-header-leading">
+                            class="player-track-grid player-track-grid--network px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium list-results-header">
+                            <div class="player-track-index list-header-leading">
                                 <button id="search-back-btn" data-event-click-action="goBackToSearch"
                                     class="hidden list-header-back text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
                                     title="返回列表" aria-label="返回列表">
@@ -371,15 +370,13 @@
                                     </button>
                                 </div>
                             </div>
-                            <div class="col-span-8 sm:col-span-7 md:col-span-6 lg:col-span-4" id="header-title">歌曲标题
+                            <div class="player-track-title" id="header-title">歌曲标题
                             </div>
-                            <div
-                                class="hidden sm:block sm:col-span-3 md:col-span-3 lg:col-span-3 text-right md:text-left">
+                            <div class="player-track-artist text-right md:text-left">
                                 歌手</div>
-                            <div class="hidden lg:block lg:col-span-2" id="header-album">专辑</div>
-                            <div class="hidden md:block md:col-span-1 text-right">时长</div>
-                            <div class="hidden sm:block sm:col-span-1 text-right">操作</div>
-                            <div class="col-span-2 sm:hidden text-right">操作</div>
+                            <div class="player-track-album" id="header-album">专辑</div>
+                            <div class="player-track-duration text-right">时长</div>
+                            <div class="player-track-actions text-right">操作</div>
                         </div>
 
                         <!-- Global Local Search Bar (Hidden by default) -->
@@ -550,7 +547,7 @@
 
                     <!-- Song List Grid -->
                     <div id="songlist-grid" class="flex-1 overflow-y-auto px-1 pb-6 custom-scrollbar">
-                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4 md:gap-6"
+                        <div class="playlist-card-grid"
                             id="songlist-container">
                             <!-- Cards will be injected here -->
                             <div class="col-span-full py-20 text-center t-text-muted animate-fade-in">
@@ -720,9 +717,8 @@
                             <!-- List Section -->
                             <div class="flex-1 flex flex-col overflow-hidden">
                                 <div
-                                    class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-xs font-bold uppercase tracking-wider list-results-header">
-                                    <div
-                                        class="col-span-2 sm:col-span-1 list-header-leading">
+                                    class="player-track-grid player-track-grid--network px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-xs font-bold uppercase tracking-wider list-results-header">
+                                    <div class="player-track-index list-header-leading">
                                         <div class="list-header-actions" role="group" aria-label="列表操作">
                                             <button data-event-click-action="toggleBatchMode" data-list-action="batch"
                                                 class="list-header-action"
@@ -736,11 +732,11 @@
                                             </button>
                                         </div>
                                     </div>
-                                    <div class="col-span-8 sm:col-span-9 md:col-span-5 lg:col-span-4">歌曲</div>
-                                    <div class="hidden md:block md:col-span-3">歌手</div>
-                                    <div class="hidden lg:block lg:col-span-2">专辑</div>
-                                    <div class="hidden md:block md:col-span-2 lg:col-span-1 text-right">时长</div>
-                                    <div class="col-span-2 md:col-span-1 text-right">操作</div>
+                                    <div class="player-track-title">歌曲</div>
+                                    <div class="player-track-artist">歌手</div>
+                                    <div class="player-track-album">专辑</div>
+                                    <div class="player-track-duration text-right">时长</div>
+                                    <div class="player-track-actions text-right">操作</div>
                                 </div>
 
                                 <div id="sl-detail-list" role="list"
@@ -911,8 +907,8 @@
 
                             <!-- 列表表头 -->
                             <div
-                                class="flex-shrink-0 grid grid-cols-12 gap-2 md:gap-4 px-3 py-2 border-b t-border-main t-bg-panel/80 text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">
-                                <div class="col-span-1 text-center flex items-center justify-center gap-1">
+                                class="player-track-grid player-track-grid--network flex-shrink-0 px-3 py-2 border-b t-border-main t-bg-panel/80 text-gray-500 text-[10px] md:text-xs font-bold uppercase tracking-wider">
+                                <div class="player-track-index text-center flex items-center justify-center gap-1">
                                     <span>#</span>
                                     <div class="flex items-center gap-0.5 md:gap-1 ml-0.5">
                                         <button data-event-click-action="toggleLbBatchMode"
@@ -927,11 +923,11 @@
                                         </button>
                                     </div>
                                 </div>
-                                <div class="col-span-9 md:col-span-5 lg:col-span-4">歌曲</div>
-                                <div class="hidden md:block md:col-span-3">歌手</div>
-                                <div class="hidden lg:block lg:col-span-2">专辑</div>
-                                <div class="hidden md:block md:col-span-2 lg:col-span-1 text-right">时长</div>
-                                <div class="col-span-2 md:col-span-1 text-right">操作</div>
+                                <div class="player-track-title">歌曲</div>
+                                <div class="player-track-artist">歌手</div>
+                                <div class="player-track-album">专辑</div>
+                                <div class="player-track-duration text-right">时长</div>
+                                <div class="player-track-actions text-right">操作</div>
                             </div>
 
                             <!-- 歌曲列表 -->
@@ -1323,8 +1319,8 @@
 
                     <!-- Header Row -->
                     <div
-                        class="grid grid-cols-12 gap-2 md:gap-4 p-4 border t-border-main t-bg-main text-gray-500 text-[10px] sm:text-xs font-bold uppercase tracking-wider shrink-0 mt-2 rounded-t-xl">
-                        <div class="col-span-1 text-center font-mono flex items-center justify-center">
+                        class="player-track-grid player-track-grid--local p-4 border t-border-main t-bg-main text-gray-500 text-[10px] sm:text-xs font-bold uppercase tracking-wider shrink-0 mt-2 rounded-t-xl">
+                        <div class="player-track-index text-center font-mono flex items-center justify-center">
                             <div class="flex items-center gap-1">
                                 <span>#</span>
                                 <button data-event-click-action="LocalMusicManager.toggleBatchMode"
@@ -1333,11 +1329,11 @@
                                 </button>
                             </div>
                         </div>
-                        <div class="col-span-8 sm:col-span-5 md:col-span-4 lg:col-span-4">歌曲</div>
-                        <div class="hidden sm:block sm:col-span-4 md:col-span-3 lg:col-span-2">歌手</div>
-                        <div class="hidden lg:block lg:col-span-2">专辑</div>
-                        <div class="hidden md:block md:col-span-2 lg:col-span-1">来源/信息</div>
-                        <div class="col-span-3 sm:col-span-2 md:col-span-2 lg:col-span-2 text-right">操作</div>
+                        <div class="player-track-title">歌曲</div>
+                        <div class="player-track-artist">歌手</div>
+                        <div class="player-track-album">专辑</div>
+                        <div class="player-track-source">来源/信息</div>
+                        <div class="player-track-actions text-right">操作</div>
                     </div>
 
                     <!-- List Area -->

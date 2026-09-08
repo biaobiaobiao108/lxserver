@@ -1311,9 +1311,9 @@ window.LocalMusicManager = {
             const folderIcon = item.folder === 'music' ? '<i class="fas fa-download text-blue-500 mr-1" title="下载目录"></i>' : '<i class="fas fa-hdd text-emerald-500 mr-1" title="缓存目录"></i>';
 
             html += `
-            <div class="grid grid-cols-12 gap-2 md:gap-4 p-3 md:p-2 items-center rounded-xl hover:t-bg-item-hover transition-all t-border-main border-b last:border-b-0 group relative ${isSelected ? 't-bg-item-hover ring-1 ring-emerald-500/30' : ''}" data-lm-row-index="${index}">
+            <div class="player-track-grid player-track-grid--local p-3 md:p-2 items-center rounded-xl hover:t-bg-item-hover transition-all t-border-main border-b last:border-b-0 group relative ${isSelected ? 't-bg-item-hover ring-1 ring-emerald-500/30' : ''}" data-lm-row-index="${index}">
                 <!-- # / Batch -->
-                <div class="col-span-1 text-center text-xs font-mono t-text-muted flex-shrink-0 flex items-center justify-center">
+                <div class="player-track-index text-center text-xs font-mono t-text-muted flex-shrink-0 flex items-center justify-center">
                     <div class="${this.batchMode ? 'hidden' : 'block'}">${index + 1}</div>
                     <div class="${this.batchMode ? 'block' : 'hidden'}">
                         <label class="flex items-center justify-center w-full h-full cursor-pointer">
@@ -1324,7 +1324,7 @@ window.LocalMusicManager = {
                 </div>
 
                 <!-- Song & Cover -->
-                <div class="col-span-8 sm:col-span-5 md:col-span-4 lg:col-span-4 flex items-center min-w-0 pr-2">
+                <div class="player-track-title flex items-center min-w-0 pr-2">
                     ${coverHtml}
                     <div class="min-w-0 flex-1 truncate">
                         <div class="font-bold text-sm md:text-base t-text-main truncate group-hover:text-emerald-500 transition-colors cursor-pointer" data-lm-action="play" data-lm-index="${index}">
@@ -1371,17 +1371,17 @@ window.LocalMusicManager = {
                 </div>
 
                 <!-- Singer -->
-                <div class="hidden sm:block sm:col-span-4 md:col-span-3 lg:col-span-2 text-xs t-text-main truncate pr-2">
+                <div class="player-track-artist text-xs t-text-main truncate pr-2">
                     ${safeSinger}
                 </div>
 
                 <!-- Album -->
-                <div class="hidden lg:block lg:col-span-2 text-xs t-text-muted truncate pr-2">
+                <div class="player-track-album text-xs t-text-muted truncate pr-2">
                     ${safeAlbum}
                 </div>
 
                 <!-- Source/Info with Metadata Status -->
-                <div class="hidden md:flex flex-col md:col-span-2 lg:col-span-1 text-xs t-text-muted pr-2">
+                <div class="player-track-source flex-col text-xs t-text-muted pr-2">
                     <div class="flex items-center gap-1 mb-1">
                         ${folderIcon}
                         <span class="truncate font-medium" title="${safeSourceTitle}">${safeSource}</span>
@@ -1398,7 +1398,7 @@ window.LocalMusicManager = {
                 </div>
 
                 <!-- Action Button -->
-                <div class="col-span-3 sm:col-span-2 md:col-span-2 lg:col-span-2 flex items-center justify-end gap-1 md:gap-2">
+                <div class="player-track-actions flex items-center justify-end gap-1 md:gap-2">
                     <div class="hidden lg:block text-xs text-right pr-2 font-mono t-text-muted shrink-0 mr-1">
                         ${formatSize(item.size)}
                     </div>

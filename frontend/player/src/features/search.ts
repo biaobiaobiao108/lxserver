@@ -1252,8 +1252,8 @@ function renderArtistSongsUI(list, page) {
 
     let html = `
         <!-- 表头 -->
-        <div class="grid grid-cols-12 gap-2 md:gap-4 px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm list-results-header">
-            <div class="col-span-2 sm:col-span-1 list-header-leading">
+        <div class="player-track-grid player-track-grid--network px-3 py-1.5 md:px-4 md:py-2 border-b t-border-main t-bg-main text-gray-500 text-sm font-medium sticky top-0 z-10 rounded-t-2xl overflow-hidden shadow-sm list-results-header">
+            <div class="player-track-index list-header-leading">
                 <div class="list-header-actions" role="group" aria-label="列表操作">
                     <button data-event-click-action="toggleBatchMode" data-list-action="batch"
                         class="list-header-action"
@@ -1267,12 +1267,11 @@ function renderArtistSongsUI(list, page) {
                     </button>
                 </div>
             </div>
-            <div class="col-span-8 sm:col-span-7 md:col-span-6 lg:col-span-4">歌曲标题</div>
-            <div class="hidden sm:block sm:col-span-3 md:col-span-3 lg:col-span-3 text-right md:text-left">歌手</div>
-            <div class="hidden lg:block lg:col-span-2">专辑</div>
-            <div class="hidden md:block md:col-span-1 text-center md:text-left">时长</div>
-            <div class="hidden sm:block sm:col-span-1 text-right">操作</div>
-            <div class="col-span-2 sm:hidden text-right">操作</div>
+            <div class="player-track-title">歌曲标题</div>
+            <div class="player-track-artist text-right md:text-left">歌手</div>
+            <div class="player-track-album">专辑</div>
+            <div class="player-track-duration text-center md:text-left">时长</div>
+            <div class="player-track-actions text-right">操作</div>
         </div>
         
         <div class="space-y-1 mt-2">
@@ -1290,7 +1289,7 @@ function renderArtistSongsUI(list, page) {
         const isMatched = window.ListSearch && window.ListSearch.isMatched(index);
         const isCurrentMatch = window.ListSearch && window.ListSearch.isCurrentMatch(index);
 
-        let rowClass = 'grid grid-cols-12 gap-2 md:gap-4 p-3 rounded-xl hover:t-bg-panel transition-all group cursor-pointer border border-transparent ';
+        let rowClass = 'player-track-grid player-track-grid--network p-3 rounded-xl hover:t-bg-panel transition-all group cursor-pointer border border-transparent ';
         if (isCurrentMatch) rowClass += 'search-current ';
         else if (isMatched) rowClass += 'search-match ';
         if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
@@ -1308,7 +1307,7 @@ function renderArtistSongsUI(list, page) {
                      data-event-click-action="search-row-activate" data-event-click-args="[${itemIdArg}, ${index}]"
                      data-event-keydown-action="search-row-activate" data-event-keydown-args="[${itemIdArg}, ${index}]" data-event-keys="Enter, " data-event-target-self="true" data-event-prevent="true">
                     <!-- Index -->
-                    <div class="col-span-2 sm:col-span-1 text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
+                    <div class="player-track-index text-center flex items-center justify-center font-mono text-xs t-text-muted group-hover:t-text-main">
                         ${window.batchMode ? `
                             <input type="checkbox" 
                                    class="batch-checkbox"
@@ -1321,7 +1320,7 @@ function renderArtistSongsUI(list, page) {
                     </div>
 
                     <!-- Title -->
-                    <div class="col-span-8 sm:col-span-7 md:col-span-6 lg:col-span-4 flex items-center gap-3 min-w-0">
+                    <div class="player-track-title flex items-center gap-3 min-w-0">
                         <div class="w-10 h-10 md:w-12 md:h-12 rounded-lg overflow-hidden flex-shrink-0 shadow-sm relative">
                             <img src="${itemImage}" alt="${itemName}专辑封面" width="48" height="48" loading="lazy" decoding="async"
                                  data-event-error-action="fallback-image"
@@ -1340,22 +1339,22 @@ function renderArtistSongsUI(list, page) {
                     </div>
 
                     <!-- Artist -->
-                    <div class="hidden sm:flex sm:col-span-3 md:col-span-3 lg:col-span-3 text-sm t-text-muted items-center truncate">
+                    <div class="player-track-artist text-sm t-text-muted items-center truncate">
                         ${itemSinger}
                     </div>
 
                     <!-- Album -->
-                    <div class="hidden lg:flex lg:col-span-2 text-sm t-text-muted items-center truncate">
+                    <div class="player-track-album text-sm t-text-muted items-center truncate">
                         ${itemAlbum}
                     </div>
 
                     <!-- Duration -->
-                    <div class="hidden md:flex md:col-span-1 items-center justify-center text-xs font-mono t-text-muted">
+                    <div class="player-track-duration items-center justify-center text-xs font-mono t-text-muted">
                         ${itemInterval}
                     </div>
 
                     <!-- Actions -->
-                    <div class="col-span-2 sm:col-span-1 flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div class="player-track-actions flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                         <button class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors" title="播放" data-event-click-action="playFromView" data-event-click-args="[${index}]" data-event-stop="true">
                             <i class="fas fa-play w-3.5 h-3.5"></i>
                         </button>
@@ -1850,8 +1849,6 @@ function renderResults(list) {
     if (paginationBar) paginationBar.classList.remove('hidden');
     // 重置歌手详情分页（进入歌曲搜索视图时清空）
     window.artistSongsPage = 1;
-    const headerTitle = document.getElementById('header-title');
-    const headerAlbum = document.getElementById('header-album');
 
     // Determine if we should show the album column
     // Search results (network) show album, collections (local) do not
@@ -1862,23 +1859,8 @@ function renderResults(list) {
     if (header) {
         header.classList.remove('hidden');
     }
-    if (headerTitle) {
-        if (showAlbum) {
-            headerTitle.classList.remove('lg:col-span-6');
-            headerTitle.classList.add('lg:col-span-4');
-        } else {
-            headerTitle.classList.remove('lg:col-span-4');
-            headerTitle.classList.add('lg:col-span-6');
-        }
-    }
-    if (headerAlbum) {
-        if (showAlbum) {
-            headerAlbum.classList.add('hidden');
-            headerAlbum.classList.add('lg:block');
-        } else {
-            headerAlbum.classList.add('hidden');
-            headerAlbum.classList.remove('lg:block');
-        }
+    if (header) {
+        header.classList.toggle('player-track-grid--no-album', !showAlbum);
     }
 
     container.innerHTML = '';
@@ -1938,7 +1920,7 @@ function renderResults(list) {
         const isCurrentMatch = window.ListSearch.isCurrentMatch(actualIndexInOriginal);
         const isSelected = window.selectedItems.has(itemIdValue);
 
-        let rowClass = 'grid grid-cols-12 gap-2 sm:gap-4 p-2.5 sm:p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer min-h-[50px] items-center touch-manipulation ';
+        let rowClass = `player-track-grid player-track-grid--network p-2.5 sm:p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer min-h-[50px] items-center touch-manipulation ${showAlbum ? '' : 'player-track-grid--no-album '}`;
         if (isCurrentMatch) rowClass += 'search-current ';
         else if (isMatched) rowClass += 'search-match ';
         if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
@@ -1973,12 +1955,9 @@ function renderResults(list) {
         // Image
         const imgUrl = getImgUrl(item);
 
-        // Grid Layout Adjustment
-        const titleLgSpan = showAlbum ? 'lg:col-span-4' : 'lg:col-span-6';
-
         row.innerHTML = `
             <!-- Index -->
-            <div class="col-span-2 sm:col-span-1 text-center font-mono t-text-muted text-xs md:text-sm flex items-center justify-center">
+            <div class="player-track-index text-center font-mono t-text-muted text-xs md:text-sm flex items-center justify-center">
                 ${window.batchMode ? `
                     <input type="checkbox" 
                            class="batch-checkbox"
@@ -1991,7 +1970,7 @@ function renderResults(list) {
             </div>
 
             <!-- Title (Image + Text) -->
-            <div class="col-span-8 sm:col-span-7 md:col-span-6 ${titleLgSpan} flex items-center overflow-hidden pr-2">
+            <div class="player-track-title flex items-center overflow-hidden pr-2">
                 <div class="relative w-10 h-10 md:w-12 md:h-12 mr-3 md:mr-4 flex-shrink-0 group cursor-pointer">
                      <img data-src="${escapeHtmlText(imgUrl)}" src="/music/assets/logo.svg" alt="${itemName}专辑封面" width="48" height="48"
                           loading="lazy" decoding="async"
@@ -2008,7 +1987,7 @@ function renderResults(list) {
                     <div class="flex items-center gap-1 mt-0.5 md:mt-1 pr-2 overflow-hidden">
                          ${getSourceTag(item.source)}
                          ${getQualityTags(item)}
-                         <div class="sm:hidden flex-1 min-w-0">
+                             <div class="player-track-compact-meta flex-1 min-w-0">
                             ${createMarqueeHtml(item.singer, 'text-[10px] t-text-muted')}
                          </div>
                     </div>
@@ -2016,7 +1995,7 @@ function renderResults(list) {
             </div>
 
             <!-- Artist (Hidden on Mobile) -->
-            <div class="hidden sm:flex sm:col-span-3 md:col-span-3 lg:col-span-3 t-text-muted text-sm md:text-base items-center hover:text-emerald-600 transition-colors cursor-pointer overflow-hidden"
+            <div class="player-track-artist t-text-muted text-sm md:text-base items-center hover:text-emerald-600 transition-colors cursor-pointer overflow-hidden"
                  title="${itemSinger}"
                  data-event-click-action="performSearch" data-event-click-args="[${itemSingerArg}, ${safeInlineString(item.source || '')}, &quot;singer&quot;]" data-event-stop="true">
                 ${createMarqueeHtml(item.singer)}
@@ -2024,18 +2003,18 @@ function renderResults(list) {
 
             <!-- Album (Hidden until LG) -->
             ${showAlbum ? `
-            <div class="hidden lg:block lg:col-span-2 t-text-muted text-sm truncate flex items-center" title="${itemAlbum}">
+            <div class="player-track-album t-text-muted text-sm truncate flex items-center" title="${itemAlbum}">
                 ${itemAlbum}
             </div>
             ` : ''}
 
             <!-- Duration (Hidden until MD) -->
-            <div class="hidden md:block md:col-span-1 t-text-muted text-sm font-mono text-center flex items-center justify-center">
+            <div class="player-track-duration t-text-muted text-sm font-mono text-center flex items-center justify-center">
                 ${itemInterval}
             </div>
 
             <!-- Actions -->
-            <div class="col-span-2 sm:col-span-1 flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+            <div class="player-track-actions flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                 <button class="p-2 sm:p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg text-emerald-600 transition-colors touch-manipulation min-w-[36px] min-h-[36px] hidden sm:flex items-center justify-center" 
                         title="播放" 
                         aria-label="播放 ${itemName}"

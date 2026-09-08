@@ -110,7 +110,7 @@ export function initQueueFeature(context: QueueFeatureContext) {
                             ${context.createMarqueeHtml(song.singer, 'text-[10px] t-text-muted flex-1')}
                         </div>
                     </div>
-                    <div class="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                    <div class="queue-row-actions flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         <button aria-label="从队列移除 ${context.escapeHtmlText(song.name || '歌曲')}" data-event-click-action="removeFromQueue" data-event-click-args="[${index}]" data-event-stop="true" class="p-2 text-gray-400 hover:text-red-500 transition-colors">
                             <i class="fas fa-trash-alt text-xs"></i>
                         </button>

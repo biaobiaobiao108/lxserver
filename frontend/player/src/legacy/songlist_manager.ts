@@ -462,7 +462,7 @@ export function createSongListManager(context: SongListManagerContext) {
         }
 
         container.innerHTML = currentState.list.map(item => `
-            <div role="button" tabindex="0" aria-label="打开歌单 ${item.name || ''}" class="group cursor-pointer"
+            <div role="button" tabindex="0" aria-label="打开歌单 ${item.name || ''}" class="playlist-card group cursor-pointer"
                  data-songlist-action="open-detail" data-id="${item.id}" data-source="${currentState.source}">
                 <div class="relative aspect-square overflow-hidden rounded-2xl shadow-md transition-all group-hover:shadow-xl group-hover:-translate-y-1">
                     <img data-src="${item.img || '/music/assets/logo.svg'}" src="/music/assets/logo.svg" alt="${item.name || '歌单'}封面" width="320" height="320" loading="lazy" decoding="async"
@@ -595,7 +595,7 @@ export function createSongListManager(context: SongListManagerContext) {
             // - Current Match: Strong border and subtle background
             // - Matched: Subtle background
             // - Selected: Theme background (will be defined in CSS)
-            let rowClass = 'grid grid-cols-12 gap-4 p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer ';
+            let rowClass = 'player-track-grid player-track-grid--network p-3 rounded-xl hover:t-bg-panel group transition-colors cursor-pointer ';
             if (isCurrentMatch) rowClass += 'search-current ';
             else if (isMatched) rowClass += 'search-match ';
             if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
@@ -610,7 +610,7 @@ export function createSongListManager(context: SongListManagerContext) {
                  data-selection-state="${isSelected ? 'selected' : 'unselected'}"
                  class="${rowClass}" data-song-id="${String(song.id)}"
                  data-songlist-action="row" data-index="${index}">
-                <div class="col-span-1 sm:col-span-1 text-center text-gray-400 font-mono text-xs flex items-center justify-center">
+                <div class="player-track-index text-center text-gray-400 font-mono text-xs flex items-center justify-center">
                     ${window.batchMode ? `
                         <input type="checkbox" 
                                class="batch-checkbox"
@@ -622,7 +622,7 @@ export function createSongListManager(context: SongListManagerContext) {
                     ` : index + 1}
                 </div>
                 <!-- Title & Info -->
-                <div class="col-span-9 sm:col-span-9 md:col-span-5 lg:col-span-4 flex items-center gap-3 min-w-0">
+                <div class="player-track-title flex items-center gap-3 min-w-0">
                     <div class="w-10 h-10 md:w-12 md:h-12 flex-shrink-0 relative rounded-lg overflow-hidden shadow-sm border t-border-main group-hover:shadow-md transition-all group-hover:scale-105 duration-300">
                         <img data-src="${window.getImgUrl ? window.getImgUrl(song) : (song.img || song.albumImg || '/music/assets/logo.svg')}" src="/music/assets/logo.svg" alt="${song.name || '歌曲'}专辑封面" width="48" height="48" loading="lazy" decoding="async"
                              class="lazy-image w-full h-full object-cover dynamic-logo is-placeholder"
@@ -638,26 +638,26 @@ export function createSongListManager(context: SongListManagerContext) {
                         <div class="flex items-center gap-1 mt-0.5 overflow-hidden">
                              ${window.getSourceTag ? window.getSourceTag(song.source || detailState.source) : ''}
                              ${window.getQualityTags ? window.getQualityTags(song) : ''}
-                             <div class="md:hidden flex-1 min-w-0">
+                             <div class="player-track-compact-meta flex-1 min-w-0">
                                 ${window.createMarqueeHtml ? window.createMarqueeHtml(song.singer, 'text-[10px] t-text-muted') : `<span class="text-[10px] t-text-muted truncate">${song.singer}</span>`}
                              </div>
                         </div>
                     </div>
                 </div>
                 <!-- Artist -->
-                <div class="hidden md:flex md:col-span-3 items-center text-xs t-text-muted overflow-hidden">
+                <div class="player-track-artist items-center text-xs t-text-muted overflow-hidden">
                     ${window.createMarqueeHtml ? window.createMarqueeHtml(song.singer) : `<span class="truncate">${song.singer}</span>`}
                 </div>
                 <!-- Album -->
-                <div class="hidden lg:flex lg:col-span-2 items-center text-xs t-text-muted truncate">
+                <div class="player-track-album items-center text-xs t-text-muted truncate">
                     ${song.albumName || '--'}
                 </div>
                 <!-- Duration -->
-                <div class="hidden md:flex md:col-span-2 lg:col-span-1 items-center justify-end text-xs font-mono t-text-muted">
+                <div class="player-track-duration items-center justify-end text-xs font-mono t-text-muted">
                     ${song.interval || '--:--'}
                 </div>
                 <!-- Actions -->
-                <div class="col-span-2 md:col-span-1 flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                <div class="player-track-actions flex items-center justify-end gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                     <button aria-label="播放 ${song.name || '歌曲'}" class="p-1.5 hover:bg-emerald-50 rounded-lg text-emerald-600 transition-colors"
                             title="播放" 
                             data-songlist-action="play" data-index="${index}">

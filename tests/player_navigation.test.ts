@@ -492,19 +492,27 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(cssContent).toContain('#sl-detail-sticky-wrap');
     });
 
-    it('favorite sidebar keeps custom list names visible when optional actions are hidden', () => {
+    it('favorite sidebar keeps custom list names visible behind the right-side action menu', () => {
         const playerContent = fs.readFileSync(playerSrcPath, 'utf8');
         const cssContent = fs.readFileSync(playerCssPath, 'utf8');
 
         expect(playerContent).toContain('function getFavoriteListDisplayName(name)');
         expect(playerContent).toContain("const normalizedName = String(name ?? '').trim();");
         expect(playerContent).toContain('favorite-sidebar-name ml-2 flex-1 min-w-0');
-        expect(playerContent).toContain('favorite-sidebar-actions');
+        expect(playerContent).toContain('favorite-sidebar-more-btn');
+        expect(playerContent).toContain('favorite-sidebar-menu');
+        expect(playerContent).toContain('function toggleFavoriteListMenu(event, trigger)');
+        expect(playerContent).toContain('function closeFavoriteSidebarMenus(restoreFocus = false)');
+        expect(playerContent).toContain('portalMenus.forEach(menu => document.body.appendChild(menu));');
+        expect(playerContent).toContain("menu.addEventListener('click', event => {");
         expect(playerContent).toContain('applyMarqueeChecks(container);');
         expect(playerContent).toContain('title = getFavoriteListDisplayName(uList.name);');
         expect(cssContent).toContain('.favorite-sidebar-item > button:not(.hidden)');
-        expect(cssContent).toContain('.favorite-sidebar-actions');
-        expect(cssContent).toContain('.favorite-sidebar-item:hover .favorite-sidebar-actions');
+        expect(cssContent).toContain('.favorite-sidebar-more-btn');
+        expect(cssContent).toContain('.favorite-sidebar-menu');
+        expect(cssContent).toContain('.favorite-sidebar-more-btn:focus');
+        expect(cssContent).toContain('.favorite-sidebar-more-btn[aria-expanded="true"]');
+        expect(cssContent).not.toContain('.favorite-sidebar-item:hover .favorite-sidebar-actions');
         expect(cssContent).not.toContain('.favorite-sidebar-item > button {');
     });
 });

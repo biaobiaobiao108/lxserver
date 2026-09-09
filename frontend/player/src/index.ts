@@ -3731,8 +3731,130 @@ function getFavoriteListDisplayName(name) {
     return normalizedName || '未命名歌单';
 }
 
+let favoriteSidebarMenuSequence = 0;
+
+function closeFavoriteSidebarMenus(restoreFocus = false) {
+    const openMenus = Array.from(document.querySelectorAll('.favorite-sidebar-menu.is-open'));
+    let focusTarget = null;
+
+    openMenus.forEach(menu => {
+        const triggerId = menu.getAttribute('data-favorite-menu-trigger');
+        const trigger = triggerId ? document.getElementById(triggerId) : null;
+        if (restoreFocus && !focusTarget && trigger instanceof HTMLElement && trigger.isConnected) {
+            focusTarget = trigger;
+            trigger.setAttribute('aria-expanded', 'true');
+        }
+
+        menu.classList.remove('is-open', 'open-up');
+        menu.classList.add('hidden');
+        menu.hidden = true;
+
+        if (trigger !== focusTarget) trigger?.setAttribute('aria-expanded', 'false');
+    });
+
+    if (restoreFocus && focusTarget) {
+        // Hiding the focused menu item can move focus to document.body in
+        // some browsers. Restore focus on the next frame while the trigger
+        // remains exposed, then let :focus-within keep it visible.
+        requestAnimationFrame(() => {
+            if (!focusTarget?.isConnected) return;
+            focusTarget.focus({ preventScroll: true });
+            focusTarget.setAttribute('aria-expanded', 'false');
+        });
+    } else if (focusTarget) {
+        focusTarget.setAttribute('aria-expanded', 'false');
+    }
+}
+
+function removeFavoriteSidebarMenus() {
+    closeFavoriteSidebarMenus();
+    document.querySelectorAll('.favorite-sidebar-menu').forEach(menu => menu.remove());
+}
+
+function positionFavoriteSidebarMenu(trigger, menu) {
+    const triggerRect = trigger.getBoundingClientRect();
+    const viewportPadding = 8;
+    const gap = 6;
+    const availableWidth = Math.max(1, window.innerWidth - viewportPadding * 2);
+    const menuWidth = Math.min(
+        Math.max(menu.offsetWidth, 176),
+        availableWidth,
+    );
+    const menuHeight = menu.offsetHeight;
+    const left = Math.min(
+        Math.max(viewportPadding, triggerRect.right - menuWidth),
+        Math.max(viewportPadding, window.innerWidth - menuWidth - viewportPadding),
+    );
+    const spaceBelow = window.innerHeight - triggerRect.bottom;
+    const openUp = spaceBelow < menuHeight + gap && triggerRect.top > menuHeight + gap;
+    const preferredTop = openUp ? triggerRect.top - menuHeight - gap : triggerRect.bottom + gap;
+    const top = Math.min(
+        Math.max(viewportPadding, preferredTop),
+        Math.max(viewportPadding, window.innerHeight - menuHeight - viewportPadding),
+    );
+
+    menu.style.inlineSize = `${menuWidth}px`;
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    menu.classList.toggle('open-up', openUp);
+}
+
+function toggleFavoriteListMenu(event, trigger) {
+    event?.preventDefault();
+    event?.stopPropagation();
+    if (!(trigger instanceof HTMLElement)) return;
+
+    const menuId = trigger.getAttribute('aria-controls');
+    const menu = menuId ? document.getElementById(menuId) : null;
+    if (!(menu instanceof HTMLElement)) return;
+
+    const isOpen = menu.classList.contains('is-open') && !menu.hidden;
+    closeFavoriteSidebarMenus();
+    if (isOpen) return;
+
+    menu.hidden = false;
+    menu.classList.remove('hidden');
+    menu.classList.add('is-open');
+    menu.setAttribute('data-favorite-menu-trigger', trigger.id);
+    trigger.setAttribute('aria-expanded', 'true');
+    positionFavoriteSidebarMenu(trigger, menu);
+
+    // Enter/Space activation should move into the menu; mouse/touch keeps the
+    // trigger focused so the user can continue interacting from the pointer.
+    const keyboardActivation = event instanceof MouseEvent ? event.detail === 0 : event?.type !== 'click';
+    if (keyboardActivation) {
+        requestAnimationFrame(() => menu.querySelector('[role="menuitem"]')?.focus({ preventScroll: true }));
+    }
+}
+
+window.toggleFavoriteListMenu = toggleFavoriteListMenu;
+
+document.addEventListener('click', event => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    if (target.closest('.favorite-sidebar-more-btn')) return;
+    if (target.closest('.favorite-sidebar-menu')) {
+        if (target.closest('[role="menuitem"]')) closeFavoriteSidebarMenus();
+        return;
+    }
+    closeFavoriteSidebarMenus();
+});
+
+document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape') return;
+    const hasOpenMenu = document.querySelector('.favorite-sidebar-menu.is-open');
+    if (!hasOpenMenu) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    closeFavoriteSidebarMenus(true);
+});
+
+window.addEventListener('resize', () => closeFavoriteSidebarMenus());
+window.addEventListener('scroll', () => closeFavoriteSidebarMenus(), true);
+
 function renderMyLists(data) {
     const container = document.getElementById('my-lists-container');
+    removeFavoriteSidebarMenus();
     container.innerHTML = '';
 
     if (!data) {
@@ -3741,12 +3863,17 @@ function renderMyLists(data) {
         return;
     }
 
+    const portalMenus = [];
+
     // Helper to create list item
     const createItem = (listObj, name, icon, count) => {
         const id = typeof listObj === 'string' ? listObj : listObj.id;
         const idValue = String(id ?? '');
         const idArg = safeInlineString(idValue);
         const displayName = getFavoriteListDisplayName(name);
+        const menuSequence = ++favoriteSidebarMenuSequence;
+        const menuId = `favorite-list-menu-${menuSequence}`;
+        const triggerId = `favorite-list-more-${menuSequence}`;
         const div = document.createElement('div');
         div.className = "favorite-sidebar-item t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden min-w-0";
         div.title = displayName;
@@ -3764,31 +3891,56 @@ function renderMyLists(data) {
             </div>
         `;
 
-        // Optional actions are rendered in a floating group so they do not
-        // consume the label width until the row is being interacted with.
+        // Optional actions live in a portal menu. The row only keeps a compact
+        // trigger, so hovering the name never puts buttons over the label.
         const showExternalOps = listObj && listObj.sourceListId && listObj.source;
         let updateBadgeHtml = '';
-        let actionsHtml = '';
+        let menuItemsHtml = '';
         if (showExternalOps) {
             updateBadgeHtml = window.networkListUpdateMap && window.networkListUpdateMap.has(id)
                 ? `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold mr-2" title="歌单有更新">!</span>`
                 : '';
 
-            actionsHtml += `
-                <button type="button" class="favorite-sidebar-action-btn refresh-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 text-[10px] transition-all active:rotate-180"
-                   title="更新歌单内容" aria-label="更新歌单内容"
-                   data-event-click-action="handleRefreshList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
-                <button type="button" class="favorite-sidebar-action-btn jump-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 text-[10px] transition-all"
-                   title="打开原始歌单" aria-label="打开原始歌单"
-                   data-event-click-action="handleJumpToOriginalList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-external-link-alt" aria-hidden="true"></i></button>
+            menuItemsHtml += `
+                <button type="button" role="menuitem" class="favorite-sidebar-menu-item" title="更新歌单内容" aria-label="更新歌单内容"
+                   data-event-click-action="handleRefreshList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-sync-alt" aria-hidden="true"></i><span>更新歌单内容</span></button>
+                <button type="button" role="menuitem" class="favorite-sidebar-menu-item" title="打开原始歌单" aria-label="打开原始歌单"
+                   data-event-click-action="handleJumpToOriginalList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-external-link-alt" aria-hidden="true"></i><span>打开原始歌单</span></button>
             `;
         }
 
         if (typeof listObj !== 'string') {
-            actionsHtml += `<button type="button" class="favorite-sidebar-action-btn favorite-sidebar-rename-btn bg-transparent border-0 p-0 text-gray-300 hover:text-emerald-500 transition-colors" title="重命名歌单" aria-label="重命名歌单" data-event-click-action="handleRenameList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-pen text-[10px]" aria-hidden="true"></i></button>`;
+            menuItemsHtml += `<button type="button" role="menuitem" class="favorite-sidebar-menu-item" title="重命名歌单" aria-label="重命名歌单" data-event-click-action="handleRenameList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-pen" aria-hidden="true"></i><span>重命名歌单</span></button>`;
         }
         if (idValue !== 'default' && idValue !== 'love') {
-            actionsHtml += `<button type="button" class="favorite-sidebar-action-btn favorite-sidebar-delete-btn bg-transparent border-0 p-0 text-gray-300 hover:text-red-500" title="删除歌单" aria-label="删除歌单" data-event-click-action="handleRemoveList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-trash" aria-hidden="true"></i></button>`;
+            menuItemsHtml += `<button type="button" role="menuitem" class="favorite-sidebar-menu-item is-danger" title="删除歌单" aria-label="删除歌单" data-event-click-action="handleRemoveList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-trash" aria-hidden="true"></i><span>删除歌单</span></button>`;
+        }
+
+        let moreButtonHtml = '';
+        if (menuItemsHtml) {
+            moreButtonHtml = `<button id="${triggerId}" type="button" class="favorite-sidebar-more-btn" title="更多歌单操作" aria-label="更多歌单操作：${escapeHtmlText(displayName)}" aria-haspopup="menu" aria-expanded="false" aria-controls="${menuId}" data-event-click-action="toggleFavoriteListMenu" data-event-click-args="[&quot;@event&quot;, &quot;@this&quot;]" data-event-stop="true"><i class="fas fa-ellipsis-h" aria-hidden="true"></i></button>`;
+
+            const menu = document.createElement('div');
+            menu.id = menuId;
+            menu.className = 'favorite-sidebar-menu hidden';
+            menu.hidden = true;
+            menu.setAttribute('role', 'menu');
+            menu.setAttribute('aria-label', `${displayName}操作`);
+            menu.setAttribute('data-favorite-menu-trigger', triggerId);
+            menu.innerHTML = menuItemsHtml;
+            menu.addEventListener('click', event => {
+                const target = event.target;
+                if (target instanceof Element && target.closest('[role="menuitem"]')) {
+                    closeFavoriteSidebarMenus();
+                }
+            });
+            menu.addEventListener('keydown', event => {
+                if (event.key !== 'Escape') return;
+                event.preventDefault();
+                event.stopPropagation();
+                closeFavoriteSidebarMenus(true);
+            });
+            portalMenus.push(menu);
         }
 
         div.innerHTML = `
@@ -3800,7 +3952,7 @@ function renderMyLists(data) {
             <div class="favorite-sidebar-meta flex items-center flex-shrink-0">
                 ${updateBadgeHtml}
                 <span class="favorite-sidebar-count text-xs text-gray-300 group-hover:t-text-muted flex-shrink-0">${count}</span>
-                ${actionsHtml ? `<div class="favorite-sidebar-actions" role="group" aria-label="歌单操作">${actionsHtml}</div>` : ''}
+                ${moreButtonHtml}
             </div>
         `;
         return div;
@@ -3871,6 +4023,7 @@ function renderMyLists(data) {
     }
 
     getOrderedFavoriteSidebarItems(sidebarItems).forEach(item => container.appendChild(item.el));
+    portalMenus.forEach(menu => document.body.appendChild(menu));
     applyMarqueeChecks(container);
     refreshLibrarySidebarCount();
     initFavoriteSidebarSortable(container);

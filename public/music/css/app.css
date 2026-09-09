@@ -2125,7 +2125,10 @@ aside {
     .cs-trigger,
     .cs-trigger-icon,
     .cs-dropdown,
-    .cs-option {
+    .cs-option,
+    .favorite-sidebar-more-btn,
+    .favorite-sidebar-menu,
+    .favorite-sidebar-menu-item {
         transition: none;
     }
 }
@@ -3092,36 +3095,128 @@ aside {
     overflow: hidden;
 }
 
-.favorite-sidebar-actions {
-    position: absolute;
-    inset-inline-end: calc(100% + 0.5rem);
-    inset-block-start: 50%;
-    display: none;
-    align-items: center;
-    gap: 0.125rem;
-    padding: 0.125rem 0.25rem;
-    border: 1px solid color-mix(in srgb, var(--border-main) 85%, transparent);
-    border-radius: 0.5rem;
-    background: color-mix(in srgb, var(--bg-panel) 94%, transparent);
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
-    backdrop-filter: blur(8px);
-    transform: translateY(-50%);
-    z-index: 2;
-}
-
-.favorite-sidebar-item:hover .favorite-sidebar-actions,
-.favorite-sidebar-item:focus-within .favorite-sidebar-actions {
-    display: inline-flex;
-}
-
-.favorite-sidebar-actions > button {
+.favorite-sidebar-more-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
     inline-size: 1.75rem;
     block-size: 1.75rem;
-    border-radius: 0.375rem;
+    margin-inline-start: 0.25rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: background-color 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.favorite-sidebar-item:hover .favorite-sidebar-more-btn,
+.favorite-sidebar-item:focus-within .favorite-sidebar-more-btn,
+.favorite-sidebar-more-btn:focus,
+.favorite-sidebar-more-btn[aria-expanded="true"] {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.favorite-sidebar-more-btn:hover,
+.favorite-sidebar-more-btn:focus-visible,
+.favorite-sidebar-more-btn[aria-expanded="true"] {
+    background: color-mix(in srgb, var(--c-500, #10b981) 12%, transparent);
+    color: var(--c-600, #059669);
+}
+
+.favorite-sidebar-menu {
+    position: fixed;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    inline-size: 12rem;
+    max-inline-size: calc(100dvw - 1rem);
+    max-block-size: min(20rem, calc(100dvh - 1rem));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0.35rem;
+    box-sizing: border-box;
+    border: 1px solid color-mix(in srgb, var(--border-main) 85%, transparent);
+    border-radius: 0.625rem;
+    background: color-mix(in srgb, var(--bg-panel) 96%, transparent);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.18);
+    backdrop-filter: blur(12px);
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+    pointer-events: none;
+    transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.favorite-sidebar-menu.hidden,
+.favorite-sidebar-menu[hidden] {
+    display: none;
+}
+
+.favorite-sidebar-menu.is-open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+}
+
+.favorite-sidebar-menu.open-up {
+    transform: translateY(4px) scale(0.98);
+}
+
+.favorite-sidebar-menu.open-up.is-open {
+    transform: translateY(0) scale(1);
+}
+
+.favorite-sidebar-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    inline-size: 100%;
+    min-block-size: 2.35rem;
+    box-sizing: border-box;
+    padding: 0.5rem 0.65rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: var(--text-main);
+    font-size: 0.75rem;
+    line-height: 1.25;
+    text-align: start;
+    cursor: pointer;
+    transition: background-color 160ms ease, color 160ms ease;
+}
+
+.favorite-sidebar-menu-item i {
+    inline-size: 1.1rem;
+    flex: 0 0 auto;
+    text-align: center;
+}
+
+.favorite-sidebar-menu-item span {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.favorite-sidebar-menu-item:hover,
+.favorite-sidebar-menu-item:focus-visible {
+    background: color-mix(in srgb, var(--c-500, #10b981) 12%, transparent);
+    color: var(--c-600, #059669);
+}
+
+.favorite-sidebar-menu-item.is-danger:hover,
+.favorite-sidebar-menu-item.is-danger:focus-visible {
+    background: color-mix(in srgb, #ef4444 12%, transparent);
+    color: #dc2626;
 }
 
 .favorite-sidebar-item:hover .favorite-sidebar-name .animate-marquee,
@@ -3238,8 +3333,10 @@ aside {
         opacity: 1;
     }
 
-    .favorite-sidebar-actions {
-        display: inline-flex;
+    .favorite-sidebar-more-btn {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
     }
 }
 

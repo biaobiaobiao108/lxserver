@@ -451,6 +451,17 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(playbackContent).toContain('showSuccess(`[${song.name}] 命中${sourceText}`);');
     });
 
+    it('restored playback waits for the source load and can recover a source that fails after play starts', () => {
+        const playbackContent = fs.readFileSync(playbackSrcPath, 'utf8');
+
+        expect(playbackContent).toContain('let playAfterSourceReady = false;');
+        expect(playbackContent).toContain('if (state.currentLoadingRequestId !== 0) {\n            playAfterSourceReady = true;');
+        expect(playbackContent).toContain('queueMicrotask(() => {');
+        expect(playbackContent).toContain('if (!noPlay && finalUrl) {');
+        expect(playbackContent).toContain('state.currentLoadingRequestId !== 0) return;');
+        expect(playbackContent).toContain('void playSong(song, state.currentIndex, null, false, \'local_retry\', null, resumeTime);');
+    });
+
     it('queue clearing resets player state and protects empty togglePlay', () => {
         const queueContent = fs.readFileSync(path.join(import.meta.dir, '../frontend/player/src/features/queue.ts'), 'utf8');
         const indexContent = fs.readFileSync(playerSrcPath, 'utf8');

@@ -106,12 +106,59 @@ export function initPlaybackFeature(context: PlaybackFeatureContext) {
     const pushDataChange = context.pushDataChange;
     const renderMyLists = context.renderMyLists;
     let hintTimeout: ReturnType<typeof setTimeout> | null = null;
+    // A restored source may still be resolving while the user presses play.
+    // Keep the intent until that source has been installed instead of calling
+    // play() against the previous (or empty) media source.
+    let playAfterSourceReady = false;
+    let manualPlaybackRecoveryCleanup: (() => void) | null = null;
 
-function playFromView(index) {
-    if (!context.getViewingPlaylist() || !context.getViewingPlaylist()[index]) return;
-    // Update playlist and scope when user explicitly clicks a song to play
-    updatePlaylist(context.getViewingPlaylist(), index, context.getCurrentSearchScope());
-}
+    function clearManualPlaybackRecovery() {
+        manualPlaybackRecoveryCleanup?.();
+        manualPlaybackRecoveryCleanup = null;
+    }
+
+    function retryCurrentSongPlayback() {
+        const song = state.currentPlayingSong;
+        if (!song || state.currentLoadingRequestId !== 0) return false;
+
+        const resumeTime = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+        clearManualPlaybackRecovery();
+        // Bypass both browser/server URL caches after a source has already failed.
+        // Keep the existing recovery state so quality/source fallback still works.
+        state.currentLoadingSongId = null;
+        void playSong(song, state.currentIndex, null, false, 'local_retry', null, resumeTime);
+        return true;
+    }
+
+    function armManualPlaybackRecovery() {
+        clearManualPlaybackRecovery();
+
+        const song = state.currentPlayingSong;
+        if (!song || !audio.src) return;
+
+        let recoveryStarted = false;
+        const cleanup = () => {
+            audio.removeEventListener('error', retryHandler);
+            if (manualPlaybackRecoveryCleanup === cleanup) manualPlaybackRecoveryCleanup = null;
+        };
+        const retryHandler = () => {
+            // Ignore an error belonging to a newer song/request. The normal
+            // playSong path owns recovery while its request is still in flight.
+            if (recoveryStarted || state.currentPlayingSong !== song || state.currentLoadingRequestId !== 0) return;
+            recoveryStarted = true;
+            cleanup();
+            retryCurrentSongPlayback();
+        };
+
+        audio.addEventListener('error', retryHandler, { once: true });
+        manualPlaybackRecoveryCleanup = cleanup;
+    }
+
+    function playFromView(index) {
+        if (!context.getViewingPlaylist() || !context.getViewingPlaylist()[index]) return;
+        // Update playlist and scope when user explicitly clicks a song to play
+        updatePlaylist(context.getViewingPlaylist(), index, context.getCurrentSearchScope());
+    }
 window.playFromView = playFromView;
 
 async function runRecoveryFlow(error) {
@@ -229,6 +276,11 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
     if (state.currentLoadingSongId === song.id && !isRetry) {
         console.log(`[Player] Already loading ${song.name}, ignoring request.`);
         return;
+    }
+
+    if (!noPlay) {
+        playAfterSourceReady = false;
+        clearManualPlaybackRecovery();
     }
 
     // 2. New Song Request: Update target
@@ -437,12 +489,22 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
         // Pre-handle error for invalid cache links. A media element can report a
         // failed source through either the error event or a rejected play() promise.
         let retryResolvedUrl: (() => boolean) | null = null;
-        if (state.currentSourceType !== 'normal') {
+        if (!noPlay && finalUrl) {
             const resolvedSourceType = state.currentSourceType;
             const resolvedQuality = state.currentQuality || targetQuality;
             let retryStarted = false;
             retryResolvedUrl = () => {
-                if (retryStarted || state.currentLoadingRequestId !== thisRequestId) return false;
+                if (retryStarted) return false;
+                if (state.currentLoadingRequestId !== 0 && state.currentLoadingRequestId !== thisRequestId) return false;
+                const currentAudioUrl = audio.currentSrc || audio.src;
+                const isSameSource = (() => {
+                    try {
+                        return new URL(currentAudioUrl, document.baseURI).href === new URL(finalUrl, document.baseURI).href;
+                    } catch (_) {
+                        return currentAudioUrl === finalUrl;
+                    }
+                })();
+                if (state.currentPlayingSong !== playbackSong || !isSameSource) return false;
                 retryStarted = true;
                 console.warn(`[Player] ${resolvedSourceType} link failed, retrying online...`);
                 if (resolvedSourceType === 'cache') {
@@ -455,7 +517,7 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
                     index,
                     targetQuality,
                     noPlay,
-                    resolvedSourceType === 'server_cache' ? 'local_retry' : true,
+                    'local_retry',
                     shouldAddToDefault,
                     resumeTime,
                 );
@@ -466,7 +528,6 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
             };
             audio.addEventListener('error', retryHandler, { once: true });
             const cleanup = () => audio.removeEventListener('error', retryHandler);
-            audio.addEventListener('playing', cleanup, { once: true });
             audio.addEventListener('pause', cleanup, { once: true });
         }
 
@@ -479,6 +540,15 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
             if (window._resumeInfo && window._resumeInfo.time > 0) {
                 restoreAudioPosition(window._resumeInfo.time);
                 delete window._resumeInfo;
+            }
+
+            if (playAfterSourceReady && state.currentLoadingRequestId === thisRequestId) {
+                playAfterSourceReady = false;
+                queueMicrotask(() => {
+                    if (state.currentPlayingSong === playbackSong && state.currentLoadingRequestId === 0) {
+                        void togglePlay();
+                    }
+                });
             }
             return;
         }
@@ -1084,6 +1154,15 @@ async function togglePlay() {
             return;
         }
 
+        if (state.currentLoadingRequestId !== 0) {
+            playAfterSourceReady = true;
+            setPlayerStatus('正在准备播放', null, true);
+            return;
+        }
+
+        playAfterSourceReady = false;
+        armManualPlaybackRecovery();
+
         try {
             const isMuted = Boolean(state.isMuted);
             const targetVol = typeof state.currentVolume !== 'undefined' ? state.currentVolume : 1;
@@ -1107,9 +1186,22 @@ async function togglePlay() {
                 audio.muted = isMuted;
             }
         } catch (e) {
+            clearManualPlaybackRecovery();
+            if (state.currentLoadingRequestId !== 0) return;
+
+            const isAbort = e && (e.name === 'AbortError' || e.code === 20);
+            if (isAbort) return;
+
+            const isPlaybackPermissionError = e && (
+                e.name === 'NotAllowedError' || e.name === 'SecurityError'
+            );
+            if (!isPlaybackPermissionError && retryCurrentSongPlayback()) return;
             console.error("[Player] Play blocked:", e);
+            if (isPlaybackPermissionError) setPlayerStatus('请点击播放按钮');
         }
     } else {
+        playAfterSourceReady = false;
+        clearManualPlaybackRecovery();
         // [Crossfade] 如果开启了淡入淡出，先淡出再暂停
         if (settings.enableCrossfade && !state.isMuted && audio.volume > 0) {
             await fadeVolume(0, 600);

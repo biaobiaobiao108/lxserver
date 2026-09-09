@@ -3756,9 +3756,10 @@ function closeFavoriteSidebarMenus(restoreFocus = false) {
         // Hiding the focused menu item can move focus to document.body in
         // some browsers. Restore focus on the next frame while the trigger
         // remains exposed, then let :focus-within keep it visible.
+        focusTarget.focus();
         requestAnimationFrame(() => {
             if (!focusTarget?.isConnected) return;
-            focusTarget.focus({ preventScroll: true });
+            focusTarget.focus();
             focusTarget.setAttribute('aria-expanded', 'false');
         });
     } else if (focusTarget) {

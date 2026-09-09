@@ -1681,15 +1681,22 @@ export const checkCache = (songInfo: any, username?: string, isLyricCheck: boole
         )
 
         if (collision) {
-            return {
-                exists: true,
-                isCollision: true,
-                collisionSource: collision.source,
-                collisionSongmid: collision.songmid,
-                filename: isLyricCheck ? collision.lyricFilename : collision.filename,
-                quality: collision.quality,
-                foundIn: normalizedUsername,
-                folder: collision.folder
+            const collisionDir = getCacheDir(normalizedUsername, collision.folder === 'music')
+            const collisionFileName = (isLyricCheck ? collision.lyricFilename : collision.filename) || ''
+            const collisionFilePath = collisionFileName ? resolveCacheRelativePath(collisionDir, collisionFileName) : null
+            if (collisionFileName && collisionFilePath && fs.existsSync(collisionFilePath)) {
+                return {
+                    exists: true,
+                    isCollision: true,
+                    collisionSource: collision.source,
+                    collisionSongmid: collision.songmid,
+                    filename: collisionFileName,
+                    path: collisionFilePath,
+                    url: `/api/music/cache/file/${encodeURIComponent(normalizedUsername)}/${encodeURIComponent(collisionFileName)}?folder=${collision.folder}`,
+                    quality: collision.quality,
+                    foundIn: normalizedUsername,
+                    folder: collision.folder
+                }
             }
         }
 

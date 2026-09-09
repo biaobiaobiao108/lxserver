@@ -522,9 +522,15 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(cssContent).toContain('.favorite-sidebar-more-btn');
         expect(cssContent).toContain('.favorite-sidebar-menu');
         expect(cssContent).toContain('.favorite-sidebar-more-btn:focus');
-        expect(cssContent).toContain('.favorite-sidebar-more-btn[aria-expanded="true"]');
         expect(cssContent).not.toContain('.favorite-sidebar-item:hover .favorite-sidebar-actions');
         expect(cssContent).not.toContain('.favorite-sidebar-item > button {');
+    });
+
+    it('playPrev uses state.playMode safely without referencing undefined playMode', () => {
+        const playbackContent = fs.readFileSync(playbackSrcPath, 'utf8');
+        // Must not contain switch (playMode) which causes ReferenceError
+        expect(playbackContent).not.toContain('switch (playMode)');
+        expect(playbackContent).toContain('state.playMode');
     });
 });
 

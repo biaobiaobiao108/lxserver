@@ -191,6 +191,60 @@ describe('File Cache Path Traversal Defense', () => {
     }
   })
 
+  it('should return valid url and path on collision checkCache match', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-collision-check-'))
+    const previousLx = (global as any).lx
+    const dataPath = path.join(root, 'data')
+    const dbPath = path.join(root, 'lxserver.db')
+    try {
+      closeDb()
+      ;(global as any).lx = { dataPath, config: {} }
+      initDatabase(dbPath)
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.DATA)
+
+      const username = 'test-collision-user'
+      const cacheDir = fileCache.getCacheDir(username, false)
+      const audioFile = path.join(cacheDir, 'song.flac')
+      fs.writeFileSync(audioFile, Buffer.from('audio'))
+
+      fileCache.indexManager.update(username, {
+        id: 'wy_111',
+        songmid: '111',
+        name: 'Collision Song',
+        singer: 'Collision Singer',
+        album: 'Collision Album',
+        source: 'wy',
+        quality: 'flac',
+        filename: 'song.flac',
+        folder: 'cache',
+        mtime: Date.now(),
+        size: 100,
+        ext: 'flac',
+      }, 'cache')
+
+      // Query with same name, singer, quality but DIFFERENT id/source
+      const res: any = fileCache.checkCache({
+        source: 'tx',
+        songmid: '222',
+        id: 'tx_222',
+        name: 'Collision Song',
+        singer: 'Collision Singer',
+        quality: 'flac',
+      }, username)
+
+      expect(res.exists).toBe(true)
+      expect(res.isCollision).toBe(true)
+      expect(res.filename).toBe('song.flac')
+      expect(res.url).toContain('/api/music/cache/file/')
+      expect(res.path).toBe(audioFile)
+    } finally {
+      closeDb()
+      ;(global as any).lx = previousLx
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.ROOT)
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('should remove SQLite index rows when cached files are deleted from disk', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-cache-index-delete-'))
     const previousLx = (global as any).lx

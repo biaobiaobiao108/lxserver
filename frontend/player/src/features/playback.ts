@@ -1173,7 +1173,8 @@ function playPrev(isManual = true) {
 
     let prevIndex;
 
-    switch (playMode) {
+    const currentMode = state.playMode || 'list';
+    switch (currentMode) {
         case 'single':
             // 单曲循环：如果是手动触发上一首，则切换到上一首；否则重播当前歌曲
             if (isManual) {

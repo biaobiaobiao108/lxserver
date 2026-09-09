@@ -180,7 +180,7 @@ async function fetchLyric(song, quality = null) {
     }
 
     // [Optimize] 如果歌曲未变化且已有歌词，跳过完整加载流程逻辑
-    const currentLyricKey = `${source}_${songmid} `;
+    const currentLyricKey = `${source}_${songmid}`;
     if (state.lastLyricSongId === currentLyricKey && state.currentLyricLines.length > 0) {
         console.log(`[Lyric] 歌词已就绪(${currentLyricKey})，同步播放状态`);
         if (state.lyricPlayer) {
@@ -200,7 +200,7 @@ async function fetchLyric(song, quality = null) {
     state.currentLyricLines = [];
 
     // ===== 1. 尝试读取浏览器本地缓存 (最高优先级) =====
-    const cacheKey = `lx_lyric_${source}_${songmid} `;
+    const cacheKey = `lx_lyric_${source}_${songmid}`;
     if (settings.enableLyricCache !== false) {
         try {
             const cached = localStorage.getItem(cacheKey);
@@ -211,7 +211,7 @@ async function fetchLyric(song, quality = null) {
                 state.currentRawRlrc = data.rlyric || '';
                 state.currentRawKlrc = data.klyric || data.lxlyric || '';
 
-                console.log(`[Lyric] 使用浏览器本地缓存歌词: ${songmid} `);
+                console.log(`[Lyric] 使用浏览器本地缓存歌词: ${songmid}`);
                 initLyricPlayer();
                 applyLyricUpdate();
                 return; // 命中缓存，直接返回
@@ -241,7 +241,7 @@ async function fetchLyric(song, quality = null) {
                     state.currentRawRlrc = scData.data.rlyric || '';
                     state.currentRawKlrc = scData.data.klyric || scData.data.lxlyric || '';
 
-                    console.log(`[Lyric] 使用服务器端缓存歌词: ${source}_${songmid} `);
+                    console.log(`[Lyric] 使用服务器端缓存歌词: ${source}_${songmid}`);
 
                     // 同步到浏览器本地缓存
                     if (settings.enableLyricCache !== false && state.currentRawLrc) {

@@ -3726,6 +3726,11 @@ function initFavoriteSidebarSortable(container) {
     });
 }
 
+function getFavoriteListDisplayName(name) {
+    const normalizedName = String(name ?? '').trim();
+    return normalizedName || '未命名歌单';
+}
+
 function renderMyLists(data) {
     const container = document.getElementById('my-lists-container');
     container.innerHTML = '';
@@ -3741,7 +3746,7 @@ function renderMyLists(data) {
         const id = typeof listObj === 'string' ? listObj : listObj.id;
         const idValue = String(id ?? '');
         const idArg = safeInlineString(idValue);
-        const displayName = String(name || '未命名歌单');
+        const displayName = getFavoriteListDisplayName(name);
         const div = document.createElement('div');
         div.className = "favorite-sidebar-item t-text-muted hover:t-bg-main cursor-pointer flex items-center group transition-colors overflow-hidden min-w-0";
         div.title = displayName;
@@ -3754,7 +3759,7 @@ function renderMyLists(data) {
         // Use createMarqueeHtml for list name
         const nameHtml = displayName.length > 8
             ? createMarqueeHtml(displayName, 'flex-1')
-            : `<span class="ml-2 flex-1 truncate">${escapeHtmlText(displayName)}</span>`;
+            : `<span class="ml-2 flex-1 min-w-0 truncate">${escapeHtmlText(displayName)}</span>`;
 
         // Buttons logic (for collected external playlists)
         const showExternalOps = listObj && listObj.sourceListId && listObj.source;
@@ -3898,7 +3903,7 @@ function handleListClick(listId, skipAutoUpdate = false) {
         const uList = currentListData.userList.find(l => l.id === listId);
         if (uList) {
             list = uList.list;
-            title = uList.name;
+            title = getFavoriteListDisplayName(uList.name);
         }
     }
 
@@ -4176,7 +4181,7 @@ function _executeCollectSongList(activeListData, detail) {
 
     const newList = {
         id: newId,
-        name: detail.info.name || '未命名歌单',
+        name: getFavoriteListDisplayName(detail.info.name),
         source: detail.source,
         sourceListId: String(detail.id),
         Album: detail.info.img || detail.info.pic || null,

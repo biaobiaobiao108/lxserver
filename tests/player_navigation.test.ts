@@ -491,6 +491,18 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(cssContent).toContain('#sl-detail-scroll-container');
         expect(cssContent).toContain('#sl-detail-sticky-wrap');
     });
+
+    it('favorite sidebar keeps custom list names visible when optional actions are hidden', () => {
+        const playerContent = fs.readFileSync(playerSrcPath, 'utf8');
+        const cssContent = fs.readFileSync(playerCssPath, 'utf8');
+
+        expect(playerContent).toContain('function getFavoriteListDisplayName(name)');
+        expect(playerContent).toContain("const normalizedName = String(name ?? '').trim();");
+        expect(playerContent).toContain('ml-2 flex-1 min-w-0 truncate');
+        expect(playerContent).toContain('title = getFavoriteListDisplayName(uList.name);');
+        expect(cssContent).toContain('.favorite-sidebar-item > button:not(.hidden)');
+        expect(cssContent).not.toContain('.favorite-sidebar-item > button {');
+    });
 });
 
 describe('Update Notification Engine & PostHog Removal', () => {

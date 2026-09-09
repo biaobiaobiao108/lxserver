@@ -3068,7 +3068,7 @@ aside {
     margin-inline-start: 0.25rem;
 }
 
-.favorite-sidebar-item > button {
+.favorite-sidebar-item > button:not(.hidden) {
     display: inline-flex;
     align-items: center;
     justify-content: center;

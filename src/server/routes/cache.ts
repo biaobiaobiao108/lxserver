@@ -275,8 +275,7 @@ export const createCacheRouter = (): Router => {
       if (!Array.isArray(tasks) || tasks.length === 0) throw new Error('Missing tasks')
       if (tasks.length > 100) throw new Error('Too many tasks')
       if (concurrency !== undefined) serverDownloadQueue.setConcurrency(username, concurrency)
-      if (namingPattern) {
-        if (!verifyAdminAuth(ctx.request)) throw new Error('Unauthorized to change cache naming pattern')
+      if (namingPattern && verifyAdminAuth(ctx.request)) {
         const normalizedNamingPattern = fileCache.setNamingPattern(namingPattern)
         if (global.lx.config) global.lx.config['cache.namingPattern'] = normalizedNamingPattern
       }
@@ -356,10 +355,7 @@ export const createCacheRouter = (): Router => {
         username = verified
       }
 
-      if (namingPattern) {
-        if (!verifyAdminAuth(ctx.request)) {
-          return ctx.json({ success: false, error: 'Unauthorized to change cache naming pattern' }, 403)
-        }
+      if (namingPattern && verifyAdminAuth(ctx.request)) {
         const normalizedNamingPattern = fileCache.setNamingPattern(namingPattern)
         if (global.lx.config) global.lx.config['cache.namingPattern'] = normalizedNamingPattern
       }
@@ -411,7 +407,8 @@ export const createCacheRouter = (): Router => {
         })
 
       return ctx.json({ success: true, message: 'Download started' })
-    } catch {
+    } catch (err: any) {
+      console.error('[Cache] Download trigger error:', err?.message || err)
       return ctx.text('Error', 500)
     }
   })

@@ -2202,22 +2202,49 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
 
         if (signal) signal.addEventListener('abort', abortHandler)
 
-        req = protocol.get(safeUrl, (res) => {
-            if (res.statusCode !== 200) {
-                res.resume()
-                fs.unlink(tempPath, () => { })
-                fail(new Error(`Status: ${res.statusCode}`))
+        const requestWithRedirect = (currentUrl: URL, depth = 0) => {
+            if (depth > 5) {
+                fail(new Error('Too many redirects'))
                 return
             }
+            const currentProtocol = currentUrl.protocol === 'https:' ? https : http
+            const options: https.RequestOptions = {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': currentUrl.origin,
+                },
+            }
+            req = currentProtocol.get(currentUrl, options, async (res) => {
+                if (res.statusCode && [301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+                    res.resume()
+                    try {
+                        let nextUrlStr = res.headers.location
+                        if (!nextUrlStr.startsWith('http')) {
+                            nextUrlStr = new URL(nextUrlStr, currentUrl).href
+                        }
+                        const safeNextUrl = await assertSafeRemoteHttpUrl(nextUrlStr)
+                        requestWithRedirect(safeNextUrl, depth + 1)
+                    } catch (e: any) {
+                        fail(e)
+                    }
+                    return
+                }
 
-            cacheProgress.set(songKey, { progress: 0, status: 'downloading', total: 0, received: 0, speed: 0, updatedAt: Date.now() })
-            const total = parseInt(res.headers['content-length'] || '0', 10)
-            const maxAudioBytes = 500 * 1024 * 1024
-            if (total > maxAudioBytes) {
-                res.resume()
-                fail(new Error('Audio file is too large'))
-                return
-            }
+                if (res.statusCode !== 200) {
+                    res.resume()
+                    fs.unlink(tempPath, () => { })
+                    fail(new Error(`Status: ${res.statusCode}`))
+                    return
+                }
+
+                cacheProgress.set(songKey, { progress: 0, status: 'downloading', total: 0, received: 0, speed: 0, updatedAt: Date.now() })
+                const total = parseInt(res.headers['content-length'] || '0', 10)
+                const maxAudioBytes = 500 * 1024 * 1024
+                if (total > maxAudioBytes) {
+                    res.resume()
+                    fail(new Error('Audio file is too large'))
+                    return
+                }
             let received = 0
             let lastSpeedAt = Date.now()
             let lastSpeedBytes = 0
@@ -2407,11 +2434,13 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                 })
             })
             fileStream.on('error', (err) => { fs.unlink(tempPath, () => { }); fail(err) })
-        })
-        req.on('error', (err) => { fs.unlink(tempPath, () => { }); fail(err) })
-        req.setTimeout(30000, () => {
-            req.destroy(new Error('Download request timeout'))
-        })
+          })
+          req.on('error', (err) => { fs.unlink(tempPath, () => { }); fail(err) })
+          req.setTimeout(30000, () => {
+              req.destroy(new Error('Download request timeout'))
+          })
+        }
+        requestWithRedirect(safeUrl)
     })
 }
 

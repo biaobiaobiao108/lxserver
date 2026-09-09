@@ -1850,9 +1850,9 @@ export const checkLyricCache = (songInfo: any, username?: string): LyricCacheRes
 
 export const saveLyricCache = (songInfo: any, lyricsObj: any, username?: string, isOnlyDownload?: boolean) => {
     try {
-        let baseName: string
+        let baseName = ''
         let quality = songInfo.quality || 'unknown'
-        let dir: string
+        let dir = ''
 
         const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
         const id = normalizeSongId(songInfo)
@@ -1881,12 +1881,35 @@ export const saveLyricCache = (songInfo: any, lyricsObj: any, username?: string,
             quality = audioResult.quality || quality
             baseName = path.basename(audioResult.path, path.extname(audioResult.path))
         } else {
-            // Audio not found, fallback to target dir
-            dir = ensureDir(username, isOnlyDownload)
-            if (songInfo.quality) {
-                baseName = getFileName(songInfo, songInfo.quality, isOnlyDownload, username)
-            } else {
-                baseName = getFileName(songInfo, 'unknown', isOnlyDownload, username)
+            // Audio not found with requested quality, try finding any cached audio for this song
+            for (const folder of preferredFolders) {
+                const cachedAny = indexManager.get(normalizedUsername, id, folder)
+                if (!cachedAny?.filename) continue
+                const root = getCacheDir(normalizedUsername, folder === 'music')
+                const filePath = resolveCacheRelativePath(root, cachedAny.filename)
+                if (filePath && fs.existsSync(filePath)) {
+                    audioResult = {
+                        exists: true,
+                        path: filePath,
+                        quality: cachedAny.quality,
+                        folder,
+                        filename: cachedAny.filename
+                    }
+                    dir = path.dirname(filePath)
+                    quality = cachedAny.quality || quality
+                    baseName = path.basename(filePath, path.extname(filePath))
+                    break
+                }
+            }
+
+            if (!audioResult.exists) {
+                // Audio not found, fallback to target dir
+                dir = ensureDir(username, isOnlyDownload)
+                if (songInfo.quality && songInfo.quality !== 'unknown') {
+                    baseName = getFileName(songInfo, songInfo.quality, isOnlyDownload, username)
+                } else {
+                    baseName = getFileName(songInfo, 'unknown', isOnlyDownload, username)
+                }
             }
         }
 
@@ -1902,6 +1925,18 @@ export const saveLyricCache = (songInfo: any, lyricsObj: any, username?: string,
 
         fs.writeFileSync(finalPath, formattedLrc, { encoding: 'utf-8' })
         console.log(`[FileCache] Lyric cached saved to: ${finalPath}`)
+
+        // If saving with a concrete quality, clean up any leftover 'unknown' lyric file for the same song
+        if (quality && quality !== 'unknown') {
+            try {
+                const unknownBaseName = getFileName(songInfo, 'unknown', isOnlyDownload, username)
+                const unknownLyricPath = resolveCacheRelativePath(dir, unknownBaseName + '.lrc')
+                if (unknownLyricPath && unknownLyricPath !== finalPath && fs.existsSync(unknownLyricPath)) {
+                    fs.unlinkSync(unknownLyricPath)
+                    console.log(`[FileCache] Cleaned up obsolete unknown lyric: ${unknownLyricPath}`)
+                }
+            } catch (_) { }
+        }
 
         // Update the exact indexed audio item when the audio file is already
         // present. Lyrics can also be cached before the audio download starts,

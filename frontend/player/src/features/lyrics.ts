@@ -316,7 +316,14 @@ async function fetchLyric(song, quality = null) {
             }
 
             // 写入服务器端 (如果不是已经来自服务器缓存，且启用了服务端缓存)
-            if (settings.enableServerLyricCache !== false && !isFromLocal) {
+            // [Fix] 只有在音质已知且不为 unknown/null 时才向服务端写歌词缓存，
+            // 避免在播放起步且音质未定前过早写入 - unknown - 歌词冗余文件。
+            // 确切音质的歌词会在播放器确定音质后由 playback.ts 同步写入服务端。
+            const resolvedLyricQuality = (typeof quality !== 'undefined' && quality !== null)
+                ? quality
+                : (typeof context.getCurrentQuality() !== 'undefined' ? context.getCurrentQuality() : null);
+
+            if (settings.enableServerLyricCache !== false && !isFromLocal && resolvedLyricQuality && resolvedLyricQuality !== 'unknown') {
                 try {
                     fetch(`${API_BASE}/cache/lyric`, {
                         method: 'POST',
@@ -326,7 +333,7 @@ async function fetchLyric(song, quality = null) {
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            songInfo: { ...song, quality: (typeof quality !== 'undefined' ? quality : (typeof context.getCurrentQuality() !== 'undefined' ? context.getCurrentQuality() : null)) },
+                            songInfo: { ...song, quality: resolvedLyricQuality },
                             lyricsObj: {
                                 lyric: state.currentRawLrc,
                                 tlyric: state.currentRawTlrc,

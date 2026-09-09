@@ -147,6 +147,50 @@ describe('File Cache Path Traversal Defense', () => {
     }
   })
 
+  it('should clean up obsolete unknown lyric file when concrete quality lyric is saved', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-lyric-unknown-cleanup-'))
+    const previousLx = (global as any).lx
+    const dataPath = path.join(root, 'data')
+    const dbPath = path.join(root, 'lxserver.db')
+    try {
+      closeDb()
+      ;(global as any).lx = { dataPath, config: {} }
+      initDatabase(dbPath)
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.DATA)
+
+      const username = 'test-cleanup-user'
+      const cacheDir = fileCache.getCacheDir(username)
+
+      const baseSong = {
+        source: 'wy',
+        songmid: '1463165983',
+        id: '1463165983',
+        name: '花人局',
+        singer: 'ヨルシカ',
+        album: '盗作',
+      }
+      const lyric = { lyric: '[00:00.00]花人局' }
+
+      // 1. First write an unknown quality lyric file
+      expect(fileCache.saveLyricCache({ ...baseSong, quality: 'unknown' }, lyric, username)).toBe(true)
+      const unknownLyricPath = path.join(cacheDir, '花人局 - ヨルシカ - unknown - 盗作.lrc')
+      expect(fs.existsSync(unknownLyricPath)).toBe(true)
+
+      // 2. Later save the concrete quality lyric file (e.g. flac)
+      expect(fileCache.saveLyricCache({ ...baseSong, quality: 'flac' }, lyric, username)).toBe(true)
+      const concreteLyricPath = path.join(cacheDir, '花人局 - ヨルシカ - flac - 盗作.lrc')
+      expect(fs.existsSync(concreteLyricPath)).toBe(true)
+
+      // 3. The obsolete unknown lyric file must have been cleaned up automatically
+      expect(fs.existsSync(unknownLyricPath)).toBe(false)
+    } finally {
+      closeDb()
+      ;(global as any).lx = previousLx
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.ROOT)
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   it('should remove SQLite index rows when cached files are deleted from disk', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-cache-index-delete-'))
     const previousLx = (global as any).lx

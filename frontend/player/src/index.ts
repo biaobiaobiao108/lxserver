@@ -3756,39 +3756,52 @@ function renderMyLists(data) {
         div.onclick = activateList;
         makeKeyboardActivatable(div, `打开歌单 ${displayName}`, activateList);
 
-        // Use createMarqueeHtml for list name
-        const nameHtml = displayName.length > 8
-            ? createMarqueeHtml(displayName, 'flex-1')
-            : `<span class="ml-2 flex-1 min-w-0 truncate">${escapeHtmlText(displayName)}</span>`;
+        // Keep the label in a flexible slot and let the marquee helper take over
+        // only when the available width is actually insufficient.
+        const nameHtml = `
+            <div class="favorite-sidebar-name ml-2 flex-1 min-w-0 overflow-hidden">
+                ${createMarqueeHtml(displayName, 'favorite-sidebar-name-content w-full')}
+            </div>
+        `;
 
-        // Buttons logic (for collected external playlists)
+        // Optional actions are rendered in a floating group so they do not
+        // consume the label width until the row is being interacted with.
         const showExternalOps = listObj && listObj.sourceListId && listObj.source;
-        let opsHtml = '';
+        let updateBadgeHtml = '';
+        let actionsHtml = '';
         if (showExternalOps) {
-            const updateBadge = window.networkListUpdateMap && window.networkListUpdateMap.has(id)
+            updateBadgeHtml = window.networkListUpdateMap && window.networkListUpdateMap.has(id)
                 ? `<span class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold mr-2" title="歌单有更新">!</span>`
                 : '';
-            opsHtml = `
-                <button type="button" class="refresh-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 hidden group-hover:block flex-shrink-0 text-[10px] mr-2 transition-all active:rotate-180"
+
+            actionsHtml += `
+                <button type="button" class="favorite-sidebar-action-btn refresh-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 text-[10px] transition-all active:rotate-180"
                    title="更新歌单内容" aria-label="更新歌单内容"
                    data-event-click-action="handleRefreshList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-sync-alt" aria-hidden="true"></i></button>
-                <button type="button" class="jump-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 hidden group-hover:block flex-shrink-0 text-[10px] mr-2 transition-all"
+                <button type="button" class="favorite-sidebar-action-btn jump-btn bg-transparent border-0 p-0 text-gray-400 hover:text-emerald-500 text-[10px] transition-all"
                    title="打开原始歌单" aria-label="打开原始歌单"
                    data-event-click-action="handleJumpToOriginalList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-external-link-alt" aria-hidden="true"></i></button>
-                ${updateBadge}
             `;
+        }
+
+        if (typeof listObj !== 'string') {
+            actionsHtml += `<button type="button" class="favorite-sidebar-action-btn favorite-sidebar-rename-btn bg-transparent border-0 p-0 text-gray-300 hover:text-emerald-500 transition-colors" title="重命名歌单" aria-label="重命名歌单" data-event-click-action="handleRenameList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-pen text-[10px]" aria-hidden="true"></i></button>`;
+        }
+        if (idValue !== 'default' && idValue !== 'love') {
+            actionsHtml += `<button type="button" class="favorite-sidebar-action-btn favorite-sidebar-delete-btn bg-transparent border-0 p-0 text-gray-300 hover:text-red-500" title="删除歌单" aria-label="删除歌单" data-event-click-action="handleRemoveList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-trash" aria-hidden="true"></i></button>`;
         }
 
         div.innerHTML = `
             <span class="favorite-sidebar-drag-handle cursor-grab t-text-muted/60 hover:text-emerald-500 flex-shrink-0 touch-none" title="拖拽排序">
                 <i class="fas fa-grip-vertical text-xs"></i>
             </span>
-            ${opsHtml}
             <i class="fas ${icon} w-5 t-text-muted group-hover:text-emerald-500 transition-colors flex-shrink-0"></i>
-            ${displayName.length > 8 ? `<div class="ml-2 flex-1 overflow-hidden">${nameHtml}</div>` : nameHtml}
-            <span class="favorite-sidebar-count text-xs text-gray-300 group-hover:t-text-muted flex-shrink-0">${count}</span>
-            ${typeof listObj !== 'string' ? `<button type="button" class="text-gray-300 hover:text-emerald-500 flex-shrink-0 mr-2 transition-colors" title="重命名歌单" aria-label="重命名歌单" data-event-click-action="handleRenameList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-pen text-[10px]" aria-hidden="true"></i></button>` : ''}
-            ${idValue !== 'default' && idValue !== 'love' ? `<button type="button" class="favorite-sidebar-delete-btn bg-transparent border-0 p-0 text-gray-300 hover:text-red-500 hidden group-hover:block flex-shrink-0" title="删除歌单" aria-label="删除歌单" data-event-click-action="handleRemoveList" data-event-click-args="[${idArg}, &quot;@event&quot;]" data-event-stop="true"><i class="fas fa-trash" aria-hidden="true"></i></button>` : ''}
+            ${nameHtml}
+            <div class="favorite-sidebar-meta flex items-center flex-shrink-0">
+                ${updateBadgeHtml}
+                <span class="favorite-sidebar-count text-xs text-gray-300 group-hover:t-text-muted flex-shrink-0">${count}</span>
+                ${actionsHtml ? `<div class="favorite-sidebar-actions" role="group" aria-label="歌单操作">${actionsHtml}</div>` : ''}
+            </div>
         `;
         return div;
     };
@@ -3807,7 +3820,7 @@ function renderMyLists(data) {
                 <i class="fas fa-grip-vertical text-xs"></i>
             </span>
             <i class="fas ${icon} w-5 t-text-muted group-hover:text-emerald-500 transition-colors flex-shrink-0"></i>
-             <span class="ml-2 flex-1 truncate">${escapeHtmlText(name)}</span>
+             <span class="favorite-sidebar-name ml-2 flex-1 min-w-0 truncate">${escapeHtmlText(name)}</span>
              <span id="${countId}" class="favorite-sidebar-count text-xs text-gray-300 group-hover:t-text-muted flex-shrink-0">0</span>
         `;
         return div;
@@ -3833,7 +3846,7 @@ function renderMyLists(data) {
                 <i class="fas fa-grip-vertical text-xs"></i>
             </span>
             <i class="fas fa-globe w-5 ${isPublicActive ? 'text-emerald-500' : 't-text-muted group-hover:text-emerald-500'} transition-colors flex-shrink-0"></i>
-            <span class="ml-2 flex-1 truncate">公开收藏</span>
+            <span class="favorite-sidebar-name ml-2 flex-1 min-w-0 truncate">公开收藏</span>
             <span class="text-[10px] px-1.5 py-0.5 rounded-full ${isPublicActive ? 'bg-emerald-500 text-white font-bold' : 'bg-gray-200 dark:bg-gray-700 text-gray-500'}">${isPublicActive ? '已开启' : '切换'}</span>
         `;
         sidebarItems.push({ id: '__public_favorites__', type: 'system', el: publicFavItem });
@@ -3858,6 +3871,7 @@ function renderMyLists(data) {
     }
 
     getOrderedFavoriteSidebarItems(sidebarItems).forEach(item => container.appendChild(item.el));
+    applyMarqueeChecks(container);
     refreshLibrarySidebarCount();
     initFavoriteSidebarSortable(container);
     refreshFavoritesChildrenHeight();

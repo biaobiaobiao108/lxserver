@@ -440,6 +440,17 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(indexContent.includes("if (playMode === 'single') {\n        audio.currentTime = 0;")).toBe(true);
     });
 
+    it('cached URL playback resets ended media and retries rejected cache sources', () => {
+        const playbackContent = fs.readFileSync(playbackSrcPath, 'utf8');
+
+        expect(playbackContent).toContain('function setAudioSource(url)');
+        expect(playbackContent).toContain('if (audio.ended) {\n                audio.currentTime = 0;');
+        expect(playbackContent).toContain('let retryResolvedUrl: (() => boolean) | null = null;');
+        expect(playbackContent).toContain("localStorage.removeItem(`lx_url_${cleanSongData(playbackSong).id}_${resolvedQuality}`);");
+        expect(playbackContent).toContain('if (!isPlaybackPermissionError && retryResolvedUrl?.()) return;');
+        expect(playbackContent).toContain('showSuccess(`[${song.name}] 命中${sourceText}`);');
+    });
+
     it('queue clearing resets player state and protects empty togglePlay', () => {
         const queueContent = fs.readFileSync(path.join(import.meta.dir, '../frontend/player/src/features/queue.ts'), 'utf8');
         const indexContent = fs.readFileSync(playerSrcPath, 'utf8');

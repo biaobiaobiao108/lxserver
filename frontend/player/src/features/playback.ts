@@ -196,6 +196,33 @@ function restoreAudioPosition(position) {
     else audio.addEventListener('loadedmetadata', applyPosition, { once: true });
 }
 
+function setAudioSource(url) {
+    const targetUrl = String(url || '');
+    if (!targetUrl) return;
+
+    // Assigning the same URL again is a no-op in some browsers. If the previous
+    // request ended, explicitly rewind it so a cached link can be replayed.
+    let currentUrl = audio.currentSrc || audio.src;
+    try {
+        currentUrl = currentUrl ? new URL(currentUrl, document.baseURI).href : '';
+        const normalizedTargetUrl = new URL(targetUrl, document.baseURI).href;
+        if (currentUrl && currentUrl === normalizedTargetUrl) {
+            if (audio.ended) {
+                audio.currentTime = 0;
+            } else if (audio.error) {
+                // A failed request may keep the same src. Reload it before the
+                // cache fallback gets a chance to resolve a fresh URL.
+                audio.load();
+            }
+            return;
+        }
+    } catch (_) {
+        // Fall back to a normal src assignment for malformed or unusual URLs.
+    }
+
+    audio.src = targetUrl;
+}
+
 async function playSong(song, index, forceQuality = null, noPlay = false, isRetry = false, shouldAddToDefault = null, resumeTime = null) {
     // 1. Debounce / Lock: If already loading this song, ignore click
     // [Fix] Allow retry to bypass this check
@@ -354,6 +381,7 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
         // Display attempts / success message
         const sourceText = getSourceTypeText(urlResult.sourceType);
         const sourceName = urlResult.sourceName || '';
+        const shouldConfirmCacheAfterPlay = !urlResult.isPrefetch && urlResult.sourceType !== 'normal';
 
         if (urlResult.isPrefetch) {
             let detail = '解析成功';
@@ -361,10 +389,8 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
             else if (urlResult.sourceType === 'server_cache') detail = '命中本地文件';
             else if (sourceName) detail = `${sourceName} 解析成功`;
             showSuccess(`[预读] ${song.name} ${detail}`);
-        } else if (urlResult.sourceType !== 'normal') {
-            // 非在线解析（如命中本地/服务器缓存），WebSocket 进度不会触发，需手动显示
-            showSuccess(`[${song.name}] 命中${sourceText}`);
         }
+        // 普通播放的缓存提示延迟到 play() 成功后，避免失效链接先显示“命中”再静默失败。
         // 在线解析 (sourceType === 'normal') 的成功提示已由 fetchSongUrl 中的进度监听处理，此处不再重复显示
 
         // [Real-time Progress handles attempts now via WebSocket]
@@ -408,12 +434,35 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
 
         // [Removed] 这里的代理逻辑已统一移动至 fetchSongUrl 阶段处理，确保预加载地址一致性
 
-        // Pre-handle error for invalid cache links
+        // Pre-handle error for invalid cache links. A media element can report a
+        // failed source through either the error event or a rejected play() promise.
+        let retryResolvedUrl: (() => boolean) | null = null;
         if (state.currentSourceType !== 'normal') {
+            const resolvedSourceType = state.currentSourceType;
+            const resolvedQuality = state.currentQuality || targetQuality;
+            let retryStarted = false;
+            retryResolvedUrl = () => {
+                if (retryStarted || state.currentLoadingRequestId !== thisRequestId) return false;
+                retryStarted = true;
+                console.warn(`[Player] ${resolvedSourceType} link failed, retrying online...`);
+                if (resolvedSourceType === 'cache') {
+                    try {
+                        localStorage.removeItem(`lx_url_${cleanSongData(playbackSong).id}_${resolvedQuality}`);
+                    } catch (_) { }
+                }
+                void playSong(
+                    playbackSong,
+                    index,
+                    targetQuality,
+                    noPlay,
+                    resolvedSourceType === 'server_cache' ? 'local_retry' : true,
+                    shouldAddToDefault,
+                    resumeTime,
+                );
+                return true;
+            };
             const retryHandler = () => {
-                console.warn(`[Player] ${state.currentSourceType} link failed, retrying online...`);
-                if (state.currentSourceType === 'cache') localStorage.removeItem(`lx_url_${cleanSongData(playbackSong).id}_${state.currentQuality || targetQuality}`);
-                playSong(playbackSong, index, targetQuality, noPlay, state.currentSourceType === 'server_cache' ? 'local_retry' : true);
+                retryResolvedUrl?.();
             };
             audio.addEventListener('error', retryHandler, { once: true });
             const cleanup = () => audio.removeEventListener('error', retryHandler);
@@ -421,7 +470,7 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
             audio.addEventListener('pause', cleanup, { once: true });
         }
 
-        audio.src = finalUrl;
+        setAudioSource(finalUrl);
         restoreAudioPosition(resumeTime);
 
         if (noPlay) {
@@ -447,6 +496,11 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
             audio.muted = isMuted;
 
             await audio.play();
+
+            if (shouldConfirmCacheAfterPlay) {
+                // 非在线解析（如命中本地/服务器缓存），只有真正启动播放后才提示命中。
+                showSuccess(`[${song.name}] 命中${sourceText}`);
+            }
 
             if (settings.enableCrossfade && !isMuted && effectiveVol > 0) {
                 fadeVolume(effectiveVol, 1000);
@@ -493,6 +547,13 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
             if (state.currentLoadingRequestId !== thisRequestId) return;
             const isAbort = playError && (playError.name === 'AbortError' || playError.code === 20);
             if (isAbort) return;
+
+            // 用户点击触发的播放权限错误不能通过重新解析链接解决；其他缓存
+            // 播放失败则清除失效缓存并自动走一次在线解析。
+            const isPlaybackPermissionError = playError && (
+                playError.name === 'NotAllowedError' || playError.name === 'SecurityError'
+            );
+            if (!isPlaybackPermissionError && retryResolvedUrl?.()) return;
 
             console.error('[Player] Playback blocked:', playError);
             setPlayerStatus('请点击播放按钮');

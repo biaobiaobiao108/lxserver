@@ -505,8 +505,11 @@ async function fetchSongUrl(song, quality, isRetry = false, isSilent = false) {
         let cachedUrl = localStorage.getItem(cacheKey);
         if (cachedUrl) {
             console.log(`[Cache] Link Hit: ${cleanedSong.name} (${quality})`);
-            // 核心修复：命中本地缓存时也必须应用代理逻辑，否则 HTTPS 下无法播放 HTTP 缓存链接
+            const rawUrl = cachedUrl;
             cachedUrl = await applyAutoProxy(cachedUrl, song);
+            if (settings.enableServerCache && isRetry !== 'download' && !rawUrl.includes('/api/music/cache/file/')) {
+                triggerServerCache(song, rawUrl, quality);
+            }
             return { url: cachedUrl, sourceType: 'cache', quality };
         }
     }

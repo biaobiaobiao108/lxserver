@@ -2784,16 +2784,16 @@ export const getCacheStats = (username?: string) => {
     const roots = ['cache', 'music']
     const result: any = { cache: { totalSize: 0, fileCount: 0 }, music: { totalSize: 0, fileCount: 0 }, totalSize: 0, fileCount: 0 }
     const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
+    const extensions = ['.mp3', '.flac', '.m4a', '.ogg', '.wav', '.lrc']
     for (const folder of roots) {
         const dir = getCacheDir(normalizedUsername, folder === 'music')
         if (!fs.existsSync(dir)) continue
-        const files = fs.readdirSync(dir)
-        const extensions = ['.mp3', '.flac', '.m4a', '.ogg', '.wav', '.lrc']
-        for (const file of files) {
-            const ext = path.extname(file).toLowerCase()
+        const files = getCacheFilesRecursively(dir)
+        for (const filePath of files) {
+            const ext = path.extname(filePath).toLowerCase()
             if (extensions.includes(ext)) {
                 try {
-                    const stats = fs.statSync(path.join(dir, file))
+                    const stats = fs.statSync(filePath)
                     result[folder].totalSize += stats.size
                     result.totalSize += stats.size
                     if (ext !== '.lrc') { result[folder].fileCount++; result.fileCount++ }

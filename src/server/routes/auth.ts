@@ -259,16 +259,28 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
 
   if ('cookies' in req && 'remoteAddress' in req) {
     // HttpContext
-    token = req.headers.get('x-user-token') || req.cookies[USER_SESSION_COOKIE_NAME] || null
+    token = req.headers.get('x-user-token') ||
+      req.query.get('token') ||
+      req.query.get('userToken') ||
+      req.cookies[USER_SESSION_COOKIE_NAME] ||
+      null
     ip = req.remoteAddress
     url = req.pathname
   } else if ('headers' in req && typeof (req.headers as any).get === 'function') {
     // Web Request
-    token = (req.headers as Headers).get('x-user-token') || getCookieValue(req as Request, USER_SESSION_COOKIE_NAME)
+    const reqUrl = new URL((req as Request).url, 'http://localhost')
+    token = (req.headers as Headers).get('x-user-token') ||
+      reqUrl.searchParams.get('token') ||
+      reqUrl.searchParams.get('userToken') ||
+      getCookieValue(req as Request, USER_SESSION_COOKIE_NAME)
     url = (req as Request).url
   } else if ('headers' in req) {
     // IncomingMessage
-    token = (req.headers as any)['x-user-token'] || getCookieValue(req as any, USER_SESSION_COOKIE_NAME)
+    const parsedQuery = (req as any).url ? new URL((req as any).url, 'http://localhost').searchParams : null
+    token = (req.headers as any)['x-user-token'] ||
+      parsedQuery?.get('token') ||
+      parsedQuery?.get('userToken') ||
+      getCookieValue(req as any, USER_SESSION_COOKIE_NAME)
     url = (req as any).url || ''
   }
 

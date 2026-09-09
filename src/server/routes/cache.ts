@@ -448,7 +448,7 @@ export const createCacheRouter = (): Router => {
   router.get('/api/music/cache/file/*', async (ctx) => {
     const parts = ctx.pathname.replace('/api/music/cache/file/', '').split('/')
     const reqUsername = parts.length > 1 ? decodeURIComponent(parts[0]) : '_open'
-    const filename = parts.length > 1 ? parts[1] : parts[0]
+    const filename = parts.length > 1 ? parts.slice(1).join('/') : parts[0]
 
     if (!filename) return ctx.text('Missing filename', 400)
 

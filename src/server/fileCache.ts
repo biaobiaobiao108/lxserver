@@ -2849,33 +2849,49 @@ export const clearLyricCache = (username?: string) => {
 export const checkAndCleanupCache = async (username?: string) => {
     const config = (global as any).lx.config
     if (!config || !config['user.enableCacheSizeLimit']) return
-    const { totalSize } = getCacheStats(username)
+    const stats = getCacheStats(username)
+    const cacheSize = stats.cache?.totalSize ?? 0
     const limitBytes = (config['user.cacheSizeLimit'] || 2000) * 1024 * 1024
-    if (totalSize <= limitBytes) return
-    const roots: Array<'cache' | 'music'> = ['cache', 'music']
-    const allFiles: Array<{ path: string, size: number, mtime: number }> = []
+    if (cacheSize <= limitBytes) return
+
     const normalizedUsername = (username && username !== '_open' && username !== 'default') ? username : '_open'
-    for (const folder of roots) {
-        const dir = getCacheDir(normalizedUsername, folder === 'music')
-        if (!fs.existsSync(dir)) continue
-        const files = fs.readdirSync(dir)
-        for (const file of files) {
-            try {
-                const filePath = path.join(dir, file)
-                const stats = fs.statSync(filePath)
-                allFiles.push({ path: filePath, size: stats.size, mtime: stats.mtime.getTime() })
-            } catch (e) { }
-        }
+    const dir = getCacheDir(normalizedUsername, false)
+    if (!fs.existsSync(dir)) return
+
+    const allFiles: Array<{ path: string, size: number, mtime: number }> = []
+    for (const filePath of getCacheFilesRecursively(dir)) {
+        try {
+            const fileStat = fs.statSync(filePath)
+            allFiles.push({ path: filePath, size: fileStat.size, mtime: fileStat.mtime.getTime() })
+        } catch (e) { }
     }
+
     allFiles.sort((a, b) => a.mtime - b.mtime)
-    let currentSize = totalSize
+    let currentSize = cacheSize
     const targetSize = limitBytes * 0.95
     let deletedCount = 0
     for (const file of allFiles) {
         if (currentSize <= targetSize) break
-        try { fs.unlinkSync(file.path); currentSize -= file.size; deletedCount++ } catch (e) { }
+        if (!fs.existsSync(file.path)) continue
+        try {
+            const relPath = path.relative(dir, file.path).replace(/\\/g, '/')
+            const res = removeCacheFile(relPath, normalizedUsername, 'cache')
+            if (res.deleted) {
+                currentSize -= file.size
+                deletedCount++
+            }
+        } catch (e) {
+            try {
+                fs.unlinkSync(file.path)
+                currentSize -= file.size
+                deletedCount++
+            } catch (_) { }
+        }
     }
-    console.log(`[FileCache] Cleaned up ${deletedCount} files for ${normalizedUsername}`)
+    if (deletedCount > 0) {
+        invalidateCacheListSync(normalizedUsername)
+    }
+    console.log(`[FileCache] Cleaned up ${deletedCount} cache files for ${normalizedUsername}`)
 }
 /**
  * Switch files between 'cache' and 'music' folders

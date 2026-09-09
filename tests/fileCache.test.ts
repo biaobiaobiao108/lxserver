@@ -252,4 +252,83 @@ describe('File Cache Path Traversal Defense', () => {
       fs.rmSync(root, { recursive: true, force: true })
     }
   })
+
+  it('should clean up only cache directory and preserve music directory when limit exceeded', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-cache-cleanup-'))
+    const previousLx = (global as any).lx
+    const dataPath = path.join(root, 'data')
+    const dbPath = path.join(root, 'lxserver.db')
+    try {
+      closeDb()
+      ;(global as any).lx = {
+        dataPath,
+        config: {
+          'user.enableCacheSizeLimit': true,
+          'user.cacheSizeLimit': 0.001, // 0.001 MB = ~1048 bytes
+        },
+      }
+      initDatabase(dbPath)
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.DATA)
+
+      const username = 'test-cleanup-user'
+      const cacheDir = fileCache.getCacheDir(username, false)
+      const musicDir = fileCache.getCacheDir(username, true)
+
+      // 1. Create a file in music directory that would exceed the limit if counted
+      const musicFile = path.join(musicDir, 'downloaded.mp3')
+      fs.writeFileSync(musicFile, Buffer.alloc(5000, 1))
+
+      // 2. Create 2 files in cache directory: old (1500 bytes) and new (1500 bytes)
+      const oldCacheFile = path.join(cacheDir, 'old_cache.mp3')
+      const newCacheFile = path.join(cacheDir, 'new_cache.mp3')
+      fs.writeFileSync(oldCacheFile, Buffer.alloc(1500, 2))
+      const past = new Date(Date.now() - 100000)
+      fs.utimesSync(oldCacheFile, past, past)
+
+      fs.writeFileSync(newCacheFile, Buffer.alloc(1500, 3))
+
+      fileCache.indexManager.update(username, {
+        id: 'wy_old',
+        name: 'Old',
+        singer: 'Singer',
+        album: 'Album',
+        source: 'wy',
+        quality: '128k',
+        filename: 'old_cache.mp3',
+        folder: 'cache',
+        mtime: past.getTime(),
+        size: 1500,
+        ext: 'mp3',
+      }, 'cache')
+
+      fileCache.indexManager.update(username, {
+        id: 'wy_new',
+        name: 'New',
+        singer: 'Singer',
+        album: 'Album',
+        source: 'wy',
+        quality: '128k',
+        filename: 'new_cache.mp3',
+        folder: 'cache',
+        mtime: Date.now(),
+        size: 1500,
+        ext: 'mp3',
+      }, 'cache')
+
+      // Run cleanup
+      await fileCache.checkAndCleanupCache(username)
+
+      // music directory file must be completely untouched
+      expect(fs.existsSync(musicFile)).toBe(true)
+
+      // oldest cache file should be deleted to satisfy the limit
+      expect(fs.existsSync(oldCacheFile)).toBe(false)
+      expect(fileCache.indexManager.get(username, 'wy_old', 'cache')).toBeUndefined()
+    } finally {
+      closeDb()
+      ;(global as any).lx = previousLx
+      fileCache.setCacheLocation(fileCache.CACHE_ROOTS.ROOT)
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
 })

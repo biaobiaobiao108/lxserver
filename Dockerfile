@@ -53,10 +53,12 @@ COPY --from=builder /app/public ./public
 # 将系统 chromaprint (fpcalc) 直接软链接至播放器二进制目录，免去容器内外部下载
 RUN mkdir -p /server/public/music/bin && ln -sf /usr/bin/fpcalc /server/public/music/bin/fpcalc
 
-# /server/cache 是默认缓存根目录 (process.cwd()/cache)，必须一并声明为卷，
-# 否则容器重建时用户已下载的全部歌曲缓存都会随之丢失
+# /server/cache 与 /server/music 位于工作目录之下，不在 /server/data 内：
+# 前者是歌曲缓存根目录，后者是仅下载模式下保存的音乐文件目录。
+# 未声明为卷时，容器重建会连带清空这两个目录。
 VOLUME /server/data
 VOLUME /server/cache
+VOLUME /server/music
 ENV DATA_PATH='/server/data'
 ENV CONFIG_PATH='/server/data/config.js'
 ENV LOG_PATH='/server/data/logs'

@@ -21,7 +21,11 @@ export class DownloadManager {
         this.scrollRenderRaf = null;
         this.serverPollInFlight = false;
         this.serverQueueSyncInFlight = false;
-        this.serverQueuePending = false;
+        this.serverQueuePending = 0;
+        this.serverQueueSyncRequested = false;
+        this.serverQueueSyncRequestedRender = false;
+        this.serverQueueMutationVersion = 0;
+        this.serverQueueMutationInFlight = 0;
         this.serverQueueLoaded = false;
         this.serverPollTimer = null;
         this.serverPollDelay = 2000;
@@ -198,9 +202,34 @@ export class DownloadManager {
         return result.data;
     }
 
+    runServerQueueMutation(operation, errorMessage) {
+        this.serverQueueMutationVersion++;
+        this.serverQueueMutationInFlight++;
+        return Promise.resolve()
+            .then(operation)
+            .catch(error => {
+                console.warn(`[DownloadManager] ${errorMessage}:`, error);
+                if (window.showError) window.showError(`${errorMessage}: ${error.message || '请求失败'}`);
+                return false;
+            })
+            .finally(() => {
+                this.serverQueueMutationInFlight = Math.max(0, this.serverQueueMutationInFlight - 1);
+                this.requestServerQueueSync(true);
+            });
+    }
+
+    requestServerQueueSync(render = true) {
+        if (this.serverQueueSyncInFlight) {
+            this.serverQueueSyncRequested = true;
+            this.serverQueueSyncRequestedRender = this.serverQueueSyncRequestedRender || render;
+            return;
+        }
+        void this.syncServerQueue(render);
+    }
+
     async enqueueServerTasks(tasks) {
         if (!tasks.length) return;
-        this.serverQueuePending = true;
+        this.serverQueuePending++;
         try {
             const headers = this.getServerQueueHeaders();
             const payload = {
@@ -209,7 +238,7 @@ export class DownloadManager {
                     id: task.id,
                     songInfo: this.getSongInfoForServer(task.song),
                     quality: task.requestedQuality || task.quality,
-                    enableOnlyDownloadMode: window.settings?.enableOnlyDownloadMode || false,
+                    enableOnlyDownloadMode: task.enableOnlyDownloadMode === true,
                     cacheLyric: window.settings?.enableServerLyricCache !== false,
                     embedLyric: !!(window.settings?.embedLyricToFile ?? true)
                 }))
@@ -221,6 +250,7 @@ export class DownloadManager {
             tasks.forEach(task => {
                 task.serverManaged = true;
                 task.serverQueueRegistered = true;
+                task.serverQueueRegistrationFailed = false;
                 task.serverQueueId = task.id;
                 task.status = 'waiting';
                 task.errorMsg = '';
@@ -229,22 +259,30 @@ export class DownloadManager {
         } catch (error) {
             tasks.forEach(task => {
                 task.serverQueueRegistered = false;
+                task.serverQueueRegistrationFailed = true;
                 task.status = 'error';
                 task.errorMsg = error.message || '服务器队列登记失败';
             });
             this.renderList();
             this.saveTasks();
         } finally {
-            this.serverQueuePending = false;
+            this.serverQueuePending = Math.max(0, this.serverQueuePending - 1);
+            if (this.serverQueuePending === 0) this.requestServerQueueSync(true);
         }
     }
 
     async syncServerQueue(render = false) {
-        if (this.serverQueueSyncInFlight) return;
+        if (this.serverQueueSyncInFlight) {
+            this.serverQueueSyncRequested = true;
+            this.serverQueueSyncRequestedRender = this.serverQueueSyncRequestedRender || render;
+            return;
+        }
         this.serverQueueSyncInFlight = true;
+        const syncMutationVersion = this.serverQueueMutationVersion;
         try {
             const rawItems = await this.requestServerQueue('/api/music/cache/queue');
             if (!Array.isArray(rawItems)) return;
+            if (syncMutationVersion !== this.serverQueueMutationVersion || this.serverQueueMutationInFlight > 0) return;
             const items = this.deduplicateServerItems(rawItems);
             const remoteIds = new Set();
             const updatedTasks = [];
@@ -263,10 +301,12 @@ export class DownloadManager {
                         isServer: true,
                         serverManaged: true,
                         serverQueueRegistered: true,
+                        serverQueueRegistrationFailed: false,
                         serverQueueId: itemId,
                         serverSongKey: item.songKey || '',
                         quality: item.quality || item.requestedQuality || '',
                         requestedQuality: item.requestedQuality || item.quality || '',
+                        enableOnlyDownloadMode: item.enableOnlyDownloadMode === true,
                         status: item.status || 'waiting',
                         progress: item.progress || 0,
                         downloadedBytes: item.received || 0,
@@ -282,10 +322,14 @@ export class DownloadManager {
                     task.song = item.songInfo || task.song;
                     task.serverManaged = true;
                     task.serverQueueRegistered = true;
+                    task.serverQueueRegistrationFailed = false;
                     task.serverQueueId = itemId;
                     task.serverSongKey = item.songKey || task.serverSongKey;
                     task.quality = item.quality || task.quality;
                     task.requestedQuality = item.requestedQuality || task.requestedQuality || item.quality || '';
+                    if (typeof item.enableOnlyDownloadMode === 'boolean') {
+                        task.enableOnlyDownloadMode = item.enableOnlyDownloadMode;
+                    }
                     task.status = item.status || task.status;
                     task.progress = item.progress || 0;
                     task.downloadedBytes = item.received || 0;
@@ -297,15 +341,24 @@ export class DownloadManager {
                 updatedTasks.push(task);
             });
             if (!this.serverQueuePending) {
-                this.tasks = this.tasks.filter(task => !task.serverManaged || remoteIds.has(String(task.serverQueueId || task.id || '')));
-                const seenServerIdentities = new Set();
+                this.tasks = this.tasks.filter(task => (
+                    !task.serverManaged ||
+                    task.serverQueueRegistrationFailed === true ||
+                    remoteIds.has(String(task.serverQueueId || task.id || ''))
+                ));
+                const retainedServerTasks = new Map();
+                const nonServerTasks = [];
                 this.tasks = this.tasks.filter(task => {
-                    if (!task.isServer) return true;
+                    if (!task.isServer) {
+                        nonServerTasks.push(task);
+                        return false;
+                    }
                     const identity = this.getServerTaskIdentity(task);
-                    if (seenServerIdentities.has(identity)) return false;
-                    seenServerIdentities.add(identity);
-                    return true;
+                    const current = retainedServerTasks.get(identity);
+                    if (!current || this.preferServerTask(current, task)) retainedServerTasks.set(identity, task);
+                    return false;
                 });
+                this.tasks = [...nonServerTasks, ...retainedServerTasks.values()];
             }
             this.serverQueueLoaded = true;
             if (render) this.renderList();
@@ -316,6 +369,12 @@ export class DownloadManager {
             console.warn('[DownloadManager] Failed to sync server queue:', error);
         } finally {
             this.serverQueueSyncInFlight = false;
+            if (this.serverQueueSyncRequested) {
+                const rerender = this.serverQueueSyncRequestedRender;
+                this.serverQueueSyncRequested = false;
+                this.serverQueueSyncRequestedRender = false;
+                void this.syncServerQueue(rerender);
+            }
         }
     }
 
@@ -358,6 +417,13 @@ export class DownloadManager {
     }
 
     preferServerTask(current, candidate) {
+        // A task targeting /music is stricter: a completed /music file also
+        // satisfies cache lookups, while a /cache file does not satisfy the
+        // only-download target.
+        const currentTargetsMusic = current.enableOnlyDownloadMode === true;
+        const candidateTargetsMusic = candidate.enableOnlyDownloadMode === true;
+        if (candidateTargetsMusic !== currentTargetsMusic) return candidateTargetsMusic;
+
         const currentPriority = this.getTaskStatusPriority(current.status);
         const candidatePriority = this.getTaskStatusPriority(candidate.status);
         if (candidatePriority !== currentPriority) return candidatePriority > currentPriority;
@@ -858,8 +924,8 @@ export class DownloadManager {
         const addedServerTasks = [];
         for (const { song, quality, cacheResult } of results) {
             const isServerTask = song.isServer || false;
+            const onlyDownloadMode = isServerTask && window.settings?.enableOnlyDownloadMode === true;
             if (cacheResult.exists && !cacheResult.isCollision) {
-                const onlyDownloadMode = window.settings?.enableOnlyDownloadMode === true;
                 const targetAlreadyExists = !onlyDownloadMode || cacheResult.folder === 'music';
                 if (isServerTask && targetAlreadyExists) { // 仅下载模式下 cache 命中仍需交给后端复制到 music 目录
                     skipCount++;
@@ -893,6 +959,7 @@ export class DownloadManager {
                     existing.speed = 0;
                     existing.errorMsg = '';
                     existing.requestedQuality = quality;
+                    existing.enableOnlyDownloadMode = onlyDownloadMode;
                     existing.serverManaged = true;
                     existing.serverQueueId = existing.serverQueueId || existing.id;
                     if (!addedServerTasks.includes(existing)) addedServerTasks.push(existing);
@@ -911,7 +978,9 @@ export class DownloadManager {
                     isServer: isServerTask,
                     serverManaged: isServerTask,
                     serverQueueRegistered: false,
+                    serverQueueRegistrationFailed: false,
                     serverQueueId: isServerTask ? taskId : null,
+                    enableOnlyDownloadMode: onlyDownloadMode,
                     useNativeDownload,
                     nativeDownloadDispatched: false,
                     serverSongKey,
@@ -985,6 +1054,7 @@ export class DownloadManager {
 
         try {
             const downloadResolver = await this.waitForDownloadResolver();
+            const targetOnlyDownloadMode = task.enableOnlyDownloadMode === true;
 
             // 1. Resolve URL
             const requestedQuality = task.quality || (window.QualityManager ? window.QualityManager.getBestQuality(task.song, window.settings?.preferredQuality || 'flac') : 'flac');
@@ -1015,7 +1085,7 @@ export class DownloadManager {
                 requestedSource,
                 downloadSource: result.downloadSource || resolvedSong.source,
                 sourceName: result.sourceName || '',
-                enableOnlyDownloadMode: window.settings?.enableOnlyDownloadMode || false,
+                enableOnlyDownloadMode: targetOnlyDownloadMode,
                 cacheLyric: window.settings?.enableServerLyricCache !== false,
                 embedLyric: !!(window.settings?.embedLyricToFile ?? true)
             };
@@ -1030,6 +1100,22 @@ export class DownloadManager {
             });
 
             if (!res.ok) throw new Error('服务器拒绝缓存');
+
+            // A duplicate request can change the desired target while the
+            // resolver/network request is in flight. Run the same task again
+            // for the new target instead of reporting the old target as done.
+            if (task.enableOnlyDownloadMode !== targetOnlyDownloadMode) {
+                task.status = 'waiting';
+                task.quality = task.requestedQuality || task.quality;
+                task.progress = 0;
+                task.downloadedBytes = 0;
+                task.totalBytes = 0;
+                task.speed = 0;
+                task.errorMsg = '';
+                this.saveTasks();
+                this.processQueue();
+                return;
+            }
 
             // Success: pollServerProgress will now handle its movement
             this.saveTasks();
@@ -1279,13 +1365,12 @@ export class DownloadManager {
             // 云端任务：通知后端停止，并更新本地状态
             if (task.status === 'downloading' || task.status === 'waiting' || task.status === 'tagging') {
                 const songKey = this.getTaskServerSongKey(task);
-                const headers = { 'Content-Type': 'application/json', ...(window.getUserAuthHeaders ? window.getUserAuthHeaders() : {}) };
-
-                fetch('/api/music/cache/stop', {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify(task.serverManaged ? { queueId: task.serverQueueId || task.id } : { songKey })
-                }).catch(e => console.warn('[DownloadManager] Failed to stop server task:', e));
+                this.runServerQueueMutation(
+                    () => this.requestServerQueue('/api/music/cache/stop', task.serverManaged
+                        ? { queueId: task.serverQueueId || task.id }
+                        : { songKey }),
+                    '暂停云端任务失败',
+                );
                 task.status = 'paused';
                 task.speed = 0;
                 task.errorMsg = '已暂停';
@@ -1326,14 +1411,19 @@ export class DownloadManager {
         task.lastPolledTime = undefined;
         task.controller = null;
         if (task.serverManaged) {
-            const request = task.serverQueueRegistered === false
-                ? this.enqueueServerTasks([task])
-                : this.requestServerQueue('/api/music/cache/queue/resume', { id: task.serverQueueId || task.id });
-            request.catch(error => {
-                task.status = 'error';
-                task.errorMsg = error.message || '继续任务失败';
-                this.renderTask(task);
-            });
+            if (task.serverQueueRegistered === false) {
+                void this.enqueueServerTasks([task]);
+            } else {
+                this.runServerQueueMutation(
+                    () => this.requestServerQueue('/api/music/cache/queue/resume', { id: task.serverQueueId || task.id }),
+                    '继续云端任务失败',
+                ).then(result => {
+                    if (result !== false) return;
+                    task.status = 'error';
+                    task.errorMsg = '继续任务失败';
+                    this.renderTask(task);
+                });
+            }
         }
         this.renderTask(task);
         this.saveTasks();
@@ -1344,18 +1434,17 @@ export class DownloadManager {
         const task = this.tasks.find(t => t.id === taskId);
         if (task) {
             if (task.serverManaged) {
-                this.requestServerQueue('/api/music/cache/queue/remove', { id: task.serverQueueId || task.id })
-                    .catch(e => console.warn('[DownloadManager] Failed to remove server queue task:', e));
+                this.runServerQueueMutation(
+                    () => this.requestServerQueue('/api/music/cache/queue/remove', { id: task.serverQueueId || task.id }),
+                    '删除云端任务失败',
+                );
             } else if (task.isServer && (task.status === 'downloading' || task.status === 'waiting' || task.status === 'tagging')) {
                 // 云端任务：通知后端停止
                 const songKey = this.getTaskServerSongKey(task);
-                const headers = { 'Content-Type': 'application/json', ...(window.getUserAuthHeaders ? window.getUserAuthHeaders() : {}) };
-
-                fetch('/api/music/cache/stop', {
-                    method: 'POST',
-                    headers,
-                    body: JSON.stringify({ songKey })
-                }).catch(e => console.warn('[DownloadManager] Failed to stop server task on delete:', e));
+                this.runServerQueueMutation(
+                    () => this.requestServerQueue('/api/music/cache/stop', { songKey }),
+                    '停止云端任务失败',
+                );
             } else if (!task.isServer && task.status === 'downloading' && task.controller) {
                 task.controller.abort();
             }
@@ -1370,9 +1459,10 @@ export class DownloadManager {
         const headers = { 'Content-Type': 'application/json', ...(window.getUserAuthHeaders ? window.getUserAuthHeaders() : {}) };
         const hasManagedServerTasks = this.tasks.some(t => t.serverManaged && ['waiting', 'downloading', 'tagging'].includes(t.status));
         if (hasManagedServerTasks) {
-            fetch('/api/music/cache/stop', {
-                method: 'POST', headers, body: JSON.stringify({ all: true })
-            }).catch(e => console.warn('[DownloadManager] Failed to pause persistent server queue:', e));
+            this.runServerQueueMutation(
+                () => this.requestServerQueue('/api/music/cache/stop', { all: true }),
+                '暂停云端任务失败',
+            );
         }
         this.tasks.forEach(t => {
             if (t.status !== 'downloading' && t.status !== 'waiting' && t.status !== 'tagging' && t.status !== 'starting') return;
@@ -1402,8 +1492,10 @@ export class DownloadManager {
     resumeAll() {
         const hasManagedServerTasks = this.tasks.some(t => t.serverManaged && (t.status === 'paused' || t.status === 'error'));
         if (hasManagedServerTasks) {
-            this.requestServerQueue('/api/music/cache/queue/resume', { all: true })
-                .catch(e => console.warn('[DownloadManager] Failed to resume persistent server queue:', e));
+            this.runServerQueueMutation(
+                () => this.requestServerQueue('/api/music/cache/queue/resume', { all: true }),
+                '继续云端任务失败',
+            );
         }
         this.tasks.forEach(t => {
             if (t.status !== 'paused') return;
@@ -1429,12 +1521,9 @@ export class DownloadManager {
         const failedTasks = this.tasks.filter(t => t.status === 'error');
         if (failedTasks.length === 0) return;
         const unregisteredServerTasks = failedTasks.filter(t => t.serverManaged && t.serverQueueRegistered === false);
+        const registeredServerTasks = failedTasks.filter(t => t.serverManaged && t.serverQueueRegistered !== false);
 
         failedTasks.forEach(t => {
-            if (t.serverManaged) {
-                if (t.serverQueueRegistered !== false) this.requestServerQueue('/api/music/cache/queue/resume', { id: t.serverQueueId || t.id })
-                    .catch(e => console.warn('[DownloadManager] Failed to retry server queue task:', e));
-            }
             t.retryCount = 0;
             t.downloadedBytes = 0;
             t.progress = 0;
@@ -1454,6 +1543,14 @@ export class DownloadManager {
             }
         });
 
+        if (registeredServerTasks.length) {
+            this.runServerQueueMutation(
+                () => Promise.all(registeredServerTasks.map(task => (
+                    this.requestServerQueue('/api/music/cache/queue/resume', { id: task.serverQueueId || task.id })
+                ))),
+                '重试云端任务失败',
+            );
+        }
         if (unregisteredServerTasks.length) void this.enqueueServerTasks(unregisteredServerTasks);
 
         this.renderList();
@@ -1462,8 +1559,10 @@ export class DownloadManager {
 
     clearCompleted() {
         if (this.tasks.some(t => t.serverManaged && (t.status === 'finished' || t.status === 'exists'))) {
-            this.requestServerQueue('/api/music/cache/queue/remove', { completed: true })
-                .catch(e => console.warn('[DownloadManager] Failed to clear completed server queue tasks:', e));
+            this.runServerQueueMutation(
+                () => this.requestServerQueue('/api/music/cache/queue/remove', { completed: true }),
+                '清理已完成云端任务失败',
+            );
         }
         this.tasks = this.tasks.filter(t => t.status !== 'finished' && t.status !== 'exists');
         this.renderList();
@@ -1490,17 +1589,24 @@ export class DownloadManager {
 
                 // [NEW] 通知服务器中止所有该用户的缓存任务
                 const username = (window.currentListData && window.currentListData.username) || localStorage.getItem('lx_sync_user') || '';
-                fetch('/api/music/cache/stop', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'x-user-name': username,
-                        ...(window.getUserAuthHeaders ? window.getUserAuthHeaders() : {})
-                    },
-                    body: JSON.stringify({ all: true })
-                }).catch(err => console.error('[DownloadManager] Failed to stop server tasks:', err));
-                this.requestServerQueue('/api/music/cache/queue/remove', { all: true })
-                    .catch(err => console.error('[DownloadManager] Failed to clear persistent server queue:', err));
+                this.runServerQueueMutation(async () => {
+                    const stopResponse = await fetch('/api/music/cache/stop', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-user-name': username,
+                            ...(window.getUserAuthHeaders ? window.getUserAuthHeaders() : {})
+                        },
+                        body: JSON.stringify({ all: true })
+                    });
+                    const stopResult = await stopResponse.json().catch(() => ({}));
+                    const clearRequest = this.requestServerQueue('/api/music/cache/queue/remove', { all: true });
+                    if (!stopResponse.ok || stopResult.success === false) {
+                        await clearRequest.catch(() => undefined);
+                        throw new Error(stopResult.message || `HTTP ${stopResponse.status}`);
+                    }
+                    await clearRequest;
+                }, '清空云端任务失败');
 
                 this.tasks = [];
                 this.activeCount = 0;
@@ -1512,8 +1618,10 @@ export class DownloadManager {
             this.tasks.forEach(t => {
                 if (t.status === 'downloading' && t.controller) t.controller.abort();
             });
-            this.requestServerQueue('/api/music/cache/queue/remove', { all: true })
-                .catch(err => console.error('[DownloadManager] Failed to clear persistent server queue:', err));
+            this.runServerQueueMutation(
+                () => this.requestServerQueue('/api/music/cache/queue/remove', { all: true }),
+                '清空云端任务失败',
+            );
             this.tasks = [];
             this.activeCount = 0;
             this.renderList();
@@ -1533,6 +1641,7 @@ export class DownloadManager {
                 isServer: t.isServer,
                 useNativeDownload: !!t.useNativeDownload,
                 nativeDownloadDispatched: !!t.nativeDownloadDispatched,
+                enableOnlyDownloadMode: t.enableOnlyDownloadMode === true,
                 quality: t.quality,
                 requestedQuality: t.requestedQuality || t.quality,
                 status: t.isServer
@@ -1578,7 +1687,9 @@ export class DownloadManager {
                     // the browser scheduler to start a duplicate download.
                     serverManaged: !!t.isServer,
                     serverQueueRegistered: false,
+                    serverQueueRegistrationFailed: false,
                     serverQueueId: t.isServer ? restoredId : null,
+                    enableOnlyDownloadMode: t.enableOnlyDownloadMode === true,
                     useNativeDownload: !t.isServer && (t.useNativeDownload !== false),
                     nativeDownloadDispatched: !!t.nativeDownloadDispatched,
                     serverSongKey: t.serverSongKey || '',

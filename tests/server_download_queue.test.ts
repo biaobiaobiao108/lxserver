@@ -69,4 +69,25 @@ describe('Server download queue deduplication', () => {
     expect(retained[0]?.id).toBe('finished-copy')
     expect(retained[0]?.status).toBe('finished')
   })
+
+  test('keeps the stricter music target when merging cache and music requests', () => {
+    const cached = makeTask('user-a', 'cached', 'finished', 20)
+    cached.songInfo = { source: 'wy', songmid: 167655, name: 'Sign', singer: 'FLOW' }
+    cached.songKey = 'wy_167655_flac'
+    cached.quality = 'flac'
+    cached.requestedQuality = 'flac'
+
+    const music = makeTask('user-a', 'music', 'waiting', 10)
+    music.songInfo = { source: 'wy', songmid: 167655, name: 'Sign', singer: 'FLOW' }
+    music.songKey = 'wy_167655_flac'
+    music.quality = 'flac'
+    music.requestedQuality = 'flac'
+    music.enableOnlyDownloadMode = true
+
+    const retained = deduplicateDownloadTasks([cached, music])
+
+    expect(retained).toHaveLength(1)
+    expect(retained[0]?.id).toBe('music')
+    expect(retained[0]?.enableOnlyDownloadMode).toBe(true)
+  })
 })

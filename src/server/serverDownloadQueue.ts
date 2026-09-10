@@ -85,6 +85,12 @@ const taskStatusPriority = (status: ServerDownloadStatus) => {
 }
 
 const shouldReplaceTask = (current: ServerDownloadTask, candidate: ServerDownloadTask) => {
+  // /music is the stricter target: a file there also satisfies cache lookups,
+  // while a file in /cache does not satisfy an only-download request.
+  const currentTargetsMusic = current.enableOnlyDownloadMode === true
+  const candidateTargetsMusic = candidate.enableOnlyDownloadMode === true
+  if (candidateTargetsMusic !== currentTargetsMusic) return candidateTargetsMusic
+
   const currentPriority = taskStatusPriority(current.status)
   const candidatePriority = taskStatusPriority(candidate.status)
   if (candidatePriority !== currentPriority) return candidatePriority > currentPriority
@@ -262,6 +268,7 @@ const getPublicTask = (task: ServerDownloadTask) => {
     songInfo: task.songInfo,
     quality: task.quality,
     requestedQuality: task.requestedQuality,
+    enableOnlyDownloadMode: task.enableOnlyDownloadMode,
     status: liveStatus || task.status,
     progress: Number(live?.progress ?? task.progress ?? 0),
     total: Number(live?.total ?? task.total ?? 0),
@@ -276,6 +283,7 @@ const getPublicTask = (task: ServerDownloadTask) => {
 const runTask = async (task: ServerDownloadTask) => {
   if (!resolver || task.status !== 'waiting') return
   const key = taskMapKey(task.username, task.id)
+  const targetOnlyDownloadMode = task.enableOnlyDownloadMode === true
   const controller = new AbortController()
   controllers.set(key, controller)
   task.status = 'downloading'
@@ -298,13 +306,29 @@ const runTask = async (task: ServerDownloadTask) => {
     scheduleSave()
 
     await fileCache.downloadAndCache(task.songInfo, resolved.url, task.quality, task.username, controller.signal,
-      task.enableOnlyDownloadMode, task.cacheLyric, task.embedLyric, {
+      targetOnlyDownloadMode, task.cacheLyric, task.embedLyric, {
         requestedSource: resolved.requestedSource,
         downloadSource: resolved.downloadSource,
         sourceName: resolved.sourceName,
       })
 
     if (controller.signal.aborted) return
+
+    // If a new request changed the desired target while this download was in
+    // flight, keep the same public task and run it once more for that target.
+    if (task.enableOnlyDownloadMode !== targetOnlyDownloadMode) {
+      task.status = 'waiting'
+      task.quality = task.requestedQuality
+      task.progress = 0
+      task.total = 0
+      task.received = 0
+      task.speed = 0
+      task.errorMsg = ''
+      task.activeSongKey = undefined
+      task.updatedAt = Date.now()
+      return
+    }
+
     const progress = fileCache.cacheProgress.get(task.activeSongKey)
     task.status = progress?.status === 'exists' ? 'exists' : 'finished'
     task.progress = 100
@@ -335,13 +359,18 @@ const processQueue = async () => {
   try {
     while (true) {
       const activeByUser = new Map<string, number>()
+      const activeIdentities = new Set<string>()
       for (const key of controllers.keys()) {
-        const username = tasks.get(key)?.username
-        if (!username) continue
+        const activeTask = tasks.get(key)
+        const username = activeTask?.username
+        if (!activeTask || !username) continue
         activeByUser.set(username, (activeByUser.get(username) || 0) + 1)
+        activeIdentities.add(getTaskIdentity(activeTask))
       }
       const next = Array.from(tasks.values()).find(task => (
-        task.status === 'waiting' && (activeByUser.get(task.username) || 0) < getConcurrency(task.username)
+        task.status === 'waiting' &&
+        (activeByUser.get(task.username) || 0) < getConcurrency(task.username) &&
+        !activeIdentities.has(getTaskIdentity(task))
       ))
       if (!next) break
       void runTask(next)
@@ -391,7 +420,19 @@ export const enqueue = (username: string, inputs: QueueInput[]) => {
       })
     ))
     if (existing) {
-      if (['waiting', 'downloading', 'tagging'].includes(existing.status)) continue
+      if (['waiting', 'downloading', 'tagging'].includes(existing.status)) {
+        // Keep one queue record per song/quality (and therefore one public ID),
+        // but remember a newly requested /music target even when the current
+        // download is already running. runTask will perform the second step
+        // after the current target finishes.
+        const targetOnlyDownloadMode = input.enableOnlyDownloadMode === true
+        if (existing.enableOnlyDownloadMode !== targetOnlyDownloadMode) {
+          existing.enableOnlyDownloadMode = targetOnlyDownloadMode
+          existing.updatedAt = Date.now()
+          scheduleSave()
+        }
+        continue
+      }
 
       const now = Date.now()
       existing.songKey = fileCache.normalizeSongId(input.songInfo) + '_' + quality

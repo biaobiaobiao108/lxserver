@@ -10,6 +10,8 @@ services:
     volumes:
       # 数据持久化
       - ./data:/server/data
+      # 歌曲缓存持久化（默认缓存根目录为 /server/cache，未挂载时容器重建会丢失全部缓存）
+      - ./cache:/server/cache
     environment:
       # 环境变量配置，优先级高于 config.js
       - NODE_ENV=production

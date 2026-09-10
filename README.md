@@ -74,6 +74,9 @@ services:
     volumes:
       # 持久化数据目录（包含数据库、歌单快照、本地音乐缓存与配置）
       - ./data:/server/data
+      # 歌曲缓存目录持久化。默认缓存根目录是 <工作目录>/cache，
+      # 不挂载时容器重建（升级镜像、compose down 后再 up）会丢失全部已缓存歌曲。
+      - ./cache:/server/cache
     environment:
       - NODE_ENV=production
       # 【必须设置】管理后台登录密码，禁止使用 123456 等示例弱口令！

@@ -61,6 +61,62 @@ const taskMapKey = (username: string, id: string) => `${username}:${id}`
 const getQueueFile = () => path.join(global.lx.dataPath, 'server-download-queue.json')
 const validStatuses = new Set<ServerDownloadStatus>(['waiting', 'downloading', 'tagging', 'paused', 'finished', 'exists', 'error'])
 const resumableStatuses = new Set<ServerDownloadStatus>(['waiting', 'downloading', 'tagging', 'paused'])
+const terminalStatuses = new Set<ServerDownloadStatus>(['finished', 'exists'])
+
+const getTaskIdentity = (task: Pick<ServerDownloadTask, 'username' | 'songInfo' | 'quality' | 'requestedQuality' | 'songKey' | 'activeSongKey'>) => {
+  const songInfo = task.songInfo || {}
+  const normalizedSongId = fileCache.normalizeSongId(songInfo)
+  const requestedQuality = String(task.requestedQuality || task.quality || 'unknown')
+  if (normalizedSongId) return `${task.username}:${normalizedSongId}:${requestedQuality}`
+
+  const source = String(songInfo.source || songInfo.meta?.source || 'unknown')
+  const name = String(songInfo.name || songInfo.meta?.songName || '')
+  const singer = String(songInfo.singer || songInfo.meta?.singerName || '')
+  const album = String(songInfo.albumName || songInfo.meta?.albumName || '')
+  const fallbackKey = String(task.songKey || task.activeSongKey || `${source}:${name}:${singer}:${album}`)
+  return `${task.username}:${fallbackKey}:${requestedQuality}`
+}
+
+const taskStatusPriority = (status: ServerDownloadStatus) => {
+  if (terminalStatuses.has(status)) return 3
+  if (status === 'downloading' || status === 'tagging') return 2
+  if (status === 'waiting') return 1
+  return 0
+}
+
+const shouldReplaceTask = (current: ServerDownloadTask, candidate: ServerDownloadTask) => {
+  const currentPriority = taskStatusPriority(current.status)
+  const candidatePriority = taskStatusPriority(candidate.status)
+  if (candidatePriority !== currentPriority) return candidatePriority > currentPriority
+  return (candidate.updatedAt || candidate.createdAt) > (current.updatedAt || current.createdAt)
+}
+
+/** Keep one persisted task for each user/song/requested-quality combination. */
+export const deduplicateDownloadTasks = (taskList: ServerDownloadTask[]) => {
+  const retained = new Map<string, ServerDownloadTask>()
+  for (const task of taskList) {
+    const identity = getTaskIdentity(task)
+    const current = retained.get(identity)
+    if (!current || shouldReplaceTask(current, task)) retained.set(identity, task)
+  }
+  return Array.from(retained.values())
+}
+
+const deduplicateTasksInMemory = () => {
+  const currentTasks = Array.from(tasks.values())
+  const retainedTasks = deduplicateDownloadTasks(currentTasks)
+  if (retainedTasks.length === currentTasks.length) return false
+
+  const retainedKeys = new Set(retainedTasks.map(task => taskMapKey(task.username, task.id)))
+  for (const task of currentTasks) {
+    const key = taskMapKey(task.username, task.id)
+    if (!retainedKeys.has(key)) controllers.get(key)?.abort()
+  }
+
+  tasks.clear()
+  retainedTasks.forEach(task => tasks.set(taskMapKey(task.username, task.id), task))
+  return true
+}
 
 const normalizeConcurrency = (value: unknown) => {
   const parsed = Number.parseInt(String(value), 10)
@@ -109,6 +165,7 @@ const pruneHistory = () => {
 
 const saveNow = () => {
   if (!initialized) return
+  deduplicateTasksInMemory()
   const removed = pruneHistory()
   if (removed > 0) {
     console.log(`[ServerDownloadQueue] Pruned ${removed} old history task(s)`)
@@ -149,6 +206,7 @@ const loadTasks = () => {
         concurrencyByUser.set(username, normalizeConcurrency(value))
       }
     }
+    const restoredTasks: ServerDownloadTask[] = []
     for (const raw of savedTasks) {
       if (!raw || !raw.username || !raw.songInfo) continue
       const id = sanitizeId(raw.id)
@@ -178,8 +236,10 @@ const loadTasks = () => {
         createdAt,
         updatedAt: Number(raw.updatedAt || createdAt),
       }
-      tasks.set(taskMapKey(task.username, task.id), task)
+      restoredTasks.push(task)
     }
+    deduplicateDownloadTasks(restoredTasks)
+      .forEach(task => tasks.set(taskMapKey(task.username, task.id), task))
     pruneHistory()
     console.log(`[ServerDownloadQueue] Restored ${tasks.size} persisted tasks`)
   } catch (err) {
@@ -311,6 +371,7 @@ export const initialize = (downloadResolver: DownloadResolver) => {
 
 export const enqueue = (username: string, inputs: QueueInput[]) => {
   if (inputs.length > 100) throw new Error('Too many tasks in one request')
+  deduplicateTasksInMemory()
   const pendingCount = Array.from(tasks.values()).filter(task => task.username === username && resumableStatuses.has(task.status)).length
   if (pendingCount + inputs.length > MAX_PENDING_TASKS_PER_USER) throw new Error('Too many pending download tasks')
   const added: ServerDownloadTask[] = []
@@ -318,8 +379,17 @@ export const enqueue = (username: string, inputs: QueueInput[]) => {
     if (!input?.songInfo) continue
     const id = sanitizeId(input.id)
     const key = taskMapKey(username, id)
-    const quality = input.quality || '320k'
-    const existing = tasks.get(key)
+    const quality = String(input.quality || '320k')
+    const existing = tasks.get(key) || Array.from(tasks.values()).find(task => (
+      task.username === username && getTaskIdentity(task) === getTaskIdentity({
+        username,
+        songInfo: input.songInfo,
+        quality,
+        requestedQuality: quality,
+        songKey: '',
+        activeSongKey: undefined,
+      })
+    ))
     if (existing) {
       if (['waiting', 'downloading', 'tagging'].includes(existing.status)) continue
 
@@ -364,10 +434,13 @@ export const enqueue = (username: string, inputs: QueueInput[]) => {
   return added.map(task => getPublicTask(task))
 }
 
-export const list = (username: string) => Array.from(tasks.values())
-  .filter(task => task.username === username)
-  .sort((a, b) => a.createdAt - b.createdAt)
-  .map(task => getPublicTask(task))
+export const list = (username: string) => {
+  if (deduplicateTasksInMemory()) saveNow()
+  return Array.from(tasks.values())
+    .filter(task => task.username === username)
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map(task => getPublicTask(task))
+}
 
 export const pause = (username: string, id?: string) => {
   for (const task of tasks.values()) {

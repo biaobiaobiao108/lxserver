@@ -208,7 +208,7 @@ export class DownloadManager {
                 tasks: tasks.map(task => ({
                     id: task.id,
                     songInfo: this.getSongInfoForServer(task.song),
-                    quality: task.quality,
+                    quality: task.requestedQuality || task.quality,
                     enableOnlyDownloadMode: window.settings?.enableOnlyDownloadMode || false,
                     cacheLyric: window.settings?.enableServerLyricCache !== false,
                     embedLyric: !!(window.settings?.embedLyricToFile ?? true)
@@ -243,23 +243,30 @@ export class DownloadManager {
         if (this.serverQueueSyncInFlight) return;
         this.serverQueueSyncInFlight = true;
         try {
-            const items = await this.requestServerQueue('/api/music/cache/queue');
-            if (!Array.isArray(items)) return;
+            const rawItems = await this.requestServerQueue('/api/music/cache/queue');
+            if (!Array.isArray(rawItems)) return;
+            const items = this.deduplicateServerItems(rawItems);
             const remoteIds = new Set();
             const updatedTasks = [];
             items.forEach(item => {
-                remoteIds.add(item.id);
-                let task = this.tasks.find(t => t.isServer && (t.serverQueueId === item.id || t.id === item.id));
+                const itemId = String(item.id || '');
+                const identity = this.getServerTaskIdentity(item);
+                remoteIds.add(itemId);
+                let task = this.tasks.find(t => t.isServer && (
+                    String(t.serverQueueId || '') === itemId || String(t.id || '') === itemId
+                ));
+                if (!task) task = this.tasks.find(t => t.isServer && this.getServerTaskIdentity(t) === identity);
                 if (!task) {
                     task = {
-                        id: item.id,
+                        id: itemId,
                         song: item.songInfo || {},
                         isServer: true,
                         serverManaged: true,
                         serverQueueRegistered: true,
-                        serverQueueId: item.id,
+                        serverQueueId: itemId,
                         serverSongKey: item.songKey || '',
                         quality: item.quality || item.requestedQuality || '',
+                        requestedQuality: item.requestedQuality || item.quality || '',
                         status: item.status || 'waiting',
                         progress: item.progress || 0,
                         downloadedBytes: item.received || 0,
@@ -275,20 +282,30 @@ export class DownloadManager {
                     task.song = item.songInfo || task.song;
                     task.serverManaged = true;
                     task.serverQueueRegistered = true;
-                    task.serverQueueId = item.id;
+                    task.serverQueueId = itemId;
                     task.serverSongKey = item.songKey || task.serverSongKey;
                     task.quality = item.quality || task.quality;
+                    task.requestedQuality = item.requestedQuality || task.requestedQuality || item.quality || '';
                     task.status = item.status || task.status;
                     task.progress = item.progress || 0;
                     task.downloadedBytes = item.received || 0;
                     task.totalBytes = item.total || 0;
                     task.speed = item.speed || 0;
                     task.errorMsg = item.errorMsg || '';
+                    task.updatedAt = item.updatedAt || task.updatedAt;
                 }
                 updatedTasks.push(task);
             });
             if (!this.serverQueuePending) {
-                this.tasks = this.tasks.filter(task => !task.serverManaged || remoteIds.has(task.serverQueueId || task.id));
+                this.tasks = this.tasks.filter(task => !task.serverManaged || remoteIds.has(String(task.serverQueueId || task.id || '')));
+                const seenServerIdentities = new Set();
+                this.tasks = this.tasks.filter(task => {
+                    if (!task.isServer) return true;
+                    const identity = this.getServerTaskIdentity(task);
+                    if (seenServerIdentities.has(identity)) return false;
+                    seenServerIdentities.add(identity);
+                    return true;
+                });
             }
             this.serverQueueLoaded = true;
             if (render) this.renderList();
@@ -324,6 +341,37 @@ export class DownloadManager {
 
     getServerSongKey(songInfo, quality) {
         return `${this.normalizeServerSongId(songInfo)}_${quality || 'unknown'}`;
+    }
+
+    getServerTaskIdentity(taskOrItem) {
+        const song = taskOrItem?.songInfo || taskOrItem?.song || {};
+        const songIdentity = this.getSongIdentity(song);
+        const quality = String(taskOrItem?.requestedQuality || taskOrItem?.quality || 'unknown');
+        return `${songIdentity}:${quality}`;
+    }
+
+    getTaskStatusPriority(status) {
+        if (status === 'finished' || status === 'exists') return 3;
+        if (status === 'downloading' || status === 'tagging') return 2;
+        if (status === 'waiting') return 1;
+        return 0;
+    }
+
+    preferServerTask(current, candidate) {
+        const currentPriority = this.getTaskStatusPriority(current.status);
+        const candidatePriority = this.getTaskStatusPriority(candidate.status);
+        if (candidatePriority !== currentPriority) return candidatePriority > currentPriority;
+        return (candidate.updatedAt || candidate.createdAt || 0) > (current.updatedAt || current.createdAt || 0);
+    }
+
+    deduplicateServerItems(items) {
+        const retained = new Map();
+        items.forEach(item => {
+            const identity = this.getServerTaskIdentity(item);
+            const current = retained.get(identity);
+            if (!current || this.preferServerTask(current, item)) retained.set(identity, item);
+        });
+        return Array.from(retained.values());
     }
 
     getTaskServerSongKey(task) {
@@ -820,14 +868,39 @@ export class DownloadManager {
                 // 浏览器下载任务：即使已存在缓存也要添加任务，以便用户下载到本地，但后面会优先用缓存地址
             }
 
-            // Check if already in queue (with same quality)
+            // Check if already in queue (with same requested quality). Server tasks
+            // may already be terminal; reuse those records instead of creating a
+            // second row when only-download mode needs to move cache -> music.
             const songIdentity = this.getSongIdentity(song);
+            const activeStatuses = ['waiting', 'starting', 'downloading', 'tagging'];
+            const reusableStatuses = isServerTask
+                ? [...activeStatuses, 'paused', 'error', 'finished', 'exists']
+                : activeStatuses;
             const existing = this.tasks.find(t =>
                 this.getSongIdentity(t.song) === songIdentity &&
-                t.quality === quality &&
-                (t.status === 'waiting' || t.status === 'starting' || t.status === 'downloading' || t.status === 'tagging')
+                (t.requestedQuality || t.quality) === quality &&
+                reusableStatuses.includes(t.status)
             );
-            if (!existing) {
+            if (existing) {
+                const shouldRequeue = isServerTask && !activeStatuses.includes(existing.status);
+                if (shouldRequeue) {
+                    existing.song = song;
+                    existing.serverSongKey = this.getServerSongKey(song, quality);
+                    existing.status = 'waiting';
+                    existing.progress = 0;
+                    existing.downloadedBytes = 0;
+                    existing.totalBytes = 0;
+                    existing.speed = 0;
+                    existing.errorMsg = '';
+                    existing.requestedQuality = quality;
+                    existing.serverManaged = true;
+                    existing.serverQueueId = existing.serverQueueId || existing.id;
+                    if (!addedServerTasks.includes(existing)) addedServerTasks.push(existing);
+                } else if (isServerTask && existing.serverQueueRegistered === false && !addedServerTasks.includes(existing)) {
+                    addedServerTasks.push(existing);
+                }
+                continue;
+            } else {
                 const serverSongKey = isServerTask ? this.getServerSongKey(song, quality) : null;
                 const taskId = song.taskId || this.createTaskId(isServerTask ? 'server' : 'dl');
                 const useNativeDownload = !isServerTask && this.shouldUseNativeDownload(songs.length, quality);
@@ -843,6 +916,7 @@ export class DownloadManager {
                     nativeDownloadDispatched: false,
                     serverSongKey,
                     quality: quality,
+                    requestedQuality: isServerTask ? quality : undefined,
                     status: 'waiting',
                     errorMsg: '',
                     progress: 0,
@@ -1460,6 +1534,7 @@ export class DownloadManager {
                 useNativeDownload: !!t.useNativeDownload,
                 nativeDownloadDispatched: !!t.nativeDownloadDispatched,
                 quality: t.quality,
+                requestedQuality: t.requestedQuality || t.quality,
                 status: t.isServer
                     ? t.status
                     : (['waiting', 'starting', 'downloading', 'tagging'].includes(t.status) ? 'paused' : t.status),
@@ -1488,23 +1563,27 @@ export class DownloadManager {
             const data = JSON.parse(raw);
             if (!Array.isArray(data) || data.length === 0) return;
 
-            data.forEach(t => {
+            const restoredTasks = data.map(t => {
+                const restoredId = /^[A-Za-z0-9_-]+$/.test(String(t.id || ''))
+                    ? t.id
+                    : this.createTaskId(t.isServer ? 'server' : 'dl');
                 const restoredStatus = !t.isServer && ['waiting', 'starting', 'downloading', 'tagging'].includes(t.status)
                     ? 'paused'
                     : t.status;
-                this.tasks.push({
-                    id: /^[A-Za-z0-9_-]+$/.test(String(t.id || '')) ? t.id : this.createTaskId(t.isServer ? 'server' : 'dl'),
+                return {
+                    id: restoredId,
                     song: t.song,
                     isServer: t.isServer || false,
                     // Migrate server tasks left by older versions without allowing
                     // the browser scheduler to start a duplicate download.
                     serverManaged: !!t.isServer,
                     serverQueueRegistered: false,
-                    serverQueueId: t.isServer ? t.id : null,
+                    serverQueueId: t.isServer ? restoredId : null,
                     useNativeDownload: !t.isServer && (t.useNativeDownload !== false),
                     nativeDownloadDispatched: !!t.nativeDownloadDispatched,
                     serverSongKey: t.serverSongKey || '',
                     quality: t.quality || '',
+                    requestedQuality: t.requestedQuality || t.quality || '',
                     // Local downloading → reset to waiting to re-download; server/finished → keep status
                     status: restoredStatus,
                     progress: t.progress || 0,
@@ -1517,8 +1596,14 @@ export class DownloadManager {
                     hasLyric: t.hasLyric === 'checking' ? undefined : t.hasLyric,
                     lyricRetryCount: t.lyricRetryCount || 0,
                     controller: null
-                });
+                };
             });
+
+            const restoredServerTasks = this.deduplicateServerItems(restoredTasks.filter(task => task.isServer));
+            this.tasks.push(
+                ...restoredTasks.filter(task => !task.isServer),
+                ...restoredServerTasks
+            );
 
             this.renderList();
             // Start queued local tasks

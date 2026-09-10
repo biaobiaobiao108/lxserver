@@ -8,7 +8,6 @@ export function initUsersFeature(context: AdminFeatureContext) {
         document.getElementById('add-user-btn')?.addEventListener('click', () => app.showAddUserModal());
         document.getElementById('refresh-users-btn')?.addEventListener('click', async () => {
             try {
-                await app.saveConfig(true);
                 await app.request('/api/admin/reload', { method: 'POST' });
                 app.loadUsers();
                 app.loadDashboard();
@@ -134,6 +133,11 @@ export function initUsersFeature(context: AdminFeatureContext) {
             app.renderUsers();
         } catch (err) {
             console.error('Failed to load users:', err);
+            app.renderViewError(
+                document.getElementById('users-list'),
+                '用户列表加载失败: ' + err.message,
+                'app.loadUsers()'
+            );
         }
     }
 

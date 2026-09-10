@@ -127,16 +127,19 @@ export function initShellFeature(context: AdminFeatureContext) {
                 app.showApp();
                 app.loadDashboard();
             } else {
-                errorEl.textContent = '密码错误';
+                errorEl.textContent = res.message || '密码错误';
             }
         } catch (err) {
-            errorEl.textContent = '登录失败，请重试';
+            const message = err instanceof Error ? err.message : '';
+            errorEl.textContent = /[\u4e00-\u9fff]/.test(message) ? message : '登录失败，请重试';
         }
     }
 
-    function logout() {
+    function logout(notice?: string) {
         void fetch('/api/logout', { method: 'POST' }).catch(() => undefined);
         credentialStorage.removeItem('lx_auth');
+        // Survive the reload so the login overlay can explain why the user is back here.
+        if (notice) credentialStorage.setItem('lx_auth_notice', notice);
         location.reload();
     }
 

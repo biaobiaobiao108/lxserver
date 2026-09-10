@@ -97,3 +97,17 @@ export function formatUptime(seconds: number): string {
 
     return parts.join(' ');
 }
+
+export function renderViewError(container: HTMLElement | null, message: string, retryAction?: string): void {
+    if (!container) return;
+    const retry = retryAction
+        ? `<div style="margin-top: 0.75rem;"><button type="button" class="btn-secondary" style="padding: 0.4rem 1rem; font-size: 0.85rem;" onclick="${retryAction}">重试</button></div>`
+        : '';
+    container.innerHTML = `
+        <div role="alert" style="color: var(--accent-error); text-align: center; padding: 1.5rem;">
+            <p style="margin: 0;">${escapeHtml(message)}</p>
+            ${retry}
+        </div>
+    `;
+    container.hidden = false;
+}

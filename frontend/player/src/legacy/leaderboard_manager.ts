@@ -1,6 +1,7 @@
 // @ts-nocheck
 // This legacy-compatible module is compiled as an isolated browser bundle.
 import { safeInlineJson, safeInlineString } from '../player_security';
+import { toUserMessage } from '../player_notifications';
 /**
  * Leaderboard Manager for LX Music Web
  * 排行榜功能模块 — 风格与 SongListManager 保持一致
@@ -75,7 +76,7 @@ window.LeaderboardManager = (function () {
             if (e?.name === 'AbortError' || requestSerial !== boardsRequestSerial) return;
             console.error('[Leaderboard] loadBoards failed:', e);
             document.getElementById('lb-boards-list').innerHTML =
-                `<div class="p-4 text-red-500 text-sm">加载失败: ${e.message}</div>`;
+                `<div class="p-4 text-red-500 text-sm">加载失败: ${toUserMessage(e)}</div>`;
         } finally {
             if (requestSerial === boardsRequestSerial) showBoardsLoading(false);
         }
@@ -154,7 +155,7 @@ window.LeaderboardManager = (function () {
         } catch (e) {
             if (e?.name === 'AbortError' || requestSerial !== songsRequestSerial) return;
             console.error('[Leaderboard] loadSongs failed:', e);
-            container.innerHTML = `<div class="text-center text-red-500 p-10">加载失败: ${e.message}</div>`;
+            container.innerHTML = `<div class="text-center text-red-500 p-10">加载失败: ${toUserMessage(e)}</div>`;
         } finally {
             if (requestSerial === songsRequestSerial) state.loading = false;
         }

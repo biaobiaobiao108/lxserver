@@ -3,6 +3,7 @@ import {
     safeInlineJson,
     safeInlineString,
 } from '../player_security';
+import { toUserMessage } from '../player_notifications';
 
 export type PlaybackState = {
     currentLoadingSongId: any;
@@ -111,6 +112,10 @@ export function initPlaybackFeature(context: PlaybackFeatureContext) {
     // play() against the previous (or empty) media source.
     let playAfterSourceReady = false;
     let manualPlaybackRecoveryCleanup: (() => void) | null = null;
+    // 连续播放失败计数：限制自动跳过次数，避免整张歌单不可播时无限循环。
+    let consecutivePlaybackFailures = 0;
+    let noSourceHintShown = false;
+    const MAX_CONSECUTIVE_PLAYBACK_FAILURES = 3;
 
     function clearManualPlaybackRecovery() {
         manualPlaybackRecoveryCleanup?.();
@@ -168,7 +173,7 @@ async function runRecoveryFlow(error) {
     if (currentStepIndex >= steps.length) {
         // All recovery steps exhausted
         setPlayerStatus('播放失败');
-        showError(`播放失败: ${error.message || '未知错误'}`);
+        showError(`播放失败: ${toUserMessage(error, '未知错误')}`);
         updatePlayButton(false);
         return;
     }
@@ -222,6 +227,31 @@ async function runRecoveryFlow(error) {
             error.message.includes('未找到支持') ||
             error.message.includes('not supported')
         );
+
+        consecutivePlaybackFailures++;
+
+        // 音源缺失属于配置问题而非单曲问题：给出常驻引导而不是一闪而过的提示。
+        if (isPlatformNotSupported && !noSourceHintShown) {
+            noSourceHintShown = true;
+            showError('未找到可用的自定义音源，无法解析该平台的歌曲。请在设置中添加或启用对应平台的音源。', {
+                actionLabel: '去设置音源',
+                onAction: () => (window as any).openCustomSourceModal?.(),
+                duration: 0,
+            });
+        }
+
+        // 硬性兜底：连续失败过多说明当前歌单整体不可播，停止自动跳过。
+        if (consecutivePlaybackFailures >= MAX_CONSECUTIVE_PLAYBACK_FAILURES) {
+            setPlayerStatus('播放失败', false);
+            if (window._autoSkipTimer) {
+                clearTimeout(window._autoSkipTimer);
+                window._autoSkipTimer = null;
+            }
+            updatePlayButton(false);
+            showError(`连续 ${MAX_CONSECUTIVE_PLAYBACK_FAILURES} 首歌曲播放失败，已停止自动跳过。请检查音源设置或稍后重试。`);
+            return;
+        }
+
         setPlayerStatus('播放失败，即将跳过', null, true);
         if (window._autoSkipTimer) clearTimeout(window._autoSkipTimer);
         window._autoSkipTimer = setTimeout(() => playNext(0, false), isPlatformNotSupported ? 2000 : 3000);
@@ -566,6 +596,8 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
             audio.muted = isMuted;
 
             await audio.play();
+            consecutivePlaybackFailures = 0;
+            noSourceHintShown = false;
 
             if (shouldConfirmCacheAfterPlay) {
                 // 非在线解析（如命中本地/服务器缓存），只有真正启动播放后才提示命中。
@@ -640,7 +672,7 @@ async function playSong(song, index, forceQuality = null, noPlay = false, isRetr
             await runRecoveryFlow(error);
         } else {
             setPlayerStatus('播放失败');
-            showError(`播放失败: ${error.message || '未知错误'}`);
+            showError(`播放失败: ${toUserMessage(error, '未知错误')}`);
             updatePlayButton(false);
         }
     } finally {
@@ -776,6 +808,7 @@ async function addToDefaultList(song) {
         renderMyLists(context.getCurrentListData());
     } catch (e) {
         console.error('[DefaultList] 添加失败:', e);
+        showError('保存播放列表失败，请稍后重试');
     }
 }
 
@@ -1178,6 +1211,7 @@ async function togglePlay() {
 
             await audio.play();
             updatePlayButton(true);
+            consecutivePlaybackFailures = 0;
 
             if (settings.enableCrossfade && !isMuted && effectiveVol > 0) {
                 fadeVolume(effectiveVol, 600);

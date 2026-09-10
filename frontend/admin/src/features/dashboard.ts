@@ -7,6 +7,11 @@ export function initDashboardFeature(context: AdminFeatureContext) {
         app.updateGreeting();
         try {
             const status = await app.request('/api/status');
+            const errorEl = document.getElementById('dashboard-error');
+            if (errorEl) {
+                errorEl.hidden = true;
+                errorEl.innerHTML = '';
+            }
 
             // 更新顶部概览卡片
             document.getElementById('stat-users').textContent = status.users;
@@ -27,6 +32,11 @@ export function initDashboardFeature(context: AdminFeatureContext) {
 
         } catch (err) {
             console.error('Failed to load dashboard:', err);
+            app.renderViewError(
+                document.getElementById('dashboard-error'),
+                '仪表盘数据加载失败: ' + err.message,
+                'app.loadDashboard()'
+            );
         }
     }
 

@@ -9,8 +9,7 @@ export function initConfigFeature(context: AdminFeatureContext) {
             event.preventDefault();
             app.saveConfig();
         });
-        document.getElementById('reload-config-btn')?.addEventListener('click', async () => {
-            await app.saveConfig(true);
+        document.getElementById('reload-config-btn')?.addEventListener('click', () => {
             app.loadConfig();
         });
         document.querySelector('input[name="user.enablePublicFavorites"]')?.addEventListener('change', () => {
@@ -25,6 +24,11 @@ export function initConfigFeature(context: AdminFeatureContext) {
         try {
             const config = await app.request('/api/config');
             app.configLoaded = true;
+            const loadErrorEl = document.getElementById('config-load-error');
+            if (loadErrorEl) {
+                loadErrorEl.hidden = true;
+                loadErrorEl.innerHTML = '';
+            }
             const form = document.getElementById('config-form');
 
             form.elements['serverName'].value = config.serverName || '';
@@ -149,6 +153,11 @@ export function initConfigFeature(context: AdminFeatureContext) {
             }
         } catch (err) {
             console.error('Failed to load config:', err);
+            app.renderViewError(
+                document.getElementById('config-load-error'),
+                '配置加载失败: ' + err.message,
+                'app.loadConfig()'
+            );
         }
     }
 
@@ -169,7 +178,10 @@ export function initConfigFeature(context: AdminFeatureContext) {
     }
 
     async function saveConfig(silent = false) {
-        if (!app.configLoaded) return;
+        if (!app.configLoaded) {
+            showError('配置尚未加载，无法保存。请先点击“重新加载”获取服务器配置后再试。');
+            return;
+        }
         const form = document.getElementById('config-form');
         const formData = new FormData(form);
 

@@ -73,7 +73,7 @@ export function initSearchFeature(context: SearchFeatureContext) {
         const isHeader = button.id === 'artist-header-fav-btn';
         button.className = isHeader
             ? `absolute top-2 right-12 md:top-4 md:right-16 w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full transition-all z-30 shadow-sm active:scale-90 ${favorited ? 'bg-rose-500 text-white' : 'bg-black/10 hover:bg-black/20 dark:bg-white/10 dark:hover:bg-white/20 t-text-main'}`
-            : `search-result-favorite-btn absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}`;
+            : `search-result-favorite-btn absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100'}`;
         button.title = favorited ? '取消收藏' : '收藏歌手';
         button.setAttribute('aria-label', favorited ? '取消收藏' : '收藏歌手');
     };
@@ -88,7 +88,7 @@ export function initSearchFeature(context: SearchFeatureContext) {
         if (typeof toggle !== 'function') return;
         const favorited = await toggle(id, source, name, image, artistName);
         const button = element as HTMLButtonElement;
-        button.className = `search-result-favorite-btn absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}`;
+        button.className = `search-result-favorite-btn absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${favorited ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100'}`;
         button.title = favorited ? '取消收藏' : '收藏专辑';
         button.setAttribute('aria-label', favorited ? '取消收藏' : '收藏专辑');
     };
@@ -832,7 +832,7 @@ function renderSingerResults(list) {
                          data-event-error-action="fallback-image"
                          class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500">
                 </div>
-                <button type="button" id="singer-fav-${escapeHtmlText(singerId)}" aria-label="${isArtistFavorited(singerId, singerSource) ? '取消收藏' : '收藏歌手'}" class="search-result-favorite-btn absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${isArtistFavorited(singerId, singerSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
+                <button type="button" id="singer-fav-${escapeHtmlText(singerId)}" aria-label="${isArtistFavorited(singerId, singerSource) ? '取消收藏' : '收藏歌手'}" class="search-result-favorite-btn absolute -top-1 -right-1 w-6 h-6 md:w-7 md:h-7 rounded-full flex items-center justify-center transition-all shadow-md z-10 ${isArtistFavorited(singerId, singerSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100'}"
                         title="${isArtistFavorited(singerId, singerSource) ? '取消收藏' : '收藏歌手'}"
                         data-event-click-action="search-toggle-artist-favorite" data-event-click-args="[${safeInlineString(singerId)}, ${safeInlineString(singerSource)}, ${safeInlineString(singerName)}, ${safeInlineString(singer.picUrl || '')}]" data-event-stop="true">
                     <i class="fas fa-heart text-[10px]"></i>
@@ -890,7 +890,7 @@ function renderAlbumResults(list) {
                 <img src="${escapeHtmlText(albumImage)}" alt="${escapeHtmlText(albumName)}封面" width="320" height="320" loading="lazy" decoding="async"
                      data-event-error-action="fallback-image"
                      class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                <button type="button" id="album-fav-${escapeHtmlText(albumId)}" aria-label="${isAlbumFavorited(albumId, albumSource) ? '取消收藏' : '收藏专辑'}" class="search-result-favorite-btn absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${isAlbumFavorited(albumId, albumSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-0 group-hover:opacity-100'}"
+                <button type="button" id="album-fav-${escapeHtmlText(albumId)}" aria-label="${isAlbumFavorited(albumId, albumSource) ? '取消收藏' : '收藏专辑'}" class="search-result-favorite-btn absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition-all shadow-sm ${isAlbumFavorited(albumId, albumSource) ? 'bg-rose-500 text-white opacity-100' : 'bg-black/30 text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100'}"
                         title="${isAlbumFavorited(albumId, albumSource) ? '取消收藏' : '收藏专辑'}"
                         data-event-click-action="search-toggle-album-favorite" data-event-click-args="[${safeInlineString(albumId)}, ${safeInlineString(albumSource)}, ${safeInlineString(albumName)}, ${safeInlineString(item.picUrl || '')}, ${safeInlineString(item.artistName || '')}]" data-event-stop="true">
                     <i class="fas fa-heart text-xs"></i>

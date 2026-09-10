@@ -152,6 +152,77 @@
     }
 
     /**
+     * Applies dialog semantics and keyboard behaviour to the ad-hoc overlays built
+     * by showSelect/showInput: role, accessible label, initial focus, focus trap,
+     * Escape/Enter handling and focus restoration. Returns a restore-focus callback.
+     */
+    let dialogSeq = 0;
+
+    function enhanceDialog(modal, onConfirm, onCancel) {
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        if (!modal.hasAttribute('tabindex')) modal.setAttribute('tabindex', '-1');
+
+        const title = modal.querySelector('h3');
+        if (title) {
+            const titleId = `lx-dialog-title-${++dialogSeq}`;
+            title.id = titleId;
+            modal.setAttribute('aria-labelledby', titleId);
+        }
+
+        const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+        const focusableElements = () => Array.from(modal.querySelectorAll(
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )).filter(el => el.getClientRects().length > 0);
+
+        modal.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                onCancel();
+                return;
+            }
+            if (event.key === 'Enter') {
+                // Focused buttons activate themselves; Enter on 取消 must not confirm.
+                if (document.activeElement instanceof HTMLButtonElement) return;
+                event.preventDefault();
+                onConfirm();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+
+            const focusable = focusableElements();
+            if (!focusable.length) {
+                event.preventDefault();
+                modal.focus({ preventScroll: true });
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (!modal.contains(document.activeElement)) {
+                event.preventDefault();
+                first.focus({ preventScroll: true });
+            } else if (event.shiftKey && document.activeElement === first) {
+                event.preventDefault();
+                last.focus({ preventScroll: true });
+            } else if (!event.shiftKey && document.activeElement === last) {
+                event.preventDefault();
+                first.focus({ preventScroll: true });
+            }
+        });
+
+        requestAnimationFrame(() => {
+            if (modal.contains(document.activeElement)) return;
+            const focusable = focusableElements();
+            (focusable[0] || modal).focus({ preventScroll: true });
+        });
+
+        return () => {
+            if (previousFocus && previousFocus.isConnected) previousFocus.focus({ preventScroll: true });
+        };
+    }
+
+    /**
      * Fresh Confirmation Modal (Clean & Modern)
      */
     function showSelect(title, message, options = {}) {
@@ -198,7 +269,11 @@
 
             document.body.appendChild(modal);
 
+            let closed = false;
+            let restoreFocus = () => {};
             const close = (result) => {
+                if (closed) return;
+                closed = true;
                 const content = modal.querySelector('.lx-modal-in');
                 if (content) {
                     content.style.transform = 'scale(0.9) translateY(10px)';
@@ -207,9 +282,12 @@
                 }
                 setTimeout(() => {
                     modal.remove();
+                    restoreFocus();
                     resolve(result);
                 }, 300);
             };
+
+            restoreFocus = enhanceDialog(modal, () => close(true), () => close(false));
 
             modal.querySelector('#confirm-ok').onclick = () => close(true);
             modal.querySelector('#confirm-cancel').onclick = () => close(false);
@@ -272,6 +350,8 @@
             if (defaultValue) input.select();
 
             const close = (result) => {
+                if (closed) return;
+                closed = true;
                 const content = modal.querySelector('.lx-modal-in');
                 if (content) {
                     content.style.transform = 'scale(0.9) translateY(10px)';
@@ -280,17 +360,17 @@
                 }
                 setTimeout(() => {
                     modal.remove();
+                    restoreFocus();
                     resolve(result);
                 }, 300);
             };
 
+            let closed = false;
+            let restoreFocus = () => {};
+            restoreFocus = enhanceDialog(modal, () => close(input.value), () => close(null));
+
             modal.querySelector('#confirm-ok').onclick = () => close(input.value);
             modal.querySelector('#confirm-cancel').onclick = () => close(null);
-
-            input.onkeydown = (e) => {
-                if (e.key === 'Enter') close(input.value);
-                if (e.key === 'Escape') close(null);
-            };
         });
     }
 

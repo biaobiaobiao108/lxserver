@@ -3338,6 +3338,26 @@ aside {
         visibility: visible;
         pointer-events: auto;
     }
+
+    /* 触屏设备没有悬停：让退出按钮常驻在用户名旁边，
+       避免点击用户名时在看不到按钮的情况下静默触发退出确认。 */
+    #header-user-display {
+        cursor: default;
+    }
+
+    .header-user-logout {
+        position: static;
+        inset: auto;
+        transform: none;
+        translate: none;
+        opacity: 1;
+        width: auto;
+        height: auto;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.5rem;
+        margin-inline-start: 0.25rem;
+        cursor: pointer;
+    }
 }
 
 @media (forced-colors: active) {

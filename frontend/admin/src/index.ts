@@ -29,6 +29,7 @@ import {
     formatMemory,
     formatTime,
     formatUptime,
+    renderViewError,
     safeInlineString,
     safeResourceUrl,
     stringToColor,
@@ -53,7 +54,7 @@ class App {
     request: (url: string, options?: RequestInit) => Promise<any>;
 
     constructor() {
-        this.request = createAdminRequest(() => this.password, () => this.logout());
+        this.request = createAdminRequest(() => this.password, (message) => this.logout(message));
         this.initializeFeatures();
         this.init();
     }
@@ -65,6 +66,7 @@ class App {
             formatMemory,
             formatTime,
             formatUptime,
+            renderViewError,
             safeInlineString,
             safeResourceUrl,
             stringToColor,
@@ -101,6 +103,13 @@ class App {
             this.showApp();
             void this.loadConfig();
             void this.loadDashboard();
+        } else {
+            const notice = window.sessionStorage.getItem('lx_auth_notice');
+            if (notice) {
+                window.sessionStorage.removeItem('lx_auth_notice');
+                const errorEl = document.getElementById('login-error');
+                if (errorEl) errorEl.textContent = notice;
+            }
         }
     }
 }

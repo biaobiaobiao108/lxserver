@@ -36,7 +36,7 @@ import { loadTokenConfig } from './token_management';
 import { initCustomSelectManager } from './custom_select';
 import { initSearchTips } from './search_tips';
 import { showInput, showOptions, showSelect } from './player_dialogs';
-import { initPlayerNotifications } from './player_notifications';
+import { initPlayerNotifications, toUserMessage } from './player_notifications';
 import { loadPlayerFeature } from './player_feature_loader';
 import { setPlayerDrawerOpen } from './features/player_drawer';
 import { initQueueFeature } from './features/queue';
@@ -551,10 +551,11 @@ songListManager = createSongListManager({ downloadSong, handleBatchSelect });
 registerSongListManager(songListManager);
 downloadManager = new DownloadManager();
 registerDownloadManager(downloadManager);
-registerPlayerEventAction('open-local-mode-settings', () => {
+function openLocalModeSettings() {
     switchTab('settings');
     setTimeout(() => document.getElementById('btn-mode-local')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
-});
+}
+registerPlayerEventAction('open-local-mode-settings', () => openLocalModeSettings());
 registerPlayerEventAction('update-server-cache-location', (_event, element, args) => {
     const value = args[0] ?? (element as HTMLSelectElement).value;
     updateSetting('serverCacheLocation', value);
@@ -989,6 +990,13 @@ const userSessionReady = Promise.race([
                         console.log('[Auth] 用户 Token 已失效，已自动续签。');
                     } else {
                         console.log('[Auth] 用户 Token 已失效且无法自动续签，请重新登录。');
+                        // 明确告知登录已过期，并提供一键回到登录入口的操作，避免只显示
+                        // "已登录" 与 "请先登录" 相互矛盾的界面而没有任何解释。
+                        showError('登录状态已过期，请重新登录以继续同步收藏与歌单', {
+                            actionLabel: '去登录',
+                            onAction: () => openLocalModeSettings(),
+                            duration: 0,
+                        });
                     }
                 }
             } catch (e) {
@@ -1359,8 +1367,8 @@ type PlayerViewTransitionDocument = Document & {
     }) => unknown;
 };
 
-const PLAYER_VIEW_ORDER = ['search', 'songlist', 'leaderboard', 'localmusic', 'settings', 'about'];
-const PLAYER_MAIN_VIEW_SELECTOR = '#view-search, #view-songlist, #view-leaderboard, #view-localmusic, #view-settings, #view-about';
+const PLAYER_VIEW_ORDER = ['search', 'songlist', 'leaderboard', 'localmusic', 'favorites', 'settings', 'about'];
+const PLAYER_MAIN_VIEW_SELECTOR = '#view-search, #view-songlist, #view-leaderboard, #view-localmusic, #view-favorites, #view-settings, #view-about';
 const PLAYER_VIEW_MOTION_DURATION = 320;
 
 function prefersReducedPlayerMotion() {
@@ -4147,6 +4155,15 @@ function handleFavoritesClick() {
         favTab.classList.remove('t-text-muted');
     }
 
+    // 未登录时展示登录引导页，而不是静默无响应。
+    if (!isUserLoggedIn()) {
+        const favoritesView = document.getElementById('view-favorites');
+        if (favoritesView) {
+            transitionPlayerView(favoritesView, getPlayerViewDirection('favorites'));
+            return;
+        }
+    }
+
     toggleFavorites();
 }
 
@@ -4388,7 +4405,12 @@ async function toggleLove() {
     }
 
     updatePlayerInfo(song);
-    await pushDataChange(activeListData);
+    try {
+        await pushDataChange(activeListData);
+    } catch (e) {
+        console.error('[Love] 收藏同步失败:', e);
+        showError(toUserMessage(e, '收藏同步失败，请稍后重试'));
+    }
 }
 
 async function handleRefreshList(listId, event, silent = false) {
@@ -4623,7 +4645,18 @@ window.handleLocalLogin = handleLocalLogin;
 window.handleSyncLogout = handleSyncLogout;
 window.resetAllSettings = resetAllSettings;
 
+// 读取服务端返回的可读错误信息，优先使用 JSON 中的 message 字段。
+async function resolvePushErrorMessage(res) {
+    try {
+        const data = await res.json();
+        const message = data?.message || data?.error;
+        if (typeof message === 'string' && message.trim()) return message.trim();
+    } catch (_) { }
+    return '同步失败，请检查网络或重新登录';
+}
+
 // Helper to Push Changes to Remote
+// 推送失败必须抛出异常，调用方才能回滚界面并提示用户，避免"看似成功实则未写入"。
 async function pushDataChange(customListData) {
     const listToSave = customListData || currentListData;
     if (!listToSave) return;
@@ -4631,62 +4664,54 @@ async function pushDataChange(customListData) {
     // 1. 优先同步保存到客户端 IndexedDB 本地缓存
     await window.ListStore.set(listToSave).catch(e => console.error('[IDBStore] 保存失败:', e));
 
-    const isUserLoggedIn = !!userToken && localStorage.getItem('lx_sync_mode') === 'local';
     const isPublicList = listToSave.username === '_open' || listToSave.username === 'default';
 
     // 2. 如果是公开/未登录用户且开启了公开收藏开关
     if (isPublicList && window.lx_config?.['user.enablePublicFavorites']) {
         const isAdmin = !!getCredential('lx_admin_password');
-        if (isAdmin) {
-            try {
-                const res = await fetch('/api/user/list?user=_open', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...getUserAuthHeaders()
-                    },
-                    body: JSON.stringify(listToSave)
-                });
-                if (!res.ok) {
-                    const errorText = await res.text();
-                    console.error('[PublicList] 推送保存公共歌单失败:', errorText);
-                    showError('保存公共歌单失败: ' + errorText);
-                    return;
-                }
-                console.log('[PublicList] 公共歌单成功保存至服务器');
-            } catch (e) {
-                console.error('[PublicList] 推送公共歌单网络异常:', e);
-            }
+        if (!isAdmin) {
+            throw new Error('保存公开歌单需要管理员权限，请先登录管理员账号');
         }
+        const res = await fetch('/api/user/list?user=_open', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                ...getUserAuthHeaders()
+            },
+            body: JSON.stringify(listToSave)
+        });
+        if (!res.ok) {
+            const errorMsg = await resolvePushErrorMessage(res);
+            console.error('[PublicList] 推送保存公共歌单失败:', errorMsg);
+            throw new Error(errorMsg);
+        }
+        console.log('[PublicList] 公共歌单成功保存至服务器');
         return;
     }
 
     // 3. 登录普通用户的 SyncManager 推送逻辑
-    try {
-        if (window.SyncManager && window.SyncManager.client) {
-            await window.SyncManager.push(listToSave);
-            console.log('Data Pushed to Remote');
-        } else {
-            // 本地无同步模式：调用 REST API 推送给当前用户
-            const headers = getUserAuthHeaders();
-            if (headers['x-user-name'] === '_open') {
-                const syncUser = localStorage.getItem('lx_sync_user');
-                if (syncUser) headers['x-user-name'] = syncUser;
-                else delete headers['x-user-name'];
-            }
-            const res = await fetch('/api/user/list', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...headers
-                },
-                body: JSON.stringify(listToSave)
-            });
-            if (!res.ok) throw new Error(await res.text());
-        }
-    } catch (e) {
-        console.error('Push Failed', e);
+    if (window.SyncManager && window.SyncManager.client) {
+        await window.SyncManager.push(listToSave);
+        console.log('Data Pushed to Remote');
+        return;
     }
+
+    // 本地无同步模式：调用 REST API 推送给当前用户
+    const headers = getUserAuthHeaders();
+    if (headers['x-user-name'] === '_open') {
+        const syncUser = localStorage.getItem('lx_sync_user');
+        if (syncUser) headers['x-user-name'] = syncUser;
+        else delete headers['x-user-name'];
+    }
+    const res = await fetch('/api/user/list', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            ...headers
+        },
+        body: JSON.stringify(listToSave)
+    });
+    if (!res.ok) throw new Error(await resolvePushErrorMessage(res));
 }
 
 async function refreshUserListData() {

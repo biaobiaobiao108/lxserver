@@ -1,4 +1,5 @@
 import { safeImageUrl, safeInlineString } from '../player_security';
+import { toUserMessage } from '../player_notifications';
 
 export interface CommentsFeatureContext {
     getActiveSong: () => any | null;
@@ -183,7 +184,7 @@ export function initCommentsFeature(context: CommentsFeatureContext) {
             updatePaginationUI(data.total, data.maxPage);
         } catch (error) {
             console.error('Fetch comments failed:', error);
-            if (list) list.innerHTML = `<div class="text-center py-10 text-red-400 font-bold">加载失败: ${context.escapeHtmlText(error instanceof Error ? error.message : error)}</div>`;
+            if (list) list.innerHTML = `<div class="text-center py-10 text-red-400 font-bold">加载失败: ${context.escapeHtmlText(toUserMessage(error))}</div>`;
         } finally {
             if (loader) loader.classList.add('hidden');
             isCommentLoading = false;

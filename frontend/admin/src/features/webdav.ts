@@ -236,6 +236,11 @@ export function initWebDAVFeature(context: AdminFeatureContext) {
             }).join('');
         } catch (err) {
             console.error('Failed to load sync logs:', err);
+            app.renderViewError(
+                document.getElementById('sync-logs-content'),
+                '同步日志加载失败: ' + err.message,
+                'app.loadSyncLogs()'
+            );
         }
     }
 

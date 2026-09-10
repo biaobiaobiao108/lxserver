@@ -231,6 +231,7 @@
             <div class="content-wrapper">
                 <!-- 仪表盘视图 -->
                 <div id="view-dashboard" class="view active">
+                    <div id="dashboard-error" hidden></div>
                     <div class="welcome-section">
                         <h1><span id="greeting-text" class="greeting-text">你好</span>，管理员 👋</h1>
                         <p id="dashboard-date">欢迎回到 LX Sync Server 管理控制台</p>
@@ -515,6 +516,7 @@
 
                 <!-- 系统配置视图 -->
                 <div id="view-config" class="view">
+                    <div id="config-load-error" hidden></div>
                     <form id="config-form" class="config-panels-layout">
 
                         <!-- 基本配置卡片 -->
@@ -1302,7 +1304,7 @@
             <div class="modal-body">
                 <div class="form-group">
                     <label for="edit-password-input">新密码</label>
-                    <input type="text" id="edit-password-input" class="form-input" placeholder="请输入新密码">
+                    <input type="password" id="edit-password-input" class="form-input" placeholder="请输入新密码" autocomplete="new-password">
                 </div>
             </div>
             <div class="modal-footer">

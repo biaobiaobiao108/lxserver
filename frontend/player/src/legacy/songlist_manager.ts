@@ -3,6 +3,7 @@
  * Song List Manager for LX Music Web
  * Handles fetching, rendering and interactions for the "Song List" (Playlist) feature.
  */
+import { toUserMessage } from '../player_notifications';
 
 export type SongListManagerApi = ReturnType<typeof createSongListManager>;
 export type SongListManagerContext = {
@@ -359,7 +360,7 @@ export function createSongListManager(context: SongListManagerContext) {
         } catch (e) {
             if (e?.name === 'AbortError' || requestSerial !== listRequestSerial) return;
             console.error('[SongList] Load list failed:', e);
-            container.innerHTML = `<div class="col-span-full py-20 text-center text-red-500">加载失败: ${e.message}</div>`;
+            container.innerHTML = `<div class="col-span-full py-20 text-center text-red-500">加载失败: ${toUserMessage(e)}</div>`;
         } finally {
             if (requestSerial === listRequestSerial) {
                 listLoading = false;
@@ -496,7 +497,7 @@ export function createSongListManager(context: SongListManagerContext) {
             if (e?.name === 'AbortError' || requestSerial !== detailRequestSerial) return false;
             console.error('[SongList] Load detail failed:', e);
             if (page === 1) {
-                listContainer.innerHTML = `<div class="text-center text-red-500 p-10">加载失败: ${e.message}</div>`;
+                listContainer.innerHTML = `<div class="text-center text-red-500 p-10">加载失败: ${toUserMessage(e)}</div>`;
             }
             return false;
         } finally {
@@ -936,7 +937,7 @@ export function createSongListManager(context: SongListManagerContext) {
             } catch (e) {
                 if (e?.name === 'AbortError' || requestSerial !== listRequestSerial) return;
                 console.error('[SongList] Search failed:', e);
-                container.innerHTML = `<div class="col-span-full py-20 text-center text-red-500">搜索失败: ${e.message}</div>`;
+                container.innerHTML = `<div class="col-span-full py-20 text-center text-red-500">搜索失败: ${toUserMessage(e)}</div>`;
             } finally {
                 if (requestSerial === listRequestSerial) listLoading = false;
             }

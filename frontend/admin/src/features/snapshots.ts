@@ -1,4 +1,5 @@
 import type { AdminFeatureContext } from '../types';
+import { readApiErrorMessage } from '../api';
 import { safeInlineString } from '../utils';
 
 export function initSnapshotsFeature(context: AdminFeatureContext) {
@@ -35,9 +36,11 @@ export function initSnapshotsFeature(context: AdminFeatureContext) {
                 const snapshotId = String(item.id || '');
                 const snapshotIdHtml = app.escapeHtml(snapshotId);
                 const snapshotIdArg = safeInlineString(snapshotId);
+                const snapshotTime = new Date(item.time).toLocaleString();
+                const snapshotTimeArg = safeInlineString(snapshotTime);
                 return `
             <div class="snapshot-row">
-                <div class="col-time">${new Date(item.time).toLocaleString()}</div>
+                <div class="col-time">${snapshotTime}</div>
                 <div class="col-id" title="${snapshotIdHtml}">snapshot_${snapshotIdHtml}</div>
                 <div class="col-size">${app.formatFileSize(item.size)}</div>
                 <div class="col-actions snapshot-actions">
@@ -50,7 +53,7 @@ export function initSnapshotsFeature(context: AdminFeatureContext) {
                         </svg>
                         下载备份
                     </button>
-                    <button class="btn-restore" onclick="app.restoreSnapshot(${snapshotIdArg})">
+                    <button class="btn-restore" onclick="app.restoreSnapshot(${snapshotIdArg}, ${snapshotTimeArg})">
                         <!-- 恢复图标 -->
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="1 4 1 10 7 10"></polyline>
@@ -59,7 +62,7 @@ export function initSnapshotsFeature(context: AdminFeatureContext) {
                         回滚
                     </button>
                     <!-- [新增] 删除按钮 -->
-                    <button class="btn-delete" onclick="app.deleteSnapshot(${snapshotIdArg})">
+                    <button class="btn-delete" onclick="app.deleteSnapshot(${snapshotIdArg}, ${snapshotTimeArg})">
                         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
                             <polyline points="3 6 5 6 21 6"></polyline>
                             <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -123,8 +126,7 @@ export function initSnapshotsFeature(context: AdminFeatureContext) {
             });
 
             if (!response.ok) {
-                const text = await response.text();
-                throw new Error(text || 'Upload failed');
+                throw new Error(await readApiErrorMessage(response));
             }
 
             showSuccess('上传成功');
@@ -137,8 +139,9 @@ export function initSnapshotsFeature(context: AdminFeatureContext) {
 
     // [新增] 删除快照
 
-    async function deleteSnapshot(id) {
-        if (!(await showSelect('删除快照', '确定要删除这个快照吗？', { danger: true }))) return;
+    async function deleteSnapshot(id, time?: string) {
+        const label = time ? `快照 snapshot_${id}（创建于 ${time}）` : `快照 snapshot_${id}`;
+        if (!(await showSelect('删除快照', `确定要删除${label}吗？\n此操作不可恢复。`, { danger: true }))) return;
 
         const username = document.getElementById('snapshot-user-select')?.value;
         if (!username) return;
@@ -154,8 +157,7 @@ export function initSnapshotsFeature(context: AdminFeatureContext) {
             });
 
             if (!response.ok) {
-                const text = await response.text();
-                throw new Error(text || 'Delete failed');
+                throw new Error(await readApiErrorMessage(response));
             }
 
             app.loadSnapshots();
@@ -212,7 +214,7 @@ export function initSnapshotsFeature(context: AdminFeatureContext) {
             const response = await fetch('/api/backup/download', {
                 headers: { 'X-Frontend-Auth': app.password },
             });
-            if (!response.ok) throw new Error(await response.text() || '备份下载失败');
+            if (!response.ok) throw new Error(await readApiErrorMessage(response));
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -264,8 +266,7 @@ export function initSnapshotsFeature(context: AdminFeatureContext) {
             });
 
             if (!response.ok) {
-                const text = await response.text();
-                throw new Error(text || 'Restore failed');
+                throw new Error(await readApiErrorMessage(response));
             }
 
             const result = await response.json();
@@ -280,14 +281,15 @@ export function initSnapshotsFeature(context: AdminFeatureContext) {
         }
     }
 
-    async function restoreSnapshot(id) {
+    async function restoreSnapshot(id, time?: string) {
         const username = document.getElementById('snapshot-user-select')?.value;
         if (!username) {
             showInfo('请先选择用户');
             return;
         }
 
-        if (!(await showSelect('回滚快照', '警告：此操作将把服务器数据回滚到选定的快照状态！\n\n1. 当前所有未保存的更改将丢失。\n2. 所有客户端的同步状态将被重置。\n3. 客户端连接后，请务必选择【远程覆盖本地】以获取回滚后的数据。\n\n确定要继续吗？', { danger: true }))) {
+        const label = time ? `快照 snapshot_${id}（创建于 ${time}）` : `快照 snapshot_${id}`;
+        if (!(await showSelect('回滚快照', `警告：此操作将把服务器数据回滚到${label}！\n\n1. 当前所有未保存的更改将丢失。\n2. 所有客户端的同步状态将被重置。\n3. 客户端连接后，请务必选择【远程覆盖本地】以获取回滚后的数据。\n\n确定要继续吗？`, { danger: true }))) {
             return;
         }
 

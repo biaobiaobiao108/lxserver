@@ -554,7 +554,7 @@ async function fetchSongUrl(song, quality, isRetry = false, isSilent = false) {
             let result = {};
             try {
                 result = await res.json();
-                if (result.error) errorMsg = result.error;
+                if (result.message || result.error) errorMsg = result.message || result.error;
             } catch (e) { }
             throw { message: errorMsg, attempts: result.attempts };
         }

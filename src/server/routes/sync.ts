@@ -25,7 +25,7 @@ export const createSyncRouter = (): Router => {
         if (!config['user.enableRoot']) {
           const parts = pathname.split('/').filter(Boolean)
           if (parts.length <= 1) {
-            return ctx.text('Root access disabled', 403)
+            return ctx.fail(403, '根路径访问已关闭，请使用 /<用户名>/ah 连接')
           }
         }
         return ctx.text(SYNC_CODE.helloMsg, 200)
@@ -35,7 +35,7 @@ export const createSyncRouter = (): Router => {
         if (!config['user.enableRoot']) {
           const parts = pathname.split('/').filter(Boolean)
           if (parts.length <= 1) {
-            return ctx.text('Root access disabled', 403)
+            return ctx.fail(403, '根路径访问已关闭，请使用 /<用户名>/ah 连接')
           }
         }
         return ctx.text(SYNC_CODE.idPrefix + getServerId(), 200)
@@ -55,7 +55,7 @@ export const createSyncRouter = (): Router => {
         // 2. 如果没有匹配到用户名
         if (!targetUserName) {
           if (!config['user.enableRoot']) {
-            return ctx.text('Access denied: Root path access is disabled. Please use /<username>/ah', 403)
+            return ctx.fail(403, '根路径访问已关闭，请使用 /<用户名>/ah 连接')
           }
         }
 

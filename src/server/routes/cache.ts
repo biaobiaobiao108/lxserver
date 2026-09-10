@@ -5,6 +5,7 @@ import crypto from 'node:crypto'
 import http from 'node:http'
 import https from 'node:https'
 import { Router, type HttpContext } from '../core'
+import { toUserMessage } from '../core/context'
 import { verifyAdminAuth } from '../auth'
 import { verifyUserAuth } from './auth'
 import * as fileCache from '../fileCache'
@@ -61,26 +62,53 @@ const getCacheRequestUsername = (ctx: HttpContext): string | null => {
   return verifyUserAuth(ctx)
 }
 
+type CacheTargetResult = { ok: true; username: string } | { ok: false; error: Response }
+
+/**
+ * 解析缓存请求的目标用户空间。
+ * 公共空间 (_open) 的破坏性写操作必须由管理员发起，
+ * 否则任何匿名访客都能改写或清空多人共用的曲库。
+ */
+const resolveCacheTarget = (
+  ctx: HttpContext,
+  options: { publicWrite?: boolean } = {},
+): CacheTargetResult => {
+  const requested = ctx.headers.get('x-user-name') || ''
+  const isPublic = !requested || requested === 'default' || requested === 'open' || requested === '_open'
+
+  if (isPublic) {
+    if (options.publicWrite && !verifyAdminAuth(ctx.request)) {
+      return { ok: false, error: ctx.fail(403, '权限不足：修改公共本地音乐库需要先验证管理员身份') }
+    }
+    return { ok: true, username: '_open' }
+  }
+
+  const verified = verifyUserAuth(ctx)
+  if (!verified) return { ok: false, error: ctx.fail(401, '登录状态已失效，请重新登录') }
+  return { ok: true, username: verified }
+}
+
 /** 注册本地音乐缓存、下载队列、洗版与文件分发路由 */
 export const createCacheRouter = (): Router => {
   const router = new Router()
 
   // 1. 本地音乐洗版 Remaster APIs
   router.post('/api/music/remaster/start', async (ctx) => {
-    const username = getCacheRequestUsername(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
+
     try {
       const body = await ctx.bodyJson<{ targetQuality?: string; filenames?: string[] }>()
-      const data = await remasterQueue.start(username, String(body?.targetQuality || ''), body?.filenames)
+      const data = await remasterQueue.start(target.username, String(body?.targetQuality || ''), body?.filenames)
       return ctx.json({ success: true, data })
     } catch (err: any) {
-      return ctx.json({ success: false, message: err?.message || '启动洗版失败' }, 400)
+      return ctx.fail(400, toUserMessage(err, '启动洗版失败，请稍后重试'))
     }
   })
 
   router.get('/api/music/remaster/status', (ctx) => {
     const username = getCacheRequestUsername(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     const offset = Number(ctx.query.get('offset') || 0)
     const limit = Number(ctx.query.get('limit') || 200)
     const data = remasterQueue.getStatus(username, offset, limit)
@@ -88,37 +116,25 @@ export const createCacheRouter = (): Router => {
   })
 
   router.post('/api/music/remaster/cancel', (ctx) => {
-    const username = getCacheRequestUsername(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-    const cancelled = remasterQueue.cancel(username)
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
+    const cancelled = remasterQueue.cancel(target.username)
     return ctx.json({ success: true, data: { cancelled } })
   })
 
   // 2. 缓存基础配置与索引同步
   router.post('/api/music/cache/config', async (ctx) => {
-    const reqUsername = ctx.headers.get('x-user-name') || ''
-    const isPublic = !reqUsername || reqUsername === 'default'
-
-    if (!isPublic) {
-      const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-    }
+    // 缓存位置与命名规则是全局设置，公共访客不得修改
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
 
     try {
       const { location, namingPattern } = await ctx.bodyJson<{ location?: string; namingPattern?: string }>()
       let updated = false
 
-      if (location) {
-        if (location !== fileCache.getCacheLocation()) {
-          const config = (global.lx?.config ?? {}) as any
-          if (isPublic && config['user.enablePublicRestriction']) {
-            if (!verifyAdminAuth(ctx.request)) {
-              return ctx.json({ success: false, error: '权限不足：公共用户修改缓存位置受限，请输入管理员密码。' }, 403)
-            }
-          }
-          fileCache.setCacheLocation(location)
-          updated = true
-        }
+      if (location && location !== fileCache.getCacheLocation()) {
+        fileCache.setCacheLocation(location)
+        updated = true
       }
 
       if (namingPattern) {
@@ -130,9 +146,9 @@ export const createCacheRouter = (): Router => {
       if (updated) {
         return ctx.json({ success: true })
       }
-      return ctx.json({ success: true, message: 'No changes' })
-    } catch {
-      return ctx.text('Error', 500)
+      return ctx.json({ success: true, message: '配置未发生变化' })
+    } catch (err) {
+      return ctx.fail(500, toUserMessage(err, '保存缓存配置失败，请稍后重试'))
     }
   })
 
@@ -143,7 +159,7 @@ export const createCacheRouter = (): Router => {
 
     if (!isPublic) {
       const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+      if (!verified) return ctx.fail(401, '登录状态已失效，请重新登录')
       username = verified
     }
 
@@ -151,7 +167,7 @@ export const createCacheRouter = (): Router => {
       await fileCache.syncCacheIndex(username)
       return ctx.json({ success: true, message: 'Sync completed' })
     } catch (e: any) {
-      return ctx.json({ success: false, message: 'Sync failed: ' + e.message }, 500)
+      return ctx.fail(500, '同步缓存索引失败，请稍后重试')
     }
   })
 
@@ -162,7 +178,7 @@ export const createCacheRouter = (): Router => {
 
     if (!isPublic) {
       const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+      if (!verified) return ctx.fail(401, '登录状态已失效，请重新登录')
       username = verified
     }
     const folder = (ctx.query.get('folder') as 'cache' | 'music') || 'music'
@@ -171,60 +187,45 @@ export const createCacheRouter = (): Router => {
   })
 
   router.post('/api/music/cache/mkdir', async (ctx) => {
-    const reqUsername = ctx.headers.get('x-user-name') || ''
-    const isPublic = !reqUsername || reqUsername === '_open' || reqUsername === 'default'
-    let username = '_open'
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
+    const username = target.username
 
-    if (!isPublic) {
-      const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-      username = verified
-    }
     try {
       const { folder, subPath } = await ctx.bodyJson<{ folder?: fileCache.CacheFolder; subPath?: string }>()
-      if (!folder || !subPath) return ctx.text('Missing params', 400)
+      if (!folder || !subPath) return ctx.fail(400, '缺少必要参数：folder、subPath')
       const success = fileCache.createSubDirectory(username, folder, subPath)
       return ctx.json({ success })
-    } catch {
-      return ctx.text('Error', 500)
+    } catch (err) {
+      return ctx.fail(500, toUserMessage(err, '创建目录失败，请稍后重试'))
     }
   })
 
   router.post('/api/music/cache/categorize', async (ctx) => {
-    const reqUsername = ctx.headers.get('x-user-name') || ''
-    const isPublic = !reqUsername || reqUsername === '_open' || reqUsername === 'default'
-    let username = '_open'
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
+    const username = target.username
 
-    if (!isPublic) {
-      const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-      username = verified
-    }
     try {
       const { filenames, subPath } = await ctx.bodyJson<{ filenames?: string[]; subPath?: string }>()
-      if (!Array.isArray(filenames) || typeof subPath !== 'string') return ctx.text('Missing params', 400)
+      if (!Array.isArray(filenames) || typeof subPath !== 'string') return ctx.fail(400, '缺少必要参数：filenames、subPath')
       const result = await fileCache.categorizeFiles(filenames, subPath, username)
       return ctx.json({ success: true, ...result })
-    } catch {
-      return ctx.text('Error', 500)
+    } catch (err) {
+      return ctx.fail(500, toUserMessage(err, '归类文件失败，请稍后重试'))
     }
   })
 
   router.post('/api/music/cache/rename', async (ctx) => {
-    const reqUsername = ctx.headers.get('x-user-name') || ''
-    const isPublic = !reqUsername || reqUsername === '_open' || reqUsername === 'default'
-    let username = '_open'
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
+    const username = target.username
 
-    if (!isPublic) {
-      const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-      username = verified
-    }
     try {
       const result = await fileCache.batchRenameCacheFiles(username)
       return ctx.json(result)
     } catch (e: any) {
-      return ctx.json({ success: false, message: 'Rename failed: ' + e.message }, 500)
+      return ctx.fail(500, toUserMessage(e, '批量重命名失败，请稍后重试'))
     }
   })
 
@@ -239,7 +240,7 @@ export const createCacheRouter = (): Router => {
     const exactQuality = ctx.query.get('exactQuality') === '1' || ctx.query.get('exactQuality') === 'true'
 
     if (!name || !singer || !source || (!songmid && !songId)) {
-      return ctx.text('Missing params', 400)
+      return ctx.fail(400, '缺少必要参数')
     }
 
     const reqUsername = ctx.headers.get('x-user-name') || ''
@@ -248,7 +249,7 @@ export const createCacheRouter = (): Router => {
 
     if (!isPublic) {
       const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+      if (!verified) return ctx.fail(401, '登录状态已失效，请重新登录')
       username = verified
     }
 
@@ -259,13 +260,13 @@ export const createCacheRouter = (): Router => {
   // 4. 服务端持久化下载队列
   router.get('/api/music/cache/queue', (ctx) => {
     const username = getCacheRequestUsername(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     return ctx.json({ success: true, data: serverDownloadQueue.list(username) })
   })
 
   router.post('/api/music/cache/queue', async (ctx) => {
     const username = getCacheRequestUsername(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { tasks, namingPattern, concurrency } = await ctx.bodyJson<{
         tasks?: any[]
@@ -282,38 +283,38 @@ export const createCacheRouter = (): Router => {
       const queued = serverDownloadQueue.enqueue(username, tasks)
       return ctx.json({ success: true, data: queued })
     } catch (err: any) {
-      return ctx.json({ success: false, message: err.message || 'Invalid queue request' }, 400)
+      return ctx.fail(400, toUserMessage(err, '下载任务参数不合法'))
     }
   })
 
   router.post('/api/music/cache/queue/concurrency', async (ctx) => {
     const username = getCacheRequestUsername(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { concurrency } = await ctx.bodyJson<{ concurrency?: number }>()
       const savedConcurrency = serverDownloadQueue.setConcurrency(username, concurrency)
       return ctx.json({ success: true, data: { concurrency: savedConcurrency } })
     } catch (err: any) {
-      return ctx.json({ success: false, message: err.message || 'Invalid concurrency' }, 400)
+      return ctx.fail(400, toUserMessage(err, '并发数不合法'))
     }
   })
 
   router.post('/api/music/cache/queue/resume', async (ctx) => {
     const username = getCacheRequestUsername(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { id, all } = await ctx.bodyJson<{ id?: string; all?: boolean }>()
       if (all !== true && !id) throw new Error('Missing queue task id')
       serverDownloadQueue.resume(username, all ? undefined : id)
       return ctx.json({ success: true })
     } catch (err: any) {
-      return ctx.json({ success: false, message: err.message }, 400)
+      return ctx.fail(400, toUserMessage(err, '请求参数不合法'))
     }
   })
 
   router.post('/api/music/cache/queue/remove', async (ctx) => {
     const username = getCacheRequestUsername(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const options = await ctx.bodyJson<{ id?: string; all?: boolean; completed?: boolean }>()
       if (!options || (options.all !== true && options.completed !== true && !options.id)) {
@@ -322,7 +323,7 @@ export const createCacheRouter = (): Router => {
       serverDownloadQueue.remove(username, options)
       return ctx.json({ success: true })
     } catch (err: any) {
-      return ctx.json({ success: false, message: err.message }, 400)
+      return ctx.fail(400, toUserMessage(err, '请求参数不合法'))
     }
   })
 
@@ -342,7 +343,7 @@ export const createCacheRouter = (): Router => {
         sourceName,
       } = await ctx.bodyJson<any>()
 
-      if (!songInfo || !url) return ctx.text('Missing params', 400)
+      if (!songInfo || !url) return ctx.fail(400, '缺少必要参数')
       const safeDownloadUrl = await assertSafeRemoteHttpUrl(String(url))
 
       const reqUsername = ctx.headers.get('x-user-name') || ''
@@ -351,7 +352,7 @@ export const createCacheRouter = (): Router => {
 
       if (!isPublic) {
         const verified = verifyUserAuth(ctx)
-        if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+        if (!verified) return ctx.fail(401, '登录状态已失效，请重新登录')
         username = verified
       }
 
@@ -409,7 +410,7 @@ export const createCacheRouter = (): Router => {
       return ctx.json({ success: true, message: 'Download started' })
     } catch (err: any) {
       console.error('[Cache] Download trigger error:', err?.message || err)
-      return ctx.text('Error', 500)
+      return ctx.fail(500, '服务器内部错误，请稍后重试')
     }
   })
 
@@ -421,7 +422,7 @@ export const createCacheRouter = (): Router => {
 
     if (!isPublic) {
       const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+      if (!verified) return ctx.fail(401, '登录状态已失效，请重新登录')
       username = verified
     }
 
@@ -440,7 +441,7 @@ export const createCacheRouter = (): Router => {
       }
       return ctx.json({ success: true })
     } catch (e: any) {
-      return ctx.text(e.message, 400)
+      return ctx.fail(400, toUserMessage(e, '请求参数不合法'))
     }
   })
 
@@ -450,7 +451,7 @@ export const createCacheRouter = (): Router => {
     const reqUsername = parts.length > 1 ? decodeURIComponent(parts[0]) : '_open'
     const filename = parts.length > 1 ? parts.slice(1).join('/') : parts[0]
 
-    if (!filename) return ctx.text('Missing filename', 400)
+    if (!filename) return ctx.fail(400, '缺少必要参数：filename')
 
     let username = '_open'
     const isPublic = !reqUsername || reqUsername === '_open' || reqUsername === 'default'
@@ -458,7 +459,7 @@ export const createCacheRouter = (): Router => {
     if (!isPublic) {
       const tokenUser = verifyUserAuth(ctx)
       if (!tokenUser || tokenUser !== reqUsername) {
-        return ctx.text('Unauthorized', 401)
+        return ctx.fail(401, '登录状态已失效，请重新登录')
       }
       username = tokenUser
     }
@@ -491,7 +492,7 @@ export const createCacheRouter = (): Router => {
     }
 
     if (!filePath || !fs.existsSync(filePath)) {
-      return ctx.text('File Not Found', 404)
+      return ctx.fail(404, '文件不存在')
     }
 
     const bunFile = Bun.file(filePath)
@@ -553,50 +554,38 @@ export const createCacheRouter = (): Router => {
 
     if (!isPublic) {
       const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+      if (!verified) return ctx.fail(401, '登录状态已失效，请重新登录')
       username = verified
     }
     try {
       const stats = fileCache.getCacheStats(username)
       return ctx.json({ success: true, data: stats })
     } catch (e: any) {
-      return ctx.json({ success: false, message: e.message || 'Failed to get cache stats' }, 500)
+      return ctx.fail(500, toUserMessage(e, '获取缓存统计失败，请稍后重试'))
     }
   })
 
   router.post('/api/music/cache/clear', (ctx) => {
-    const reqUsername = ctx.headers.get('x-user-name') || ''
-    const isPublic = !reqUsername || reqUsername === 'default'
-    let username = '_open'
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
 
-    if (!isPublic) {
-      const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-      username = verified
-    }
     try {
-      const result = fileCache.clearAllCache(username)
+      const result = fileCache.clearAllCache(target.username)
       return ctx.json({ success: true, data: result })
-    } catch (e: any) {
-      return ctx.json({ success: false, message: e.message || 'Failed to clear cache' }, 500)
+    } catch (err) {
+      return ctx.fail(500, toUserMessage(err, '清空缓存失败，请稍后重试'))
     }
   })
 
   router.post('/api/music/cache/lyric/clear', (ctx) => {
-    const reqUsername = ctx.headers.get('x-user-name') || ''
-    const isPublic = !reqUsername || reqUsername === 'default'
-    let username = '_open'
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
 
-    if (!isPublic) {
-      const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-      username = verified
-    }
     try {
-      const result = fileCache.clearLyricCache(username)
+      const result = fileCache.clearLyricCache(target.username)
       return ctx.json({ success: true, data: result })
-    } catch (e: any) {
-      return ctx.json({ success: false, message: e.message || 'Failed to clear lyric cache' }, 500)
+    } catch (err) {
+      return ctx.fail(500, toUserMessage(err, '清空歌词缓存失败，请稍后重试'))
     }
   })
 
@@ -631,7 +620,7 @@ export const createCacheRouter = (): Router => {
     } else {
       const verified = verifyUserAuth(ctx)
       if (!verified) {
-        return ctx.json({ success: false, message: 'Unauthorized' }, 401, {
+        return ctx.fail(401, '登录状态已失效，请重新登录', {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
         })
       }
@@ -644,7 +633,7 @@ export const createCacheRouter = (): Router => {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
       })
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
@@ -655,12 +644,12 @@ export const createCacheRouter = (): Router => {
 
     if (!isPublic) {
       const tokenUser = verifyUserAuth(ctx)
-      if (!tokenUser) return ctx.text('Unauthorized', 401)
+      if (!tokenUser) return ctx.fail(401, '登录状态已失效，请重新登录')
       username = tokenUser
     }
 
     const filename = ctx.query.get('filename')
-    if (!filename) return ctx.text('Missing filename', 400)
+    if (!filename) return ctx.fail(400, '缺少必要参数：filename')
 
     const cover = (await fileCache.getCacheCover(filename, username)) as any
     if (cover && cover.data) {
@@ -672,7 +661,7 @@ export const createCacheRouter = (): Router => {
         },
       })
     }
-    return ctx.text('Not Found', 404)
+    return ctx.fail(404, '资源不存在')
   })
 
   router.post('/api/music/cache/remove', async (ctx) => {
@@ -687,7 +676,7 @@ export const createCacheRouter = (): Router => {
       }
     } else {
       const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+      if (!verified) return ctx.fail(401, '登录状态已失效，请重新登录')
       username = verified
     }
 
@@ -735,89 +724,62 @@ export const createCacheRouter = (): Router => {
         message: success ? undefined : failures[0]?.message,
       }, statusCode)
     } catch (e: any) {
-      return ctx.json({ success: false, message: e.message }, 400)
+      return ctx.fail(400, toUserMessage(e, '请求参数不合法'))
     }
   })
 
   router.post('/api/music/cache/move', async (ctx) => {
-    const reqUsername = ctx.headers.get('x-user-name') || ''
-    const isPublic = !reqUsername || reqUsername === 'default'
-    let username = '_open'
-
-    if (!isPublic) {
-      const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-      username = verified
-    }
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
 
     try {
       const { filenames } = await ctx.bodyJson<{ filenames?: string[] | string }>()
-      if (!filenames) throw new Error('Missing filenames')
+      if (!filenames) return ctx.fail(400, '缺少必要参数：filenames')
       const fileList = Array.isArray(filenames) ? filenames : [filenames]
-      if (fileList.length > 500) throw new Error('Too many files')
-      const result = await fileCache.switchFolder(fileList, username)
+      if (fileList.length > 500) return ctx.fail(400, '单次最多移动 500 个文件')
+      const result = await fileCache.switchFolder(fileList, target.username)
       return ctx.json({ success: true, ...result })
     } catch (e: any) {
-      return ctx.text(e.message, 400)
+      return ctx.fail(400, toUserMessage(e, '移动文件失败，请稍后重试'))
     }
   })
 
   router.post('/api/music/cache/switch-base', async (ctx) => {
-    const reqUsername = ctx.headers.get('x-user-name') || ''
-    const isPublic = !reqUsername || reqUsername === 'default'
-    let username = '_open'
-
-    if (!isPublic) {
-      const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-      username = verified
-    }
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
 
     try {
       const { filenames } = await ctx.bodyJson<{ filenames?: string[] | string }>()
-      if (!filenames) throw new Error('Missing filenames')
+      if (!filenames) return ctx.fail(400, '缺少必要参数：filenames')
       const fileList = Array.isArray(filenames) ? filenames : [filenames]
-      if (fileList.length > 500) throw new Error('Too many files')
-      const result = await fileCache.switchBaseLocation(fileList, username)
+      if (fileList.length > 500) return ctx.fail(400, '单次最多转移 500 个文件')
+      const result = await fileCache.switchBaseLocation(fileList, target.username)
       return ctx.json({ success: true, ...result })
     } catch (e: any) {
-      return ctx.text(e.message, 400)
+      return ctx.fail(400, toUserMessage(e, '跨目录转移文件失败，请稍后重试'))
     }
   })
 
   router.post('/api/music/cache/updateMetadata', async (ctx) => {
-    const reqUsername = ctx.headers.get('x-user-name') || ''
-    const isPublic = !reqUsername || reqUsername === 'default'
-    let username = '_open'
-
-    if (!isPublic) {
-      const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-      username = verified
-    }
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
 
     try {
       const { filenames } = await ctx.bodyJson<{ filenames?: string[] | string }>()
-      if (!filenames) throw new Error('Missing filenames')
+      if (!filenames) return ctx.fail(400, '缺少必要参数：filenames')
       const fileList = Array.isArray(filenames) ? filenames : [filenames]
-      if (fileList.length > 500) throw new Error('Too many files')
-      const result = await fileCache.batchUpdateMetadata(fileList, username)
+      if (fileList.length > 500) return ctx.fail(400, '单次最多处理 500 个文件')
+      const result = await fileCache.batchUpdateMetadata(fileList, target.username)
       return ctx.json({ success: true, ...result })
     } catch (e: any) {
-      return ctx.text(e.message, 400)
+      return ctx.fail(400, toUserMessage(e, '更新歌曲元数据失败，请稍后重试'))
     }
   })
 
   router.post('/api/music/cache/embedLyric', async (ctx) => {
-    const reqUsername = ctx.headers.get('x-user-name') || ''
-    const isPublic = !reqUsername || reqUsername === 'default'
-    let username = '_open'
-
-    if (!isPublic) {
-      const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
-      username = verified
-    }
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
+    const username = target.username
 
     try {
       const { filenames } = await ctx.bodyJson<{ filenames?: string[] }>()
@@ -949,38 +911,40 @@ export const createCacheRouter = (): Router => {
 
       return ctx.json({ success: true, successCount, skippedCount, failCount, details })
     } catch (e: any) {
-      return ctx.json({ success: false, message: e.message }, 400)
+      return ctx.fail(400, toUserMessage(e, '请求参数不合法'))
     }
   })
 
   router.post('/api/music/cache/link', async (ctx) => {
-    const verified = verifyUserAuth(ctx)
-    if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
+
     try {
       const { filename, songInfo } = await ctx.bodyJson<{ filename?: string; songInfo?: any }>()
-      if (!filename || !songInfo) return ctx.text('Missing params', 400)
-      const result = await fileCache.linkLocalFile(filename, songInfo, verified)
+      if (!filename || !songInfo) return ctx.fail(400, '缺少必要参数：filename、songInfo')
+      const result = await fileCache.linkLocalFile(filename, songInfo, target.username)
       return ctx.json(result)
     } catch (e: any) {
-      return ctx.json({ success: false, message: e.message || 'Linking failed' }, 500)
+      return ctx.fail(500, toUserMessage(e, '关联本地文件失败，请稍后重试'))
     }
   })
 
   router.post('/api/music/identify', async (ctx) => {
-    const verified = verifyUserAuth(ctx)
-    if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    const target = resolveCacheTarget(ctx, { publicWrite: true })
+    if (!target.ok) return target.error
+
     try {
       const { filename, folder } = await ctx.bodyJson<{ filename?: string; folder?: 'cache' | 'music' }>()
-      if (!filename) return ctx.text('Missing filename', 400)
+      if (!filename) return ctx.fail(400, '缺少必要参数：filename')
       const { identifyLocalSong } = require('./utils/identify')
-      const dir = fileCache.getCacheDir(verified, folder === 'music')
+      const dir = fileCache.getCacheDir(target.username, folder === 'music')
       const filePath = fileCache.resolveCacheRelativePath(dir, filename)
-      if (!filePath) throw new Error('Invalid filename')
-      if (!fs.existsSync(filePath)) throw new Error('文件不存在: ' + filename)
+      if (!filePath) throw new Error('文件名不合法')
+      if (!fs.existsSync(filePath)) throw new Error(`文件不存在：${filename}`)
       const results = await identifyLocalSong(filePath)
       return ctx.json({ success: true, results })
     } catch (e: any) {
-      return ctx.json({ success: false, message: e.message || 'Identification failed' }, 500)
+      return ctx.fail(500, toUserMessage(e, '识别歌曲失败，请稍后重试'))
     }
   })
 
@@ -995,11 +959,11 @@ export const createCacheRouter = (): Router => {
 
     if (!isPublic) {
       const verified = verifyUserAuth(ctx)
-      if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+      if (!verified) return ctx.fail(401, '登录状态已失效，请重新登录')
       username = verified
     }
 
-    if (!source || (!songmid && !songId)) return ctx.text('Missing source or songmid', 400)
+    if (!source || (!songmid && !songId)) return ctx.fail(400, '缺少必要参数：source、songmid')
 
     const name = ctx.query.get('name') || ''
     const singer = ctx.query.get('singer') || ''
@@ -1007,7 +971,7 @@ export const createCacheRouter = (): Router => {
     if (result.exists) {
       return ctx.json({ success: true, data: result.content })
     }
-    return ctx.json({ success: false, message: 'Not found in cache' }, 404)
+    return ctx.fail(404, '缓存中未找到该内容')
   })
 
   router.post('/api/music/cache/lyric', async (ctx) => {
@@ -1023,16 +987,16 @@ export const createCacheRouter = (): Router => {
 
       if (!isPublic) {
         const verified = verifyUserAuth(ctx)
-        if (!verified) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+        if (!verified) return ctx.fail(401, '登录状态已失效，请重新登录')
         username = verified
       }
 
-      if (!songInfo || !lyricsObj) return ctx.text('Missing parameters', 400)
+      if (!songInfo || !lyricsObj) return ctx.fail(400, '缺少必要参数')
 
       const success = fileCache.saveLyricCache(songInfo, lyricsObj, username, !!enableOnlyDownloadMode)
       return ctx.json({ success })
     } catch {
-      return ctx.text('Server internal error', 500)
+      return ctx.fail(500, '服务器内部错误，请稍后重试')
     }
   })
 
@@ -1042,7 +1006,7 @@ export const createCacheRouter = (): Router => {
     const filename = (ctx.query.get('filename') || 'download.mp3').slice(0, 255)
     const isInline = ctx.query.get('inline') === '1'
 
-    if (!urlStr) return ctx.text('Missing url param', 400)
+    if (!urlStr) return ctx.fail(400, '缺少必要参数：url')
 
     return new Promise<Response>((resolve) => {
       try {
@@ -1053,7 +1017,7 @@ export const createCacheRouter = (): Router => {
 
         const doFetch = async (targetUrl: string, attempt: number) => {
           if (attempt > 5) {
-            resolve(ctx.text('Too Many Redirects', 502))
+            resolve(ctx.fail(502, '远程地址跳转次数过多，无法下载'))
             return
           }
 
@@ -1086,7 +1050,7 @@ export const createCacheRouter = (): Router => {
               const declaredLength = Number(proxyRes.headers['content-length'] || 0)
               if (declaredLength > maxAudioBytes) {
                 proxyRes.resume()
-                resolve(ctx.text('Remote file is too large', 413))
+                resolve(ctx.fail(413, '远程文件过大，已超过允许的下载上限'))
                 return
               }
               let contentType = proxyRes.headers['content-type'] || 'application/octet-stream'
@@ -1159,7 +1123,7 @@ export const createCacheRouter = (): Router => {
                     tempStream.destroy()
                     fs.unlink(tempPath, () => { })
                     markProgressError('Remote file is too large')
-                    settleTaggedResponse(ctx.text('Remote file is too large', 413))
+                    settleTaggedResponse(ctx.fail(413, '远程文件过大，已超过允许的下载上限'))
                     return
                   }
                   if (taskId) {
@@ -1179,7 +1143,7 @@ export const createCacheRouter = (): Router => {
                   markProgressError(error.message || 'Download stream failed')
                   try { tempStream.destroy() } catch { }
                   fs.unlink(tempPath, () => { })
-                  settleTaggedResponse(ctx.text('Download stream failed', 502))
+                  settleTaggedResponse(ctx.fail(502, '下载数据流中断，请重试'))
                 })
 
                 proxyRes.on('end', async () => {
@@ -1283,14 +1247,14 @@ export const createCacheRouter = (): Router => {
                     if (tempStreamError) {
                       markProgressError(tempStreamError.message || 'Download stream failed')
                       fs.unlink(tempPath, () => { })
-                      settleTaggedResponse(ctx.text('Download processing failed', 502))
+                      settleTaggedResponse(ctx.fail(502, '下载处理失败，请重试'))
                     } else if (fs.existsSync(tempPath)) {
                       finishProgress()
                       if (!headers['Content-Length']) headers['Content-Length'] = fs.statSync(tempPath).size.toString()
                       settleTaggedResponse(createTempFileResponse())
                     } else {
                       markProgressError(e?.message || 'Download processing failed')
-                      settleTaggedResponse(ctx.text('Download processing failed', 502))
+                      settleTaggedResponse(ctx.fail(502, '下载处理失败，请重试'))
                     }
                   } finally {
                     if (tagger) tagger.dispose()
@@ -1324,20 +1288,20 @@ export const createCacheRouter = (): Router => {
 
             proxyReq.on('error', (err: any) => {
               console.error('[DownloadProxy] Request Error:', err)
-              resolve(ctx.text('Request Error', 502))
+              resolve(ctx.fail(502, '请求远程地址失败，请重试'))
             })
 
             proxyReq.end()
           } catch (err: any) {
             console.error('[DownloadProxy] Try Error:', err)
-            resolve(ctx.text('Internal Server Error', 500))
+            resolve(ctx.fail(500, '服务器内部错误，请稍后重试'))
           }
         }
 
         void doFetch(urlStr, 0)
       } catch (err: any) {
         console.error('[DownloadProxy] Error:', err)
-        resolve(ctx.text('Server Error', 500))
+        resolve(ctx.fail(500, '服务器内部错误，请稍后重试'))
       }
     })
   })

@@ -3,6 +3,7 @@ import path from 'node:path'
 import os from 'node:os'
 import needle from 'needle'
 import { Router, type HttpContext } from '../core'
+import { toUserMessage } from '../core/context'
 import { verifyAdminAuth } from '../auth'
 import { serverStatus } from '../state'
 import { startupLog } from '@/utils/log4js'
@@ -115,7 +116,7 @@ export const createSystemRouter = (): Router => {
   // 1. 服务运行统计 (CPU/内存/设备数/状态)
   router.get('/api/stats', (ctx) => {
     if (!verifyAdminAuth(ctx.request)) {
-      return ctx.text('Unauthorized', 401)
+      return ctx.fail(401, '登录状态已失效，请重新登录')
     }
     const stats = {
       users: global.lx.config.users?.length ?? 0,
@@ -130,7 +131,7 @@ export const createSystemRouter = (): Router => {
   // 1.1 详细系统状态 /api/status
   router.get('/api/status', (ctx) => {
     if (!verifyAdminAuth(ctx.request)) {
-      return ctx.text('Unauthorized', 401)
+      return ctx.fail(401, '登录状态已失效，请重新登录')
     }
 
     const totalMem = os.totalmem()
@@ -190,7 +191,7 @@ export const createSystemRouter = (): Router => {
   // 2. 日志读取
   router.get('/api/logs', (ctx) => {
     if (!verifyAdminAuth(ctx.request)) {
-      return ctx.text('Unauthorized', 401)
+      return ctx.fail(401, '登录状态已失效，请重新登录')
     }
     const logType = ctx.query.get('type') || 'access'
     const fileName = logType === 'error' ? 'error.log' : 'access.log'
@@ -205,14 +206,14 @@ export const createSystemRouter = (): Router => {
       const last100 = lines.slice(-100)
       return ctx.json({ lines: last100 })
     } catch (e: any) {
-      return ctx.json({ error: e.message }, 500)
+      return ctx.fail(500, toUserMessage(e, '服务器内部错误，请稍后重试'))
     }
   })
 
   // 3. 配置读取与更新 (GET & POST)
   router.get('/api/config', (ctx) => {
     if (!verifyAdminAuth(ctx.request)) {
-      return ctx.text('Unauthorized', 401)
+      return ctx.fail(401, '登录状态已失效，请重新登录')
     }
     const c = global.lx.config
     const config = {
@@ -261,7 +262,7 @@ export const createSystemRouter = (): Router => {
 
   router.post('/api/config', async (ctx) => {
     if (!verifyAdminAuth(ctx.request)) {
-      return ctx.text('Unauthorized', 401)
+      return ctx.fail(401, '登录状态已失效，请重新登录')
     }
     try {
       const newConfig = await ctx.bodyJson<Record<string, any>>()
@@ -382,13 +383,13 @@ export const createSystemRouter = (): Router => {
 
       return ctx.json({ success: true, warning })
     } catch (e: any) {
-      return ctx.json({ success: false, error: e.message }, 500)
+      return ctx.fail(500, toUserMessage(e, '操作失败，请稍后重试'))
     }
   })
 
   // 3.1 测试代理
   router.post('/api/config/test-proxy', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { address } = await ctx.bodyJson<{ address?: string }>()
       if (!address) throw new Error('Missing address')
@@ -414,39 +415,39 @@ export const createSystemRouter = (): Router => {
         needle.get('https://www.baidu.com', options, (err: Error | null, resp: any) => {
           const duration = Date.now() - startTime
           if (err) {
-            resolve(ctx.json({ success: false, message: err.message }))
+            resolve(ctx.fail(500, toUserMessage(err, '操作失败，请稍后重试')))
           } else {
             resolve(ctx.json({ success: true, message: `连接成功 (状态码: ${resp.statusCode}, 耗时: ${duration}ms)` }))
           }
         })
       })
     } catch (err: any) {
-      return ctx.json({ success: false, message: err.message })
+      return ctx.fail(500, toUserMessage(err, '操作失败，请稍后重试'))
     }
   })
 
   // 4. 重启与热重载
   router.post('/api/admin/reload', async (ctx) => {
     if (!verifyAdminAuth(ctx.request)) {
-      return ctx.text('Unauthorized', 401)
+      return ctx.fail(401, '登录状态已失效，请重新登录')
     }
     await reloadServerData()
-    return ctx.json({ success: true, message: 'Server data reloaded' })
+    return ctx.json({ success: true, message: '服务器数据已重新加载' })
   })
 
   router.post('/api/restart', (ctx) => {
     if (!verifyAdminAuth(ctx.request)) {
-      return ctx.text('Unauthorized', 401)
+      return ctx.fail(401, '登录状态已失效，请重新登录')
     }
     setTimeout(() => {
       process.exit(0)
     }, 500)
-    return ctx.json({ success: true, message: 'Server is restarting...' })
+    return ctx.json({ success: true, message: '服务器正在重启，请稍后刷新页面' })
   })
 
   // 5. WebDAV 交互
   router.post('/api/webdav/test', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     const webdavSync = global.lx.webdavSync
     if (!webdavSync) return ctx.json({ success: false, message: 'WebDAV not initialized' }, 500)
     const result = await webdavSync.testConnection()
@@ -454,7 +455,7 @@ export const createSystemRouter = (): Router => {
   })
 
   router.post('/api/webdav/backup', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     const webdavSync = global.lx.webdavSync
     if (!webdavSync) return ctx.json({ success: false, message: 'WebDAV not initialized' }, 500)
     const body = await ctx.bodyJson<{ force?: boolean }>().catch(() => ({} as { force?: boolean }))
@@ -463,7 +464,7 @@ export const createSystemRouter = (): Router => {
   })
 
   router.post('/api/webdav/sync', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     const webdavSync = global.lx.webdavSync
     if (!webdavSync) return ctx.json({ success: false, message: 'WebDAV not initialized' }, 500)
     const success = await webdavSync.syncAllFiles()
@@ -471,7 +472,7 @@ export const createSystemRouter = (): Router => {
   })
 
   router.post('/api/webdav/restore', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     const webdavSync = global.lx.webdavSync
     if (!webdavSync) return ctx.json({ success: false, message: 'WebDAV not initialized' }, 500)
     const success = await webdavSync.restoreFromRemote()
@@ -480,7 +481,7 @@ export const createSystemRouter = (): Router => {
   })
 
   router.get('/api/webdav/logs', (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     const webdavSync = global.lx.webdavSync
     if (!webdavSync) return ctx.json({ success: false, message: 'WebDAV not initialized' }, 500)
     return ctx.json({ success: true, logs: webdavSync.getSyncLogs() })
@@ -488,7 +489,7 @@ export const createSystemRouter = (): Router => {
 
   // 5.1 本地备份下载与上传
   router.get('/api/backup/download', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const webdavSync = global.lx.webdavSync
       if (!webdavSync) throw new Error('Backup system not initialized')
@@ -507,7 +508,7 @@ export const createSystemRouter = (): Router => {
         },
       })
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 

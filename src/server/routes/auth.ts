@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import type { IncomingMessage } from 'node:http'
 import { Router, type HttpContext } from '../core'
+import { toUserMessage } from '../core/context'
 import {
   verifyAdminAuth,
   createAdminSession,
@@ -254,6 +255,8 @@ setTimeout(() => {
 export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { headers: any }): string | null => {
   pruneExpiredUserSessions()
   let token: string | null = null
+  let legacyUsername: string | null = null
+  let legacyPassword: string | null = null
   let ip = '127.0.0.1'
   let url = ''
 
@@ -264,6 +267,8 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
       req.query.get('userToken') ||
       req.cookies[USER_SESSION_COOKIE_NAME] ||
       null
+    legacyUsername = req.headers.get('x-user-name')
+    legacyPassword = req.headers.get('x-user-password')
     ip = req.remoteAddress
     url = req.pathname
   } else if ('headers' in req && typeof (req.headers as any).get === 'function') {
@@ -273,6 +278,8 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
       reqUrl.searchParams.get('token') ||
       reqUrl.searchParams.get('userToken') ||
       getCookieValue(req as Request, USER_SESSION_COOKIE_NAME)
+    legacyUsername = (req.headers as Headers).get('x-user-name')
+    legacyPassword = (req.headers as Headers).get('x-user-password')
     url = (req as Request).url
   } else if ('headers' in req) {
     // IncomingMessage
@@ -281,7 +288,15 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
       parsedQuery?.get('token') ||
       parsedQuery?.get('userToken') ||
       getCookieValue(req as any, USER_SESSION_COOKIE_NAME)
+    legacyUsername = (req.headers as any)['x-user-name']
+    legacyPassword = (req.headers as any)['x-user-password']
     url = (req as any).url || ''
+  }
+
+  // 0. 旧版「用户名 + 密码」直连鉴权（无 Token 的客户端仍在发送这两个头）
+  if (legacyUsername && legacyPassword) {
+    const user = (global.lx?.config?.users || []).find((u: any) => u.name === legacyUsername)
+    if (user && safeStringEqual(user.password, legacyPassword)) return user.name
   }
 
   if (token) {
@@ -341,6 +356,13 @@ export const verifyUserAuth = (req: IncomingMessage | Request | HttpContext | { 
   return null
 }
 
+/** 登录限流统一响应：给出明确的中文原因与等待时间，避免用户反复重试 */
+const LOGIN_RATE_LIMIT_WINDOW_SECONDS = 15 * 60
+const loginRateLimitedResponse = (ctx: HttpContext) =>
+  ctx.fail(429, '登录失败次数过多，已暂时限制登录，请 15 分钟后再试', {
+    retryAfter: LOGIN_RATE_LIMIT_WINDOW_SECONDS,
+  })
+
 /** 注册统一鉴权与 Token 管理路由 */
 export const createAuthRouter = (): Router => {
   const router = new Router()
@@ -367,13 +389,13 @@ export const createAuthRouter = (): Router => {
         'Set-Cookie': `${ADMIN_SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${8 * 60 * 60}${ctx.url.protocol === 'https:' ? '; Secure' : ''}`,
       })
     }
-    return ctx.json({ success: false, error: '管理员密码验证失败' }, 401)
+    return ctx.fail(401, '管理员密码错误')
   })
 
   router.post('/api/login', async (ctx) => {
     try {
       const ip = ctx.remoteAddress || 'unknown'
-      if (isLoginRateLimited(ip)) return ctx.json({ success: false, message: 'Too many attempts' }, 429)
+      if (isLoginRateLimited(ip)) return loginRateLimitedResponse(ctx)
       const { password } = await ctx.bodyJson<{ password?: string }>()
       if (safeStringEqual(password, global.lx?.config?.['frontend.password'])) {
         clearLoginFailures(ip)
@@ -385,9 +407,9 @@ export const createAuthRouter = (): Router => {
       }
       recordLoginFailure(ip)
       loginLog.warn(`Admin login failed from ${ctx.remoteAddress}`)
-      return ctx.json({ success: false }, 401)
+      return ctx.fail(401, '管理员密码错误')
     } catch {
-      return ctx.text('Bad Request', 400)
+      return ctx.fail(400, '请求格式错误，请刷新页面后重试')
     }
   })
 
@@ -403,9 +425,9 @@ export const createAuthRouter = (): Router => {
   router.post('/api/user/verify', async (ctx) => {
     try {
       const ip = ctx.remoteAddress || 'unknown'
-      if (isLoginRateLimited(ip)) return ctx.json({ success: false, message: 'Too many attempts' }, 429)
+      if (isLoginRateLimited(ip)) return loginRateLimitedResponse(ctx)
       const { username, password } = await ctx.bodyJson<{ username?: string; password?: string }>()
-      if (!username || !password) return ctx.text('Missing username or password', 400)
+      if (!username || !password) return ctx.fail(400, '请填写用户名和密码')
       const user = (global.lx?.config?.users || []).find((u: any) => u.name === username && safeStringEqual(u.password, password))
       if (user) {
         clearLoginFailures(ip)
@@ -414,18 +436,18 @@ export const createAuthRouter = (): Router => {
       }
       recordLoginFailure(ip)
       loginLog.warn(`User login failed: ${username} from ${ctx.remoteAddress}`)
-      return ctx.json({ success: false, message: 'Invalid credentials' }, 401)
+      return ctx.fail(401, '用户名或密码错误')
     } catch {
-      return ctx.text('Bad Request', 400)
+      return ctx.fail(400, '请求格式错误，请刷新页面后重试')
     }
   })
 
   router.post('/api/user/login', async (ctx) => {
     try {
       const ip = ctx.remoteAddress || 'unknown'
-      if (isLoginRateLimited(ip)) return ctx.json({ success: false, message: 'Too many attempts' }, 429)
+      if (isLoginRateLimited(ip)) return loginRateLimitedResponse(ctx)
       const { username, password } = await ctx.bodyJson<{ username?: string; password?: string }>()
-      if (!username || !password) return ctx.json({ success: false, message: 'Missing username or password' }, 400)
+      if (!username || !password) return ctx.fail(400, '请填写用户名和密码')
       const user = (global.lx?.config?.users || []).find((u: any) => u.name === username && safeStringEqual(u.password, password))
       if (user) {
         clearLoginFailures(ip)
@@ -437,9 +459,9 @@ export const createAuthRouter = (): Router => {
       }
       recordLoginFailure(ip)
       loginLog.warn(`User login failed: ${username} from ${ctx.remoteAddress}`)
-      return ctx.json({ success: false, message: 'Invalid credentials' }, 401)
+      return ctx.fail(401, '用户名或密码错误')
     } catch {
-      return ctx.json({ success: false, message: 'Bad Request' }, 400)
+      return ctx.fail(400, '请求格式错误，请刷新页面后重试')
     }
   })
 
@@ -458,7 +480,7 @@ export const createAuthRouter = (): Router => {
   router.post('/api/music/auth', async (ctx) => {
     try {
       const ip = ctx.remoteAddress || 'unknown'
-      if (isLoginRateLimited(ip)) return ctx.json({ success: false, message: 'Too many attempts' }, 429)
+      if (isLoginRateLimited(ip)) return loginRateLimitedResponse(ctx)
       const { password } = await ctx.bodyJson<{ password?: string }>()
       const correctPassword = global.lx?.config?.['player.password'] || ''
 
@@ -477,9 +499,9 @@ export const createAuthRouter = (): Router => {
 
       recordLoginFailure(ip)
       loginLog.warn(`Player login failed from ${ctx.remoteAddress}`)
-      return ctx.json({ success: false })
+      return ctx.fail(401, '播放器密码错误，请重新输入')
     } catch (err: any) {
-      return ctx.json({ success: false, error: err.message }, 500)
+      return ctx.fail(400, '请求格式错误，请刷新页面后重试')
     }
   })
 
@@ -510,7 +532,7 @@ export const createAuthRouter = (): Router => {
   // 6. Token 配置查询与开关 (GET / POST)
   router.get('/api/user/token/config', (ctx) => {
     const username = verifyUserAuth(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     const config = getUserTokenConfig(username)
     return ctx.json({
       success: true,
@@ -523,7 +545,7 @@ export const createAuthRouter = (): Router => {
 
   router.post('/api/user/token/config', async (ctx) => {
     const username = verifyUserAuth(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { enabled } = await ctx.bodyJson<{ enabled?: boolean }>()
       const config = getUserTokenConfig(username)
@@ -535,19 +557,19 @@ export const createAuthRouter = (): Router => {
       }
       return ctx.json({ success: true })
     } catch {
-      return ctx.text('Invalid Body', 400)
+      return ctx.fail(400, '请求内容格式错误')
     }
   })
 
   // 7. 生成新 Token
   router.post('/api/user/token/add', async (ctx) => {
     const username = verifyUserAuth(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { name, expireDays, expiresAt } = await ctx.bodyJson<{ name?: string; expireDays?: number; expiresAt?: number | null }>()
       const config = getUserTokenConfig(username)
       if (!Array.isArray(config.tokens)) config.tokens = []
-      if (config.tokens.length >= MAX_PERSISTENT_TOKENS_PER_USER) return ctx.text('Too many tokens', 400)
+      if (config.tokens.length >= MAX_PERSISTENT_TOKENS_PER_USER) return ctx.fail(400, `Token 数量已达上限（${MAX_PERSISTENT_TOKENS_PER_USER} 个），请先删除不用的 Token`)
       const newTokenValue = `lx_tk_${crypto.randomBytes(16).toString('hex')}`
       const newToken: UserToken = {
         name: normalizeTokenName(name),
@@ -561,18 +583,18 @@ export const createAuthRouter = (): Router => {
       tokenLog.info(`User ${username} generated a new token: ${newToken.name}`)
       return ctx.json({ success: true, token: newTokenValue })
     } catch (e: any) {
-      return ctx.text(e.message, 400)
+      return ctx.fail(400, toUserMessage(e, 'Token 操作失败，请稍后重试'))
     }
   })
 
   // 8. 删除 Token
   router.post('/api/user/token/remove', async (ctx) => {
     const username = verifyUserAuth(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { token, tokenMasked } = await ctx.bodyJson<{ token?: string; tokenMasked?: string }>()
       const target = token || tokenMasked
-      if (!target) return ctx.text('Missing token identifier', 400)
+      if (!target) return ctx.fail(400, '缺少要删除的 Token 标识')
 
       const config = getUserTokenConfig(username)
       const initialCount = config.tokens.length
@@ -589,14 +611,14 @@ export const createAuthRouter = (): Router => {
       }
       return ctx.json({ success: false, message: 'Token not found' }, 404)
     } catch (e: any) {
-      return ctx.text(e.message, 400)
+      return ctx.fail(400, toUserMessage(e, 'Token 操作失败，请稍后重试'))
     }
   })
 
   // 9. 更新 Token (名称/过期时间)
   router.post('/api/user/token/update', async (ctx) => {
     const username = verifyUserAuth(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { tokenMasked, name, expireDays, expiresAt } = await ctx.bodyJson<{
         tokenMasked?: string
@@ -620,16 +642,16 @@ export const createAuthRouter = (): Router => {
         tokenLog.info(`User ${username} updated token config: ${tokenMasked}`)
         return ctx.json({ success: true })
       }
-      return ctx.text('Token not found', 404)
+      return ctx.fail(404, '未找到该 Token，可能已被删除')
     } catch (e: any) {
-      return ctx.text(e.message, 400)
+      return ctx.fail(400, toUserMessage(e, 'Token 操作失败，请稍后重试'))
     }
   })
 
   // 10. 切换 Token 启用状态
   router.post('/api/user/token/toggle', async (ctx) => {
     const username = verifyUserAuth(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { tokenMasked, disabled } = await ctx.bodyJson<{ tokenMasked?: string; disabled?: boolean }>()
       const config = getUserTokenConfig(username)
@@ -645,20 +667,21 @@ export const createAuthRouter = (): Router => {
       }
       return ctx.json({ success: false, message: 'Token not found' }, 404)
     } catch (e: any) {
-      return ctx.text(e.message, 400)
+      return ctx.fail(400, toUserMessage(e, 'Token 操作失败，请稍后重试'))
     }
   })
 
   // 11. 读取 Token 审计日志
   router.get('/api/user/token/logs', (ctx) => {
     const username = verifyUserAuth(ctx)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     const tokenMaskedRaw = ctx.query.get('tokenMasked')
     const tokenMasked = tokenMaskedRaw ? decodeURIComponent(tokenMaskedRaw).trim() : ''
-    if (!tokenMasked) return ctx.text('Missing tokenMasked', 400)
+    if (!tokenMasked) return ctx.fail(400, '缺少 Token 标识')
 
     try {
-      const logPath = path.join(process.cwd(), 'logs', 'token.log')
+      // 日志目录以运行时配置为准（LOG_PATH 可被环境变量覆盖）
+      const logPath = path.join(global.lx.logPath, 'token.log')
       if (!fs.existsSync(logPath)) {
         return ctx.json({ success: true, logs: [] })
       }
@@ -668,7 +691,7 @@ export const createAuthRouter = (): Router => {
       const matched = lines.filter(l => l.includes(username) && l.includes(targetPattern))
       return ctx.json({ success: true, logs: matched.slice(-100) })
     } catch (err: any) {
-      return ctx.json({ success: false, error: err.message }, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 

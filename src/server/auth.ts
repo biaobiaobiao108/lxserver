@@ -13,6 +13,41 @@ import { getUserSpace, getUserName, setUserName, createClientKeyInfo } from '@/u
 import { toMD5 } from '@/utils'
 import { getDb } from '@/database'
 
+/** 同步协议（LX 客户端）鉴权失败计数：滑动窗口，避免一次失误导致长时间无法连接 */
+const SYNC_AUTH_WINDOW_MS = 15 * 60 * 1000
+const SYNC_AUTH_MAX_FAILURES = 10
+
+interface SyncAuthFailureRecord {
+  count: number
+  firstAt: number
+}
+
+const readSyncAuthFailure = (ip: string): SyncAuthFailureRecord | null => {
+  const record = store.get<SyncAuthFailureRecord>(ip)
+  if (!record) return null
+  if (Date.now() - record.firstAt > SYNC_AUTH_WINDOW_MS) {
+    store.delete(ip)
+    return null
+  }
+  return record
+}
+
+const isSyncAuthBlocked = (ip: string): boolean => {
+  const record = readSyncAuthFailure(ip)
+  return !!record && record.count >= SYNC_AUTH_MAX_FAILURES
+}
+
+const recordSyncAuthFailure = (ip: string): void => {
+  const record = readSyncAuthFailure(ip)
+  store.set(ip, record
+    ? { count: record.count + 1, firstAt: record.firstAt }
+    : { count: 1, firstAt: Date.now() })
+}
+
+const clearSyncAuthFailures = (ip: string): void => {
+  store.delete(ip)
+}
+
 export const getAvailableIP = (reqOrIp: http.IncomingMessage | Request | string) => {
   let ip: string | undefined
   if (typeof reqOrIp === 'string') {
@@ -32,7 +67,7 @@ export const getAvailableIP = (reqOrIp: http.IncomingMessage | Request | string)
     // IncomingMessage
     ip = getIP(reqOrIp as http.IncomingMessage)
   }
-  return ip && (store.get<number>(ip) ?? 0) < 10 ? ip : null
+  return ip && !isSyncAuthBlocked(ip) ? ip : null
 }
 
 const verifyByKey = (encryptMsg: string, userId: string, targetUserName?: string) => {
@@ -114,9 +149,10 @@ export const authCode = async (req: http.IncomingMessage, res: http.ServerRespon
     }
 
     if (code != 200) {
-      const num = store.get<number>(ip) ?? 0
-      // if (num > 20) return
-      store.set(ip, num + 1)
+      recordSyncAuthFailure(ip)
+    } else {
+      // 一旦成功登录就清空失败计数，避免客户端重试期间被持续拉黑
+      clearSyncAuthFailures(ip)
     }
   } else {
     code = 403
@@ -166,11 +202,11 @@ export const authConnect = async (reqOrUrl: http.IncomingMessage | Request | str
           throw new Error('User mismatch')
         }
       }
+      clearSyncAuthFailures(ip)
       return
     }
 
-    const num = store.get<number>(ip) ?? 0
-    store.set(ip, num + 1)
+    recordSyncAuthFailure(ip)
   }
   throw new Error('failed')
 }

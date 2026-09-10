@@ -247,6 +247,12 @@ class SubsonicHandler {
                 case 'getPlaylist':
                     return this.handleGetPlaylist(res, username, params, format)
 
+                case 'createPlaylist':
+                    return this.handleCreatePlaylist(res, username, params, format)
+
+                case 'deletePlaylist':
+                    return this.handleDeletePlaylist(res, username, params, format)
+
                 case 'getAlbum':
                     return this.handleGetAlbum(res, username, params, format)
 
@@ -686,19 +692,46 @@ class SubsonicHandler {
         }, format)
     }
 
+    /** 将 Subsonic 歌曲 ID 解析为曲库内的 MusicInfo，未命中时按在线 ID 兜底 */
+    private async resolveSongIds(username: string, songIds: string[]): Promise<LX.Music.MusicInfo[]> {
+        const musics: LX.Music.MusicInfo[] = []
+        for (const songId of songIds) {
+            const found = await this.findMusicById(username, songId)
+            if (found) {
+                musics.push(found.music)
+                continue
+            }
+            if (!songId.includes('_')) continue
+            const [source, ...rest] = songId.split('_')
+            const songmid = rest.join('_')
+            if (!source || !songmid) continue
+            musics.push({ id: songId, name: songmid, singer: 'Unknown Artist', source, songmid, interval: '0' } as any)
+        }
+        return musics
+    }
+
+    /** 从请求参数中提取歌曲 ID（OpenSubsonic 允许参数重复出现或逗号分隔） */
+    private static collectSongIds(params: URLSearchParams, key: string): string[] {
+        return params.getAll(key)
+            .flatMap(value => value.split(','))
+            .map(value => value.trim())
+            .filter(Boolean)
+    }
+
     private async handleUpdatePlaylist(res: http.ServerResponse, username: string, params: URLSearchParams, format: string) {
         const playlistId = params.get('playlistId')
         const songIndexToRemove = params.get('songIndexToRemove')
+        const songIdsToAdd = SubsonicHandler.collectSongIds(params, 'songIdToAdd')
 
         if (!playlistId) return this.sendError(res, 10, 'Required parameter is missing: playlistId', format)
 
-        // 目前 lxserver 下暂时只实现了通过索引删除 (OpenSubsonic 核心规范)
-        if (songIndexToRemove !== null) {
-            const index = parseInt(songIndexToRemove)
-            if (isNaN(index)) return this.sendError(res, 0, 'Invalid songIndexToRemove', format)
+        try {
+            const userSpace = getUserSpace(username)
 
-            try {
-                const userSpace = getUserSpace(username)
+            if (songIndexToRemove !== null) {
+                const index = parseInt(songIndexToRemove)
+                if (isNaN(index)) return this.sendError(res, 0, 'Invalid songIndexToRemove', format)
+
                 const musics = await userSpace.listManage.listDataManage.getListMusics(playlistId)
 
                 if (index < 0 || index >= musics.length) {
@@ -706,22 +739,93 @@ class SubsonicHandler {
                 }
 
                 const songId = musics[index].id
-                // console.log(`[Subsonic] Removing song at index ${index} (ID: ${songId}) from playlist ${playlistId}`)
-
                 // 执行物理删除
                 await userSpace.listManage.listDataManage.listMusicRemove(playlistId, [songId])
                 // 创建快照持久化
                 await userSpace.listManage.createSnapshot()
-
-                return this.sendResponse(res, {}, format)
-            } catch (err: any) {
-                console.error('[Subsonic] updatePlaylist error:', err)
-                return this.sendError(res, 0, err.message || 'Failed to remove song', format)
             }
+
+            if (songIdsToAdd.length > 0) {
+                const musics = await this.resolveSongIds(username, songIdsToAdd)
+                if (musics.length === 0) {
+                    return this.sendError(res, 70, 'Song not found: ' + songIdsToAdd.join(','), format)
+                }
+                await userSpace.listManage.listDataManage.listMusicAdd(playlistId, musics, 'bottom')
+                await userSpace.listManage.createSnapshot()
+            }
+
+            return this.sendResponse(res, {}, format)
+        } catch (err: any) {
+            console.error('[Subsonic] updatePlaylist error:', err)
+            return this.sendError(res, 0, err.message || 'Failed to update playlist', format)
+        }
+    }
+
+    private async handleCreatePlaylist(res: http.ServerResponse, username: string, params: URLSearchParams, format: string) {
+        const requestedId = params.get('playlistId')
+        const name = params.get('name')
+        const songIds = SubsonicHandler.collectSongIds(params, 'songId')
+
+        if (!requestedId && !name) return this.sendError(res, 10, 'Required parameter is missing: name', format)
+
+        try {
+            const userSpace = getUserSpace(username)
+            const listData = await userSpace.listManage.getListData()
+
+            const musics = songIds.length > 0 ? await this.resolveSongIds(username, songIds) : null
+            if (songIds.length > 0 && musics && musics.length === 0) {
+                return this.sendError(res, 70, 'Song not found: ' + songIds.join(','), format)
+            }
+
+            let playlist = (requestedId ? listData.userList.find((l: any) => l.id === requestedId) : undefined)
+                ?? (name ? listData.userList.find((l: any) => l.name === name) : undefined)
+
+            if (!playlist) {
+                listData.userList.push({
+                    id: `subsonic_${Date.now()}`,
+                    name: name as string,
+                    list: musics || [],
+                } as any)
+                playlist = listData.userList[listData.userList.length - 1]
+            } else {
+                // 同名歌单已存在时按 OpenSubsonic 规范覆盖其内容
+                if (name) playlist.name = name
+                if (musics) playlist.list = musics
+            }
+
+            await userSpace.listManage.listDataManage.restore(listData)
+            await userSpace.listManage.createSnapshot()
+
+            const summary = { id: playlist.id, name: playlist.name, songCount: (playlist.list || []).length }
+            return this.sendResponse(res, format === 'json'
+                ? { playlist: summary }
+                : { playlist: { attrs: summary } }, format)
+        } catch (err: any) {
+            console.error('[Subsonic] createPlaylist error:', err)
+            return this.sendError(res, 0, err.message || 'Failed to create playlist', format)
+        }
+    }
+
+    private async handleDeletePlaylist(res: http.ServerResponse, username: string, params: URLSearchParams, format: string) {
+        const id = params.get('id')
+        if (!id) return this.sendError(res, 10, 'Required parameter is missing: id', format)
+        if (id === 'default' || id === 'love') {
+            return this.sendError(res, 0, 'Built-in playlists cannot be deleted', format)
         }
 
-        // TODO: 支持 songIdToAdd 等其他参数
-        return this.sendResponse(res, {}, format)
+        try {
+            const userSpace = getUserSpace(username)
+            const listData = await userSpace.listManage.getListData()
+            if (!listData.userList.some((l: any) => l.id === id)) {
+                return this.sendError(res, 70, 'Playlist not found: ' + id, format)
+            }
+            await userSpace.listManage.listDataManage.userListsRemove([id])
+            await userSpace.listManage.createSnapshot()
+            return this.sendResponse(res, {}, format)
+        } catch (err: any) {
+            console.error('[Subsonic] deletePlaylist error:', err)
+            return this.sendError(res, 0, err.message || 'Failed to delete playlist', format)
+        }
     }
 
     // getAlbum: 返回 album + song[] 格式（音流等客户端期望的格式）

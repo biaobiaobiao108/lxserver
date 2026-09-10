@@ -1,4 +1,5 @@
 import { Router, type HttpContext } from '../core'
+import { toUserMessage } from '../core/context'
 import { verifyUserAuth } from './auth'
 import { normalizeSongInfo, resolveServerSong } from '../services/musicResolver'
 import { isSourceSupported, callUserApiGetMusicUrl } from '../userApi'
@@ -114,7 +115,7 @@ export const createMusicRouter = (): Router => {
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     const fetchPages = boundedInt(ctx.query.get('pages'), 1, 1, 5)
 
-    if (!name) return ctx.text('Missing name', 400)
+    if (!name) return ctx.fail(400, '缺少必要参数：name')
 
     try {
       const sourceApi = getBuiltinSource(source)
@@ -161,7 +162,7 @@ export const createMusicRouter = (): Router => {
       return ctx.json(result)
     } catch (err: any) {
       console.error(err)
-      return ctx.json({ error: err.message, code: 500 }, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
@@ -186,14 +187,14 @@ export const createMusicRouter = (): Router => {
   router.get('/api/music/artistDetail', async (ctx) => {
     const id = ctx.query.get('id')
     const source = ctx.query.get('source') || 'wy'
-    if (!id) return ctx.text('Missing id', 400)
+    if (!id) return ctx.fail(400, '缺少必要参数：id')
     try {
       const sourceApi = getBuiltinSource(source)
       if (!sourceApi?.extendDetail?.getArtistDetail) throw new Error(`Source ${source} does not support artist details`)
       const data = await sourceApi.extendDetail.getArtistDetail(id)
       return ctx.json(data)
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '获取数据失败，请稍后重试'))
     }
   })
 
@@ -202,14 +203,14 @@ export const createMusicRouter = (): Router => {
     const id = ctx.query.get('id')
     const source = ctx.query.get('source') || 'wy'
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
-    if (!id) return ctx.text('Missing id', 400)
+    if (!id) return ctx.fail(400, '缺少必要参数：id')
     try {
       const sourceApi = getBuiltinSource(source)
       if (!sourceApi?.extendDetail?.getArtistAlbums) throw new Error(`Source ${source} does not support artist albums`)
       const data = await sourceApi.extendDetail.getArtistAlbums(id, page)
       return ctx.json(data)
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '获取数据失败，请稍后重试'))
     }
   })
 
@@ -220,7 +221,7 @@ export const createMusicRouter = (): Router => {
     const order = ctx.query.get('order') || 'hot'
     const requestedPage = ctx.query.get('page')
     const requestedLimit = ctx.query.get('limit')
-    if (!id) return ctx.text('Missing id', 400)
+    if (!id) return ctx.fail(400, '缺少必要参数：id')
     try {
       const sourceApi = getBuiltinSource(source)
       if (!sourceApi?.extendDetail?.getArtistSongs) throw new Error(`Source ${source} does not support artist songs`)
@@ -255,7 +256,7 @@ export const createMusicRouter = (): Router => {
       }
       return ctx.json(allSongs)
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '获取数据失败，请稍后重试'))
     }
   })
 
@@ -263,21 +264,21 @@ export const createMusicRouter = (): Router => {
   router.get('/api/music/albumSongs', async (ctx) => {
     const id = ctx.query.get('id')
     const source = ctx.query.get('source') || 'wy'
-    if (!id) return ctx.text('Missing id', 400)
+    if (!id) return ctx.fail(400, '缺少必要参数：id')
     try {
       const sourceApi = getBuiltinSource(source)
       if (!sourceApi?.extendDetail?.getAlbumSongs) throw new Error(`Source ${source} does not support album songs`)
       const data = await sourceApi.extendDetail.getAlbumSongs(id)
       return ctx.json(data)
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '获取数据失败，请稍后重试'))
     }
   })
 
   // 7. 音乐解析进度 SSE 端点 (无需登录, 用 reqId 区分)
   router.get('/api/music/progress', (ctx) => {
     const reqId = ctx.query.get('reqId')
-    if (!reqId) return ctx.text('Missing reqId', 400)
+    if (!reqId) return ctx.fail(400, '缺少必要参数：reqId')
 
     const encoder = new TextEncoder()
     let streamController: ReadableStreamDefaultController<Uint8Array> | null = null
@@ -327,7 +328,7 @@ export const createMusicRouter = (): Router => {
     if (clientUsername && clientUsername !== 'default' && clientUsername !== 'open' && clientUsername !== '_open') {
       const verified = verifyUserAuth(ctx)
       if (!verified || verified !== clientUsername) {
-        return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+        return ctx.fail(401, '登录状态已失效，请重新登录')
       }
       verifiedUsername = verified
     }
@@ -391,13 +392,15 @@ export const createMusicRouter = (): Router => {
           attempts = userApiError.attempts || []
         }
       } else {
-        void pushProgress({ name: '系统', status: 'fail', message: `未找到支持 ${source} 平台的自定义源，请在设置中添加或启用相关源` })
+        void pushProgress({ name: '系统', status: 'fail', message: `未找到支持 ${source} 平台的自定义源，请在「设置 → 自定义源」中添加或启用相关音源` })
       }
 
       if (!result) {
-        const errMsg = customSourceError || `未找到支持 ${source} 平台的自定义源，请在设置中添加或启用相关源`
+        const errMsg = customSourceError || `未找到支持 ${source} 平台的自定义源，请在「设置 → 自定义源」中添加或启用相关音源`
         const err: any = new Error(errMsg)
         err.attempts = attempts
+        // 音源缺失或解析失败都属于用户可自行修复的问题，用 422 而非 500
+        err.code = 422
         throw err
       }
 
@@ -446,7 +449,8 @@ export const createMusicRouter = (): Router => {
       return ctx.json(result)
     } catch (err: any) {
       console.error('[MusicUrl] Error:', err.message)
-      return ctx.json({ error: err.message, code: 500, attempts: err.attempts }, 500)
+      const status = err.code === 422 ? 422 : 500
+      return ctx.fail(status, toUserMessage(err, '解析歌曲失败，请稍后重试'), { attempts: err.attempts })
     }
   })
 
@@ -458,7 +462,7 @@ export const createMusicRouter = (): Router => {
     if (clientUsername && clientUsername !== 'default' && clientUsername !== 'open' && clientUsername !== '_open') {
       const verified = verifyUserAuth(ctx)
       if (!verified || verified !== clientUsername) {
-        return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+        return ctx.fail(401, '登录状态已失效，请重新登录')
       }
       verifiedUsername = verified
     }
@@ -485,7 +489,7 @@ export const createMusicRouter = (): Router => {
       })
     } catch (err: any) {
       console.error('[QualitySize] Error:', err.message)
-      return ctx.json({ success: false, error: err.message, code: 500 }, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
@@ -506,7 +510,7 @@ export const createMusicRouter = (): Router => {
       return ctx.json(result)
     } catch (err: any) {
       console.error(err)
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '获取数据失败，请稍后重试'))
     }
   })
 
@@ -515,7 +519,7 @@ export const createMusicRouter = (): Router => {
     const rawSongmid = ctx.query.get('songmid') || ctx.query.get('songId') || ctx.query.get('id')
 
     if (!source || !rawSongmid) {
-      return ctx.text('Missing source or songmid', 400)
+      return ctx.fail(400, '缺少必要参数：source、songmid')
     }
     if (isRetiredOnlineSource(source)) {
       return ctx.json({ error: new UnsupportedSourceError(source).message, code: 400 }, 400)
@@ -586,7 +590,7 @@ export const createMusicRouter = (): Router => {
         return ctx.json({ ...fallbackResult.content, _fromLocalCache: true })
       }
 
-      return ctx.text(err.message || 'Failed to fetch lyric', 500)
+      return ctx.fail(500, toUserMessage(err, '获取歌词失败，请稍后重试'))
     }
   })
 
@@ -618,7 +622,7 @@ export const createMusicRouter = (): Router => {
       const sortList = sourceApi.songList.sortList
       return ctx.json({ ...result, sortList })
     } catch (err: any) {
-      return ctx.json({ error: err.message || '获取歌单标签失败' }, 500)
+      return ctx.fail(500, toUserMessage(err, '获取歌单标签失败'))
     }
   })
 
@@ -636,7 +640,7 @@ export const createMusicRouter = (): Router => {
       const result = await sourceApi.songList.getList(sortId, tagId, page)
       return ctx.json(result)
     } catch (err: any) {
-      return ctx.json({ error: err.message || '获取歌单列表失败' }, 500)
+      return ctx.fail(500, toUserMessage(err, '获取歌单列表失败'))
     }
   })
 
@@ -646,7 +650,7 @@ export const createMusicRouter = (): Router => {
     const id = ctx.query.get('id')
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
     const limit = boundedInt(ctx.query.get('limit'), 50, 1, 100)
-    if (!id) return ctx.text('Missing id', 400)
+    if (!id) return ctx.fail(400, '缺少必要参数：id')
     try {
       const sourceApi = getBuiltinSource(source)
       if (!sourceApi?.songList?.getListDetail) {
@@ -658,7 +662,7 @@ export const createMusicRouter = (): Router => {
       }
       return ctx.json(result)
     } catch (err: any) {
-      return ctx.json({ error: err.message || '获取歌单详情失败' }, 500)
+      return ctx.fail(500, toUserMessage(err, '获取歌单详情失败'))
     }
   })
 
@@ -667,7 +671,7 @@ export const createMusicRouter = (): Router => {
     const source = ctx.query.get('source') || 'wy'
     const text = ctx.query.get('text')
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
-    if (!text) return ctx.text('Missing text', 400)
+    if (!text) return ctx.fail(400, '缺少必要参数：text')
     try {
       const sourceApi = getBuiltinSource(source)
       if (!sourceApi?.songList?.search) {
@@ -676,7 +680,7 @@ export const createMusicRouter = (): Router => {
       const result = await sourceApi.songList.search(text, page)
       return ctx.json(result)
     } catch (err: any) {
-      return ctx.json({ error: err.message || '搜索歌单失败' }, 500)
+      return ctx.fail(500, toUserMessage(err, '搜索歌单失败'))
     }
   })
 
@@ -685,7 +689,7 @@ export const createMusicRouter = (): Router => {
     const source = ctx.query.get('source') || 'tx'
     const uid = ctx.query.get('uid')
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
-    if (!uid) return ctx.text('Missing uid', 400)
+    if (!uid) return ctx.fail(400, '缺少必要参数：uid')
     try {
       const sourceApi = getBuiltinSource(source)
       if (!sourceApi?.userPlaylist) {
@@ -694,7 +698,7 @@ export const createMusicRouter = (): Router => {
       const result = await sourceApi.userPlaylist.getList(uid, page)
       return ctx.json(result)
     } catch (err: any) {
-      return ctx.json({ error: err.message || '获取用户歌单失败' }, 500)
+      return ctx.fail(500, toUserMessage(err, '获取用户歌单失败'))
     }
   })
 
@@ -709,7 +713,7 @@ export const createMusicRouter = (): Router => {
       const result = await sourceApi.leaderboard.getBoards()
       return ctx.json(result, 200, { 'Cache-Control': 'public, max-age=600' })
     } catch (err: any) {
-      return ctx.json({ error: err.message || '获取排行榜列表失败' }, 500)
+      return ctx.fail(500, toUserMessage(err, '获取排行榜列表失败'))
     }
   })
 
@@ -718,7 +722,7 @@ export const createMusicRouter = (): Router => {
     const source = ctx.query.get('source') || 'wy'
     const bangid = ctx.query.get('bangid')
     const page = boundedInt(ctx.query.get('page'), 1, 1, 1000)
-    if (!bangid) return ctx.text('Missing bangid', 400)
+    if (!bangid) return ctx.fail(400, '缺少必要参数：bangid')
     try {
       const sourceApi = getBuiltinSource(source)
       if (!sourceApi?.leaderboard?.getList) {
@@ -730,7 +734,7 @@ export const createMusicRouter = (): Router => {
       }
       return ctx.json(result)
     } catch (err: any) {
-      return ctx.json({ error: err.message || '获取排行榜歌曲失败' }, 500)
+      return ctx.fail(500, toUserMessage(err, '获取排行榜歌曲失败'))
     }
   })
 
@@ -762,7 +766,7 @@ export const createMusicRouter = (): Router => {
       const result = await sourceApi.comment[method](songInfo, page, limit)
       return ctx.json(result)
     } catch (err: any) {
-      return ctx.json({ error: err.message, code: 500 }, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 

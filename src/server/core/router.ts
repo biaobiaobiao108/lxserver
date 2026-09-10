@@ -25,7 +25,7 @@ export class Router {
   private routes: RouteEntry[] = []
   private middlewares: MiddlewareEntry[] = []
   private notFoundHandler: RouteHandler = (ctx) =>
-    ctx.json({ code: 404, message: 'Not Found', path: ctx.pathname }, 404)
+    ctx.fail(404, '接口不存在', { path: ctx.pathname })
 
   /** 注册全局或带前缀的中间件 */
   use(middleware: Middleware): this
@@ -152,18 +152,16 @@ export class Router {
       const fallback = await this.notFoundHandler(ctx)
       if (fallback === null) return null as any
       if (fallback instanceof Response) return fallback
-      return ctx.json({ code: 404, message: 'Not Found' }, 404)
+      return ctx.fail(404, '接口不存在')
     }
 
     try {
       return await dispatch(0)
     } catch (err: any) {
       console.error(`[Router Error] ${ctx.method} ${ctx.pathname}:`, err)
-      return ctx.json({
-        code: 500,
-        message: 'Internal Server Error',
-        error: process.env.NODE_ENV !== 'production' ? err.message : undefined,
-      }, 500)
+      return ctx.fail(500, '服务器内部错误，请稍后重试', {
+        detail: process.env.NODE_ENV !== 'production' ? err.message : undefined,
+      })
     }
   }
 }

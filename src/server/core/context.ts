@@ -4,6 +4,15 @@ export interface ContextOptions {
   remoteAddress?: string
 }
 
+/**
+ * 面向用户的错误文案：保留服务端已写好的中文原因，
+ * 英文/技术性异常（如 SDK、fs、fetch 抛出的原文）统一替换为中文兜底文案。
+ */
+export const toUserMessage = (err: unknown, fallback: string): string => {
+  const raw = err instanceof Error ? err.message : (typeof err === 'string' ? err : '')
+  return /[\u4e00-\u9fa5]/.test(raw) ? raw : fallback
+}
+
 export class HttpContext {
   readonly request: Request
   readonly url: URL
@@ -24,11 +33,15 @@ export class HttpContext {
     this.method = request.method.toUpperCase()
     this.query = this.url.searchParams
     this.headers = request.headers
-    this.remoteAddress = options?.remoteAddress ?? this.extractIP()
+    this.remoteAddress = this.resolveRemoteAddress(options?.remoteAddress)
   }
 
-  /** 获取客户端真实 IP（优先从反向代理头获取） */
-  private extractIP(): string {
+  /**
+   * 解析客户端真实 IP。
+   * 仅在显式开启并配置了可信代理时才采信转发头，否则一律使用套接字地址，
+   * 避免反向代理后所有访客被合并成同一个 IP（会导致登录限流互相牵连）。
+   */
+  private resolveRemoteAddress(socketAddress?: string): string {
     if (global.lx?.config?.['proxy.enabled']) {
       const headerName = (global.lx.config['proxy.header'] || 'x-forwarded-for').toLowerCase()
       const forwarded = this.headers.get(headerName)
@@ -37,7 +50,7 @@ export class HttpContext {
         if (first) return first
       }
     }
-    return '127.0.0.1'
+    return socketAddress || '127.0.0.1'
   }
 
   /** Cookie 延迟解析 */
@@ -123,6 +136,15 @@ export class HttpContext {
       status,
       headers,
     })
+  }
+
+  /**
+   * 构造统一的业务错误响应。
+   * 形状固定为 { code, message, success: false }：code 与 HTTP 状态码一致，
+   * message 为可直接展示给用户的中文文案。
+   */
+  fail(status: number, message: string, extra?: Record<string, unknown>): Response {
+    return this.json({ code: status, message, success: false, ...extra }, status)
   }
 
   /** 构造文本响应 */

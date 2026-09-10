@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { Router, type HttpContext } from '../core'
+import { toUserMessage } from '../core/context'
 import { verifyAdminAuth } from '../auth'
 import { verifyUserAuth, revokeUserAuth } from './auth'
 import {
@@ -101,7 +102,7 @@ export const createUserRouter = (): Router => {
 
   // 0. 用户账户管理 (GET / POST / PUT / DELETE /api/users)
   router.get('/api/users', (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     const users = (global.lx.config.users || []).map((u: any) => ({ name: u.name, hasPassword: Boolean(u.password) }))
     if (global.lx.config['user.enablePublicFavorites']) {
       users.unshift({ name: '_open', hasPassword: false })
@@ -116,18 +117,18 @@ export const createUserRouter = (): Router => {
   })
 
   router.post('/api/users', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { name, password } = await ctx.bodyJson<{ name?: string; password?: string }>()
-      if (!name || !password) return ctx.text('Missing name or password', 400)
+      if (!name || !password) return ctx.fail(400, '请填写用户名和密码')
       try {
         assertSafePathSegment(name, 'user name')
       } catch {
-        return ctx.text('Invalid user name', 422)
+        return ctx.fail(422, '用户名不合法，不能包含路径分隔符等特殊字符')
       }
-      if (name === '_open') return ctx.text('Reserved user name', 422)
+      if (name === '_open') return ctx.fail(422, '该用户名为系统保留名称，请更换')
       if (global.lx.config.users.some((u: any) => u.name === name)) {
-        return ctx.text('User already exists', 409)
+        return ctx.fail(409, '该用户名已存在')
       }
 
       const dataPath = path.join(global.lx.userPath, getUserDirname(name))
@@ -141,35 +142,35 @@ export const createUserRouter = (): Router => {
       saveUsers()
       return ctx.json({ success: true })
     } catch {
-      return ctx.text('Server Error', 500)
+      return ctx.fail(500, '服务器内部错误，请稍后重试')
     }
   })
 
   router.put('/api/users', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { name, newName, password } = await ctx.bodyJson<{ name?: string; newName?: string; password?: string }>()
       if (!name || (!password && !newName)) {
-        return ctx.text('Missing required fields', 400)
+        return ctx.fail(400, '缺少必填字段')
       }
       if (newName) {
         try {
           assertSafePathSegment(newName, 'user name')
         } catch {
-          return ctx.text('Invalid user name', 422)
+          return ctx.fail(422, '用户名不合法，不能包含路径分隔符等特殊字符')
         }
-        if (newName === '_open') return ctx.text('Reserved user name', 422)
+        if (newName === '_open') return ctx.fail(422, '该用户名为系统保留名称，请更换')
       }
       const userIdx = global.lx.config.users.findIndex((u: any) => u.name === name)
       if (userIdx === -1) {
-        return ctx.text('User not found', 404)
+        return ctx.fail(404, '用户不存在')
       }
 
       const user = global.lx.config.users[userIdx]
 
       if (newName && newName !== name) {
         if (global.lx.config.users.some((u: any) => u.name === newName)) {
-          return ctx.text('New username already exists', 409)
+          return ctx.fail(409, '新用户名已存在')
         }
 
         renameUserSpace(name)
@@ -182,7 +183,7 @@ export const createUserRouter = (): Router => {
           saveUsers()
           return ctx.json({ success: true })
         } catch (err: any) {
-          return ctx.text(err.message || 'Data Migration Failed', 500)
+          return ctx.fail(500, toUserMessage(err, '数据迁移失败，请稍后重试'))
         } finally {
           finishRenameUserSpace(name)
         }
@@ -192,16 +193,16 @@ export const createUserRouter = (): Router => {
         return ctx.json({ success: true })
       }
     } catch {
-      return ctx.text('Server Error', 500)
+      return ctx.fail(500, '服务器内部错误，请稍后重试')
     }
   })
 
   router.delete('/api/users', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const body = await ctx.bodyJson<{ name?: string; names?: string[]; deleteData?: boolean }>()
       const targets = body.names || (body.name ? [body.name] : [])
-      if (targets.length === 0) return ctx.text('Missing name or names', 400)
+      if (targets.length === 0) return ctx.fail(400, '缺少要删除的用户名')
 
       let deletedCount = 0
       const deletedUsers: { name: string; dataPath: string }[] = []
@@ -235,9 +236,9 @@ export const createUserRouter = (): Router => {
         }
         return ctx.json({ success: true, deletedCount })
       }
-      return ctx.text('User not found', 404)
+      return ctx.fail(404, '用户不存在')
     } catch {
-      return ctx.text('Server Error', 500)
+      return ctx.fail(500, '服务器内部错误，请稍后重试')
     }
   })
 
@@ -245,7 +246,7 @@ export const createUserRouter = (): Router => {
   router.get('/api/user/list', async (ctx) => {
     const username = resolveTargetUsername(ctx, false)
     if (!username) {
-      return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+      return ctx.fail(401, '登录状态已失效，请重新登录')
     }
 
     try {
@@ -259,7 +260,7 @@ export const createUserRouter = (): Router => {
         },
       })
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
@@ -269,7 +270,7 @@ export const createUserRouter = (): Router => {
     const username = resolveTargetUsername(ctx, false)
 
     if (!username) {
-      return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+      return ctx.fail(401, '登录状态已失效，请重新登录')
     }
     if (username === '_open' && !isAdmin) {
       return ctx.json({ success: false, error: '权限不足：公共歌单修改受限，请先验证管理员身份。' }, 403)
@@ -282,14 +283,14 @@ export const createUserRouter = (): Router => {
       await userSpace.listManage.createSnapshot()
       return ctx.json({ success: true })
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
   // 3. 用户曲库：歌手与专辑 (GET & POST)
   router.get('/api/user/library/artists', (ctx) => {
     const username = resolveTargetUsername(ctx, false)
-    if (!username) return ctx.text('Unauthorized', 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
 
     try {
       const db = getDb()
@@ -302,13 +303,13 @@ export const createUserRouter = (): Router => {
       }
       return ctx.json([])
     } catch (e: any) {
-      return ctx.text(e.message, 500)
+      return ctx.fail(500, toUserMessage(e, '服务器内部错误，请稍后重试'))
     }
   })
 
   router.post('/api/user/library/artists', async (ctx) => {
     const username = resolveTargetUsername(ctx, false)
-    if (!username) return ctx.text('Unauthorized', 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const parsed = await ctx.bodyJson()
       if (!Array.isArray(parsed)) throw new Error('Expected an array')
@@ -319,13 +320,13 @@ export const createUserRouter = (): Router => {
       )
       return ctx.json({ success: true })
     } catch (e: any) {
-      return ctx.text(e.message, 400)
+      return ctx.fail(400, toUserMessage(e, '请求参数不合法'))
     }
   })
 
   router.get('/api/user/library/albums', (ctx) => {
     const username = resolveTargetUsername(ctx, false)
-    if (!username) return ctx.text('Unauthorized', 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
 
     try {
       const db = getDb()
@@ -338,13 +339,13 @@ export const createUserRouter = (): Router => {
       }
       return ctx.json([])
     } catch (e: any) {
-      return ctx.text(e.message, 500)
+      return ctx.fail(500, toUserMessage(e, '服务器内部错误，请稍后重试'))
     }
   })
 
   router.post('/api/user/library/albums', async (ctx) => {
     const username = resolveTargetUsername(ctx, false)
-    if (!username) return ctx.text('Unauthorized', 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const parsed = await ctx.bodyJson()
       if (!Array.isArray(parsed)) throw new Error('Expected an array')
@@ -355,7 +356,7 @@ export const createUserRouter = (): Router => {
       )
       return ctx.json({ success: true })
     } catch (e: any) {
-      return ctx.text(e.message, 400)
+      return ctx.fail(400, toUserMessage(e, '请求参数不合法'))
     }
   })
 
@@ -371,7 +372,7 @@ export const createUserRouter = (): Router => {
     } else {
       resolvedUsername = verifyUserAuth(ctx)
       if (!resolvedUsername) {
-        return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+        return ctx.fail(401, '登录状态已失效，请重新登录')
       }
     }
 
@@ -410,7 +411,7 @@ export const createUserRouter = (): Router => {
     } else {
       resolvedUsername = verifyUserAuth(ctx)
       if (!resolvedUsername) {
-        return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+        return ctx.fail(401, '登录状态已失效，请重新登录')
       }
     }
 
@@ -438,14 +439,14 @@ export const createUserRouter = (): Router => {
       )
       return ctx.json({ success: true })
     } catch {
-      return ctx.text('Invalid JSON data', 400)
+      return ctx.fail(400, '请求数据格式错误')
     }
   })
 
   // 5. 音效配置 (GET & POST /api/user/sound-effects)
   router.get('/api/user/sound-effects', (ctx) => {
     const username = resolveTargetUsername(ctx, false)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const db = getDb()
       const row = db.query<{ value: string }, [string, string]>(
@@ -466,7 +467,7 @@ export const createUserRouter = (): Router => {
 
   router.post('/api/user/sound-effects', async (ctx) => {
     const username = resolveTargetUsername(ctx, false)
-    if (!username) return ctx.json({ success: false, message: 'Unauthorized' }, 401)
+    if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const body = await ctx.bodyJson()
       const db = getDb()
@@ -476,14 +477,14 @@ export const createUserRouter = (): Router => {
       )
       return ctx.json({ success: true })
     } catch {
-      return ctx.text('Invalid JSON data', 400)
+      return ctx.fail(400, '请求数据格式错误')
     }
   })
 
   // 6. 歌单与歌曲批量修改 (POST /api/music/user/list/*)
   router.post('/api/music/user/list/remove', async (ctx) => {
     const username = verifyUserAuth(ctx)
-    if (!username) return ctx.json({ success: false, message: '需要用户认证' }, 401)
+    if (!username) return ctx.fail(401, '需要用户认证，请先登录')
     try {
       const { listId, songIds } = await ctx.bodyJson<{ listId?: string; songIds?: string[] }>()
       if (!listId || !Array.isArray(songIds)) return ctx.text('参数错误:需要listId和songIds数组', 400)
@@ -492,13 +493,13 @@ export const createUserRouter = (): Router => {
       await userSpace.listManage.createSnapshot()
       return ctx.text('删除成功', 200)
     } catch (err: any) {
-      return ctx.text(err.message || '删除失败', 500)
+      return ctx.fail(500, toUserMessage(err, '删除失败，请稍后重试'))
     }
   })
 
   router.post('/api/music/user/list/add', async (ctx) => {
     const username = verifyUserAuth(ctx)
-    if (!username) return ctx.json({ success: false, message: '需要用户认证' }, 401)
+    if (!username) return ctx.fail(401, '需要用户认证，请先登录')
     try {
       const { listId, musicInfos, location = 'bottom' } = await ctx.bodyJson<{ listId?: string; musicInfos?: any[]; location?: any }>()
       if (!listId || !Array.isArray(musicInfos)) return ctx.text('参数错误:需要listId和musicInfos数组', 400)
@@ -507,94 +508,94 @@ export const createUserRouter = (): Router => {
       await userSpace.listManage.createSnapshot()
       return ctx.text('添加成功', 200)
     } catch (err: any) {
-      return ctx.text(err.message || '添加失败', 500)
+      return ctx.fail(500, toUserMessage(err, '添加失败，请稍后重试'))
     }
   })
 
   // 7. 快照管理 (GET & POST /api/data/*)
   router.get('/api/data', async (ctx) => {
     const userParam = ctx.query.get('user')
-    if (!userParam) return ctx.text('Missing user param', 400)
+    if (!userParam) return ctx.fail(400, '缺少必要参数：user')
 
     const verifiedUser = resolveSnapshotUsername(ctx, userParam)
-    if (!verifiedUser) return ctx.text('Forbidden: User mismatch or unauthorized', 403)
+    if (!verifiedUser) return ctx.fail(403, '没有权限操作该用户的数据')
 
     try {
       const userSpace = getUserSpace(verifiedUser)
       const data = await userSpace.listManage.getListData()
       return ctx.json(data)
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
   router.get('/api/data/snapshots', async (ctx) => {
     const userParam = ctx.query.get('user')
-    if (!userParam) return ctx.text('Missing user param', 400)
+    if (!userParam) return ctx.fail(400, '缺少必要参数：user')
 
     const verifiedUser = resolveSnapshotUsername(ctx, userParam)
-    if (!verifiedUser) return ctx.text('Forbidden', 403)
+    if (!verifiedUser) return ctx.fail(403, '没有权限执行该操作')
 
     try {
       const userSpace = getUserSpace(verifiedUser)
       const list = await userSpace.listManage.getSnapshotList()
       return ctx.json(list)
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
   router.get('/api/data/snapshot', async (ctx) => {
     const userParam = ctx.query.get('user')
     const id = ctx.query.get('id')
-    if (!userParam || !id) return ctx.text('Missing parameters', 400)
+    if (!userParam || !id) return ctx.fail(400, '缺少必要参数')
 
     const verifiedUser = resolveSnapshotUsername(ctx, userParam)
-    if (!verifiedUser) return ctx.text('Forbidden', 403)
+    if (!verifiedUser) return ctx.fail(403, '没有权限执行该操作')
 
     try {
       const userSpace = getUserSpace(verifiedUser)
       const data = await userSpace.listManage.getSnapshot(id)
-      if (!data) return ctx.text('Not Found', 404)
+      if (!data) return ctx.fail(404, '资源不存在')
       return ctx.json(data)
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
   router.post('/api/data/restore-snapshot', async (ctx) => {
     const userParam = ctx.query.get('user')
-    if (!userParam) return ctx.text('Missing user param', 400)
+    if (!userParam) return ctx.fail(400, '缺少必要参数：user')
 
     const verifiedUser = resolveSnapshotUsername(ctx, userParam, true)
-    if (!verifiedUser) return ctx.text('Forbidden', 403)
+    if (!verifiedUser) return ctx.fail(403, '没有权限执行该操作')
 
     try {
       const { id } = await ctx.bodyJson<{ id?: string }>()
-      if (!id) return ctx.text('Missing id', 400)
+      if (!id) return ctx.fail(400, '缺少必要参数：id')
       const userSpace = getUserSpace(verifiedUser)
       await userSpace.listManage.restoreSnapshot(id)
       return ctx.json({ success: true })
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
   router.post('/api/data/delete-snapshot', async (ctx) => {
     const userParam = ctx.query.get('user')
-    if (!userParam) return ctx.text('Missing user param', 400)
+    if (!userParam) return ctx.fail(400, '缺少必要参数：user')
 
     const verifiedUser = resolveSnapshotUsername(ctx, userParam, true)
-    if (!verifiedUser) return ctx.text('Forbidden', 403)
+    if (!verifiedUser) return ctx.fail(403, '没有权限执行该操作')
 
     try {
       const { id } = await ctx.bodyJson<{ id?: string }>()
-      if (!id) return ctx.text('Missing id', 400)
+      if (!id) return ctx.fail(400, '缺少必要参数：id')
       const userSpace = getUserSpace(verifiedUser)
       await userSpace.listManage.removeSnapshot(id)
       return ctx.json({ success: true })
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
@@ -603,10 +604,10 @@ export const createUserRouter = (): Router => {
     const time = parseInt(ctx.query.get('time') || '0')
     const filename = ctx.query.get('filename')
 
-    if (!userParam || !filename) return ctx.text('Missing parameters', 400)
+    if (!userParam || !filename) return ctx.fail(400, '缺少必要参数')
 
     const verifiedUser = resolveSnapshotUsername(ctx, userParam, true)
-    if (!verifiedUser) return ctx.text('Forbidden', 403)
+    if (!verifiedUser) return ctx.fail(403, '没有权限执行该操作')
 
     try {
       const body = await ctx.bodyText()
@@ -630,77 +631,77 @@ export const createUserRouter = (): Router => {
       await userSpace.listManage.saveSnapshotWithTime(name, finalData, time)
       return ctx.json({ success: true })
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
   // 8. 歌单与歌曲精准修改 (POST /api/data/*)
   router.post('/api/data/delete-playlist', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { username, playlistId } = await ctx.bodyJson<{ username?: string; playlistId?: string }>()
-      if (!username || !playlistId) return ctx.text('Missing parameters', 400)
+      if (!username || !playlistId) return ctx.fail(400, '缺少必要参数')
       const userSpace = getUserSpace(username)
       await userSpace.listManage.listDataManage.userListsRemove([playlistId])
       await userSpace.listManage.createSnapshot()
       return ctx.json({ success: true })
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
   router.post('/api/data/delete-song', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { username, playlistId, songId } = await ctx.bodyJson<{ username?: string; playlistId?: string; songId?: string }>()
-      if (!username || !playlistId || !songId) return ctx.text('Missing parameters', 400)
+      if (!username || !playlistId || !songId) return ctx.fail(400, '缺少必要参数')
       const userSpace = getUserSpace(username)
       await userSpace.listManage.listDataManage.listMusicRemove(playlistId, [songId])
       await userSpace.listManage.createSnapshot()
       return ctx.json({ success: true })
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
   router.post('/api/data/rename-playlist', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { username, playlistId, newName } = await ctx.bodyJson<{ username?: string; playlistId?: string; newName?: string }>()
-      if (!username || !playlistId || !newName) return ctx.text('Missing parameters', 400)
+      if (!username || !playlistId || !newName) return ctx.fail(400, '缺少必要参数')
       const userSpace = getUserSpace(username)
       const listData = await userSpace.listManage.getListData()
       const target = listData.userList.find((l: any) => l.id === playlistId)
-      if (!target) return ctx.text('Playlist not found', 404)
+      if (!target) return ctx.fail(404, '歌单不存在')
       target.name = newName
       await userSpace.listManage.listDataManage.restore(listData)
       await userSpace.listManage.createSnapshot()
       return ctx.json({ success: true })
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 
   router.post('/api/data/batch-delete-songs', async (ctx) => {
-    if (!verifyAdminAuth(ctx.request)) return ctx.text('Unauthorized', 401)
+    if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     try {
       const { username, playlistId, songIndices } = await ctx.bodyJson<{ username?: string; playlistId?: string; songIndices?: number[] }>()
-      if (!username || !playlistId || !Array.isArray(songIndices)) return ctx.text('Missing parameters', 400)
+      if (!username || !playlistId || !Array.isArray(songIndices)) return ctx.fail(400, '缺少必要参数')
 
       const userSpace = getUserSpace(username)
       const listManage = userSpace.listManage
       const listData = await listManage.getListData()
       const playlist = listData.userList.find((list: any) => list.id === playlistId)
-      if (!playlist) return ctx.text('Playlist not found', 404)
+      if (!playlist) return ctx.fail(404, '歌单不存在')
 
       const songIds = songIndices.map(index => playlist.list?.[index]?.id).filter(Boolean)
-      if (songIds.length === 0) return ctx.text('No valid songs selected', 400)
+      if (songIds.length === 0) return ctx.fail(400, '没有选中有效的歌曲')
 
       await listManage.listDataManage.listMusicRemove(playlistId, songIds)
       await listManage.createSnapshot()
       return ctx.json({ success: true })
     } catch (err: any) {
-      return ctx.text(err.message, 500)
+      return ctx.fail(500, toUserMessage(err, '服务器内部错误，请稍后重试'))
     }
   })
 

@@ -1,4 +1,4 @@
-import { Router } from '../core'
+import { Router, adaptNodeHandler } from '../core'
 import { subsonicHandler } from '../subsonic'
 
 /** 注册 Subsonic / OpenSubsonic 协议路由 */
@@ -21,69 +21,9 @@ export const createSubsonicRouter = (): Router => {
 
     if (!isSubsonic) return null
 
-    // 适配 Node.js 风格参数以便兼容已有 2600 行稳定运行的 SubsonicHandler
-    return new Promise<Response>((resolve) => {
-      let responseBody = ''
-      let responseStatus = 200
-      const responseHeaders: Record<string, string> = {}
-      let isBinary = false
-      let binaryBuffer: Buffer | null = null
-
-      const mockReq: any = {
-        method: ctx.method,
-        url: ctx.request.url,
-        headers: Object.fromEntries(ctx.headers.entries()),
-      }
-
-      const mockRes: any = {
-        writeHead(status: number, headers?: Record<string, string>) {
-          responseStatus = status
-          if (headers) {
-            Object.assign(responseHeaders, headers)
-          }
-        },
-        setHeader(key: string, value: string) {
-          responseHeaders[key.toLowerCase()] = value
-        },
-        write(chunk: any) {
-          if (Buffer.isBuffer(chunk)) {
-            isBinary = true
-            binaryBuffer = binaryBuffer ? Buffer.concat([binaryBuffer, chunk]) : chunk
-          } else {
-            responseBody += chunk
-          }
-        },
-        end(data?: any) {
-          if (data) {
-            if (Buffer.isBuffer(data)) {
-              isBinary = true
-              binaryBuffer = binaryBuffer ? Buffer.concat([binaryBuffer, data]) : data
-            } else {
-              responseBody += data
-            }
-          }
-          if (isBinary && binaryBuffer) {
-            resolve(new Response(new Uint8Array(binaryBuffer), {
-              status: responseStatus,
-              headers: responseHeaders,
-            }))
-          } else {
-            resolve(new Response(responseBody, {
-              status: responseStatus,
-              headers: responseHeaders,
-            }))
-          }
-        },
-      }
-
-      try {
-        Promise.resolve(subsonicHandler.handleRequest(mockReq, mockRes, ctx.url)).catch((err: any) => {
-          resolve(ctx.json({ error: err?.message || 'Internal error' }, 500))
-        })
-      } catch (err: any) {
-        resolve(ctx.json({ error: { code: 500, message: err.message } }, 500))
-      }
-    })
+    // 复用通用 Node 适配层：它实现了 req.on('data'/'end')，POST 到 /rest/* 的
+    // 表单参数才会被解析（OpenSubsonic 的 formPost 扩展依赖这一行为）。
+    return adaptNodeHandler(ctx, subsonicHandler.handleRequest.bind(subsonicHandler), ctx.url)
   })
 
   return router

@@ -17,7 +17,7 @@ export const isPathInside = (child: string, parent: string): boolean => {
 export const serveStaticFile = async (ctx: HttpContext, filePath: string): Promise<Response | null> => {
   const staticRoot = global.lx?.staticPath ?? path.join(process.cwd(), 'public')
   let safeFilePath: string
-  try { safeFilePath = resolveInside(staticRoot, filePath) } catch { return ctx.text('Forbidden', 403) }
+  try { safeFilePath = resolveInside(staticRoot, filePath) } catch { return ctx.fail(403, '没有权限执行该操作') }
 
   if (!fs.existsSync(safeFilePath)) {
     return null
@@ -205,7 +205,7 @@ export const createStaticRouter = (): Router => {
     const res = await serveStaticFile(ctx, generalFilePath)
     if (res) return res
 
-    return ctx.text('Not Found', 404)
+    return ctx.fail(404, '资源不存在')
   })
 
   return router

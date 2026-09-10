@@ -2085,7 +2085,13 @@ function updateAdminUI() {
     });
 }
 
+const serverCacheRequests = new Set<string>();
+
 async function triggerServerCache(song, url, quality) {
+    const cleanedSong = cleanSongData(song);
+    const requestKey = `${cleanedSong?.id || song?.id || song?.songmid || song?.songId || ''}_${quality || 'unknown'}`;
+    if (!requestKey || serverCacheRequests.has(requestKey)) return;
+    serverCacheRequests.add(requestKey);
     try {
         console.log('[ServerCache] Triggering background download for:', song.name);
         const username = currentListData?.username || '';
@@ -2113,12 +2119,14 @@ async function triggerServerCache(song, url, quality) {
                 songInfo: songInfoForCache,
                 url, 
                 quality,
+                background: true,
                 namingPattern: window.settings?.serverCacheNamingPattern || 'simple',
                 embedLyric: !!(window.settings?.embedLyricToFile ?? true)
             })
         });
         // 移除 403 自动重试逻辑，API 不再报 403
     } catch (e) { console.error('[ServerCache] Trigger failed:', e); }
+    finally { serverCacheRequests.delete(requestKey); }
 }
 
 let lastNamingPattern = window.settings?.serverCacheNamingPattern || 'simple';

@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'bun:test'
-import { deduplicateDownloadTasks, pruneDownloadHistory, type ServerDownloadTask } from '@/server/serverDownloadQueue'
+import {
+  deduplicateDownloadTasks,
+  isDownloadTaskRunnable,
+  pruneDownloadHistory,
+  serializeDownloadTask,
+  type ServerDownloadTask,
+} from '@/server/serverDownloadQueue'
 
 const makeTask = (
   username: string,
@@ -22,6 +28,7 @@ const makeTask = (
   enableOnlyDownloadMode: false,
   cacheLyric: true,
   embedLyric: true,
+  background: false,
   createdAt: updatedAt,
   updatedAt,
 })
@@ -89,5 +96,46 @@ describe('Server download queue deduplication', () => {
     expect(retained).toHaveLength(1)
     expect(retained[0]?.id).toBe('music')
     expect(retained[0]?.enableOnlyDownloadMode).toBe(true)
+  })
+
+  test('does not persist transient resolved download URLs', () => {
+    const task = makeTask('user-a', 'background', 'waiting', 10)
+    task.background = true
+    task.songInfo.url = 'https://cdn.example.test/song.flac?signature=secret'
+    task.songInfo.meta = { url: 'https://cdn.example.test/meta.flac?signature=secret' }
+    task.resolvedUrl = 'https://cdn.example.test/song.flac?signature=secret'
+    task.resolvedUrlAt = Date.now()
+
+    const serialized = serializeDownloadTask(task) as Record<string, unknown>
+
+    expect(serialized.background).toBe(true)
+    expect(serialized).not.toHaveProperty('resolvedUrl')
+    expect(serialized).not.toHaveProperty('resolvedUrlAt')
+    expect((serialized.songInfo as Record<string, unknown>).url).toBeUndefined()
+    expect((serialized.songInfo as Record<string, any>).meta.url).toBeUndefined()
+  })
+
+  test('limits background cache work to one active task and keeps explicit work eligible', () => {
+    const background = makeTask('user-a', 'background', 'waiting', 10)
+    background.background = true
+    const explicit = makeTask('user-a', 'explicit', 'waiting', 20)
+    const activeIdentities = new Set<string>()
+
+    expect(isDownloadTaskRunnable(background, 0, 0, activeIdentities, 3)).toBe(true)
+    expect(isDownloadTaskRunnable(background, 0, 1, activeIdentities, 3)).toBe(false)
+    expect(isDownloadTaskRunnable(explicit, 2, 0, activeIdentities, 3)).toBe(true)
+    expect(isDownloadTaskRunnable(explicit, 3, 0, activeIdentities, 3)).toBe(false)
+  })
+
+  test('prefers an explicit task over a background task when identities collide', () => {
+    const background = makeTask('user-a', 'background', 'waiting', 20)
+    background.background = true
+    const explicit = makeTask('user-a', 'explicit', 'waiting', 10)
+    background.songInfo = explicit.songInfo = { source: 'wy', songmid: 'same-song', name: 'Same Song' }
+
+    const retained = deduplicateDownloadTasks([background, explicit])
+
+    expect(retained).toHaveLength(1)
+    expect(retained[0]?.id).toBe('explicit')
   })
 })

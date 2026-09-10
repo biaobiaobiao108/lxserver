@@ -79,11 +79,11 @@ async function probeUrl(url) {
 
 const prefetchManager = {
     cache: new Map(), // Map<songId, {url, quality, sourceType, timestamp}>
-    bufferer: new Audio(), // 隐藏的缓冲器，用于预加载数据流
+    bufferer: new Audio(), // 隐藏的缓冲器，仅用于加载媒体元数据
 
     init() {
         this.bufferer.muted = true;
-        this.bufferer.preload = 'auto'; // 强制浏览器尽可能多地预缓冲
+        this.bufferer.preload = 'metadata'; // 预读地址与元数据，不主动缓冲整首歌曲
     },
 
     set(songId, data) {
@@ -91,9 +91,9 @@ const prefetchManager = {
 
         // 核心升级：触发数据流预加载
         if (data.url) {
-            console.log(`[Prefetch] Pre-loading data stream for ID: ${songId}`);
+            console.log(`[Prefetch] Pre-loading metadata for ID: ${songId}`);
             this.bufferer.src = data.url;
-            this.bufferer.load(); // 诱导浏览器开始填充缓冲区
+            this.bufferer.load();
         }
 
         if (this.cache.size > 5) {
@@ -507,7 +507,7 @@ async function fetchSongUrl(song, quality, isRetry = false, isSilent = false) {
             console.log(`[Cache] Link Hit: ${cleanedSong.name} (${quality})`);
             const rawUrl = cachedUrl;
             cachedUrl = await applyAutoProxy(cachedUrl, song);
-            if (settings.enableServerCache && isRetry !== 'download' && !rawUrl.includes('/api/music/cache/file/')) {
+            if (settings.enableServerCache && !isSilent && isRetry !== 'download' && !rawUrl.includes('/api/music/cache/file/')) {
                 triggerServerCache(song, rawUrl, quality);
             }
             return { url: cachedUrl, sourceType: 'cache', quality };
@@ -570,7 +570,7 @@ async function fetchSongUrl(song, quality, isRetry = false, isSilent = false) {
                     updateStorageStatsUI();
                 } catch (e) { }
             }
-            if (settings.enableServerCache && isRetry !== 'download' && !finalUrl.includes('/api/music/cache/file/')) {
+            if (settings.enableServerCache && !isSilent && isRetry !== 'download' && !finalUrl.includes('/api/music/cache/file/')) {
                 // [Fix] 传递原始 result.url 而非经过 applyAutoProxy 处理后的相对代理路径，
                 // 否则后端下载器会因无法识别相对路径而报 ERR_INVALID_URL 错误。
                 triggerServerCache(song, result.url, quality);

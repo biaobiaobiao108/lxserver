@@ -21,6 +21,13 @@ export interface ServerDownloadTask {
   enableOnlyDownloadMode: boolean
   cacheLyric: boolean
   embedLyric: boolean
+  background: boolean
+  /** Short-lived URL from the legacy trigger endpoint; never persisted. */
+  resolvedUrl?: string
+  resolvedUrlAt?: number
+  requestedSource?: string
+  downloadSource?: string
+  sourceName?: string
   createdAt: number
   updatedAt: number
 }
@@ -32,6 +39,11 @@ interface QueueInput {
   enableOnlyDownloadMode?: boolean
   cacheLyric?: boolean
   embedLyric?: boolean
+  background?: boolean
+  resolvedUrl?: string
+  requestedSource?: string
+  downloadSource?: string
+  sourceName?: string
 }
 
 interface ResolveResult {
@@ -47,6 +59,8 @@ type DownloadResolver = (task: ServerDownloadTask) => Promise<ResolveResult>
 
 const DEFAULT_CONCURRENT = 3
 const MAX_CONCURRENT_PER_USER = 5
+export const MAX_BACKGROUND_CONCURRENT = 1
+const RESOLVED_URL_TTL = 60 * 1000
 export const MAX_PENDING_TASKS_PER_USER = 500
 export const MAX_HISTORY_PER_USER = 200
 const tasks = new Map<string, ServerDownloadTask>()
@@ -62,6 +76,26 @@ const getQueueFile = () => path.join(global.lx.dataPath, 'server-download-queue.
 const validStatuses = new Set<ServerDownloadStatus>(['waiting', 'downloading', 'tagging', 'paused', 'finished', 'exists', 'error'])
 const resumableStatuses = new Set<ServerDownloadStatus>(['waiting', 'downloading', 'tagging', 'paused'])
 const terminalStatuses = new Set<ServerDownloadStatus>(['finished', 'exists'])
+
+const sanitizeSongInfo = (songInfo: any) => {
+  if (!songInfo || typeof songInfo !== 'object') return songInfo
+  const { url: _url, meta, ...safeSongInfo } = songInfo
+  if (!meta || typeof meta !== 'object') return safeSongInfo
+  const { url: _metaUrl, ...safeMeta } = meta
+  return { ...safeSongInfo, meta: safeMeta }
+}
+
+export const serializeDownloadTask = (task: ServerDownloadTask) => {
+  const {
+    resolvedUrl: _resolvedUrl,
+    resolvedUrlAt: _resolvedUrlAt,
+    ...persistedTask
+  } = task
+  return {
+    ...persistedTask,
+    songInfo: sanitizeSongInfo(persistedTask.songInfo),
+  }
+}
 
 const getTaskIdentity = (task: Pick<ServerDownloadTask, 'username' | 'songInfo' | 'quality' | 'requestedQuality' | 'songKey' | 'activeSongKey'>) => {
   const songInfo = task.songInfo || {}
@@ -94,6 +128,7 @@ const shouldReplaceTask = (current: ServerDownloadTask, candidate: ServerDownloa
   const currentPriority = taskStatusPriority(current.status)
   const candidatePriority = taskStatusPriority(candidate.status)
   if (candidatePriority !== currentPriority) return candidatePriority > currentPriority
+  if (candidate.background !== current.background) return candidate.background === false
   return (candidate.updatedAt || candidate.createdAt) > (current.updatedAt || current.createdAt)
 }
 
@@ -107,6 +142,17 @@ export const deduplicateDownloadTasks = (taskList: ServerDownloadTask[]) => {
   }
   return Array.from(retained.values())
 }
+
+export const isDownloadTaskRunnable = (
+  task: ServerDownloadTask,
+  activeCountForUser: number,
+  activeBackgroundCount: number,
+  activeIdentities: Set<string>,
+  concurrency: number,
+) => task.status === 'waiting' &&
+  activeCountForUser < concurrency &&
+  !activeIdentities.has(getTaskIdentity(task)) &&
+  (!task.background || activeBackgroundCount < MAX_BACKGROUND_CONCURRENT)
 
 const deduplicateTasksInMemory = () => {
   const currentTasks = Array.from(tasks.values())
@@ -183,7 +229,7 @@ const saveNow = () => {
     fs.writeFileSync(tempFile, JSON.stringify({
       version: 2,
       concurrencyByUser: Object.fromEntries(concurrencyByUser),
-      tasks: Array.from(tasks.values()),
+      tasks: Array.from(tasks.values()).map(serializeDownloadTask),
     }, null, 2), 'utf8')
     fs.renameSync(tempFile, file)
   } catch (err) {
@@ -227,7 +273,7 @@ const loadTasks = () => {
         username: String(raw.username),
         songKey: String(raw.songKey || `${fileCache.normalizeSongId(raw.songInfo)}_${requestedQuality}`),
         activeSongKey: status === 'waiting' ? undefined : raw.activeSongKey ? String(raw.activeSongKey) : undefined,
-        songInfo: raw.songInfo,
+        songInfo: sanitizeSongInfo(raw.songInfo),
         quality: status === 'waiting' ? requestedQuality : quality,
         requestedQuality,
         status,
@@ -239,6 +285,10 @@ const loadTasks = () => {
         enableOnlyDownloadMode: !!raw.enableOnlyDownloadMode,
         cacheLyric: raw.cacheLyric !== false,
         embedLyric: raw.embedLyric !== false,
+        background: raw.background === true,
+        requestedSource: raw.requestedSource ? String(raw.requestedSource) : undefined,
+        downloadSource: raw.downloadSource ? String(raw.downloadSource) : undefined,
+        sourceName: raw.sourceName ? String(raw.sourceName) : undefined,
         createdAt,
         updatedAt: Number(raw.updatedAt || createdAt),
       }
@@ -274,6 +324,7 @@ const getPublicTask = (task: ServerDownloadTask) => {
     total: Number(live?.total ?? task.total ?? 0),
     received: Number(live?.received ?? task.received ?? 0),
     speed: Number(live?.speed ?? task.speed ?? 0),
+    background: task.background,
     errorMsg: String(live?.errorMsg || task.errorMsg || ''),
     createdAt: task.createdAt,
     updatedAt: Number(live?.updatedAt || task.updatedAt),
@@ -296,10 +347,26 @@ const runTask = async (task: ServerDownloadTask) => {
   scheduleSave()
 
   try {
-    const resolved = await resolver(task)
+    const suppliedUrl = task.resolvedUrl && task.resolvedUrlAt && Date.now() - task.resolvedUrlAt <= RESOLVED_URL_TTL
+      ? task.resolvedUrl
+      : undefined
+    const suppliedUrlAt = task.resolvedUrlAt
+    task.resolvedUrl = undefined
+    task.resolvedUrlAt = undefined
+    scheduleSave()
+    const resolved = suppliedUrl && suppliedUrlAt && Date.now() - suppliedUrlAt <= RESOLVED_URL_TTL
+      ? {
+        url: suppliedUrl,
+        quality: task.quality,
+        songInfo: task.songInfo,
+        requestedSource: task.requestedSource,
+        downloadSource: task.downloadSource,
+        sourceName: task.sourceName,
+      }
+      : await resolver(task)
     if (controller.signal.aborted) return
     if (!resolved?.url) throw new Error('无法解析下载地址')
-    task.songInfo = resolved.songInfo || task.songInfo
+    task.songInfo = sanitizeSongInfo(resolved.songInfo || task.songInfo)
     task.quality = resolved.quality || task.requestedQuality
     task.activeSongKey = fileCache.normalizeSongId(task.songInfo) + '_' + task.quality
     task.updatedAt = Date.now()
@@ -360,17 +427,24 @@ const processQueue = async () => {
     while (true) {
       const activeByUser = new Map<string, number>()
       const activeIdentities = new Set<string>()
+      let activeBackground = 0
       for (const key of controllers.keys()) {
         const activeTask = tasks.get(key)
         const username = activeTask?.username
         if (!activeTask || !username) continue
         activeByUser.set(username, (activeByUser.get(username) || 0) + 1)
         activeIdentities.add(getTaskIdentity(activeTask))
+        if (activeTask.background) activeBackground++
       }
-      const next = Array.from(tasks.values()).find(task => (
-        task.status === 'waiting' &&
-        (activeByUser.get(task.username) || 0) < getConcurrency(task.username) &&
-        !activeIdentities.has(getTaskIdentity(task))
+      const candidates = Array.from(tasks.values())
+        .filter(task => task.status === 'waiting')
+        .sort((a, b) => Number(a.background) - Number(b.background) || a.createdAt - b.createdAt)
+      const next = candidates.find(task => isDownloadTaskRunnable(
+        task,
+        activeByUser.get(task.username) || 0,
+        activeBackground,
+        activeIdentities,
+        getConcurrency(task.username),
       ))
       if (!next) break
       void runTask(next)
@@ -420,6 +494,24 @@ export const enqueue = (username: string, inputs: QueueInput[]) => {
       })
     ))
     if (existing) {
+      const targetFolder = input.enableOnlyDownloadMode === true ? 'music' : 'cache'
+      const hasTerminalTarget = terminalStatuses.has(existing.status) && (() => {
+        try {
+          const cached = fileCache.checkCache({ ...input.songInfo, quality, exactQuality: true }, username, false)
+          return cached.exists && !cached.isCollision && cached.folder === targetFolder
+        } catch {
+          return false
+        }
+      })()
+      if (terminalStatuses.has(existing.status) &&
+        existing.enableOnlyDownloadMode === (input.enableOnlyDownloadMode === true) &&
+        input.background === true &&
+        hasTerminalTarget) {
+        // A completed background cache request must stay terminal. Replaying
+        // the same URL should not start another download just because the
+        // player resolved it again from localStorage.
+        continue
+      }
       if (['waiting', 'downloading', 'tagging'].includes(existing.status)) {
         // Keep one queue record per song/quality (and therefore one public ID),
         // but remember a newly requested /music target even when the current
@@ -431,13 +523,19 @@ export const enqueue = (username: string, inputs: QueueInput[]) => {
           existing.updatedAt = Date.now()
           scheduleSave()
         }
+        // An explicit download upgrades a background cache task's priority.
+        existing.background = existing.background && input.background === true
+        if (input.resolvedUrl && existing.status === 'waiting') {
+          existing.resolvedUrl = input.resolvedUrl
+          existing.resolvedUrlAt = Date.now()
+        }
         continue
       }
 
       const now = Date.now()
       existing.songKey = fileCache.normalizeSongId(input.songInfo) + '_' + quality
       existing.activeSongKey = undefined
-      existing.songInfo = input.songInfo
+      existing.songInfo = sanitizeSongInfo(input.songInfo)
       existing.quality = quality
       existing.requestedQuality = quality
       existing.status = 'waiting'
@@ -449,6 +547,12 @@ export const enqueue = (username: string, inputs: QueueInput[]) => {
       existing.enableOnlyDownloadMode = !!input.enableOnlyDownloadMode
       existing.cacheLyric = input.cacheLyric !== false
       existing.embedLyric = input.embedLyric !== false
+      existing.background = input.background === true
+      existing.resolvedUrl = input.resolvedUrl
+      existing.resolvedUrlAt = input.resolvedUrl ? now : undefined
+      existing.requestedSource = input.requestedSource
+      existing.downloadSource = input.downloadSource
+      existing.sourceName = input.sourceName
       existing.createdAt = now
       existing.updatedAt = now
       added.push(existing)
@@ -458,13 +562,19 @@ export const enqueue = (username: string, inputs: QueueInput[]) => {
     const task: ServerDownloadTask = {
       id, username,
       songKey: fileCache.normalizeSongId(input.songInfo) + '_' + quality,
-      songInfo: input.songInfo,
+      songInfo: sanitizeSongInfo(input.songInfo),
       quality,
       requestedQuality: quality,
       status: 'waiting', progress: 0, total: 0, received: 0, speed: 0, errorMsg: '',
       enableOnlyDownloadMode: !!input.enableOnlyDownloadMode,
       cacheLyric: input.cacheLyric !== false,
       embedLyric: input.embedLyric !== false,
+      background: input.background === true,
+      resolvedUrl: input.resolvedUrl,
+      resolvedUrlAt: input.resolvedUrl ? now : undefined,
+      requestedSource: input.requestedSource,
+      downloadSource: input.downloadSource,
+      sourceName: input.sourceName,
       createdAt: now, updatedAt: now,
     }
     tasks.set(key, task)
@@ -486,6 +596,21 @@ export const list = (username: string) => {
 export const pause = (username: string, id?: string) => {
   for (const task of tasks.values()) {
     if (task.username !== username || (id && task.id !== id)) continue
+    if (!['waiting', 'downloading', 'tagging'].includes(task.status)) continue
+    task.status = 'paused'
+    task.speed = 0
+    task.errorMsg = '已暂停'
+    task.updatedAt = Date.now()
+    controllers.get(taskMapKey(username, task.id))?.abort()
+  }
+  saveNow()
+}
+
+export const pauseBySongKey = (username: string, songKey: string) => {
+  const normalizedSongKey = String(songKey || '')
+  for (const task of tasks.values()) {
+    if (task.username !== username) continue
+    if (task.songKey !== normalizedSongKey && task.activeSongKey !== normalizedSongKey) continue
     if (!['waiting', 'downloading', 'tagging'].includes(task.status)) continue
     task.status = 'paused'
     task.speed = 0

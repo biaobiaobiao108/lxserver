@@ -57,8 +57,116 @@ const cacheListSyncState: Map<string, { lastSync: number, pending?: Promise<void
 // [Unified Enhancement] Cache Progress Tracker
 export const cacheProgress: Map<string, { progress: number; status: string; total?: number; received?: number; speed?: number; updatedAt?: number; errorMsg?: string }> = new Map()
 
-// [New] Active Cache Tasks Tracker: username -> [ { songKey, controller } ]
-export const activeTasks: Map<string, Array<{ songKey: string, controller: AbortController }>> = new Map()
+const CACHE_POST_PROCESS_CONCURRENCY = 1
+const CACHE_MEMORY_GC_THRESHOLD = 256 * 1024 * 1024
+const CACHE_MEMORY_GC_INTERVAL = 30 * 1000
+let cachePostProcessActive = 0
+let lastForcedCacheGcAt = 0
+let lastCacheMemoryLogAt = 0
+type CachePostProcessWaiter = {
+    resolve: () => void
+    reject: (error: Error) => void
+    signal?: AbortSignal
+    abortHandler?: () => void
+}
+const cachePostProcessWaiters: CachePostProcessWaiter[] = []
+
+const cleanupCachePostProcessWaiter = (waiter: CachePostProcessWaiter) => {
+    if (waiter.signal && waiter.abortHandler) waiter.signal.removeEventListener('abort', waiter.abortHandler)
+}
+
+const releaseCachePostProcess = () => {
+    cachePostProcessActive = Math.max(0, cachePostProcessActive - 1)
+    while (cachePostProcessWaiters.length > 0) {
+        const waiter = cachePostProcessWaiters.shift()!
+        cleanupCachePostProcessWaiter(waiter)
+        if (waiter.signal?.aborted) {
+            waiter.reject(new Error('Aborted'))
+            continue
+        }
+        cachePostProcessActive += 1
+        waiter.resolve()
+        return
+    }
+}
+
+const acquireCachePostProcess = (signal?: AbortSignal): Promise<void> => {
+    if (signal?.aborted) return Promise.reject(new Error('Aborted'))
+    if (cachePostProcessActive < CACHE_POST_PROCESS_CONCURRENCY) {
+        cachePostProcessActive += 1
+        return Promise.resolve()
+    }
+
+    return new Promise((resolve, reject) => {
+        const waiter: CachePostProcessWaiter = { resolve, reject, signal }
+        waiter.abortHandler = () => {
+            const index = cachePostProcessWaiters.indexOf(waiter)
+            if (index !== -1) cachePostProcessWaiters.splice(index, 1)
+            cleanupCachePostProcessWaiter(waiter)
+            reject(new Error('Aborted'))
+        }
+        signal?.addEventListener('abort', waiter.abortHandler, { once: true })
+        cachePostProcessWaiters.push(waiter)
+    })
+}
+
+const getCacheMemoryUsage = () => {
+    const memory = process.memoryUsage()
+    return {
+        rss: memory.rss,
+        heapUsed: memory.heapUsed,
+        external: memory.external,
+    }
+}
+
+const formatMemoryMiB = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)}MiB`
+
+const reportCacheMemory = (stage: string, force = false) => {
+    const now = Date.now()
+    const memory = getCacheMemoryUsage()
+    if (!force && now - lastCacheMemoryLogAt < CACHE_MEMORY_GC_INTERVAL && memory.rss < CACHE_MEMORY_GC_THRESHOLD) return
+    lastCacheMemoryLogAt = now
+    console.log(`[FileCache][Memory] ${stage}: rss=${formatMemoryMiB(memory.rss)}, heap=${formatMemoryMiB(memory.heapUsed)}, external=${formatMemoryMiB(memory.external)}, postProcess=${cachePostProcessActive}, waiting=${cachePostProcessWaiters.length}`)
+}
+
+const maybeCollectCacheMemory = (stage: string) => {
+    const now = Date.now()
+    const before = getCacheMemoryUsage()
+    if (before.rss < CACHE_MEMORY_GC_THRESHOLD || now - lastForcedCacheGcAt < CACHE_MEMORY_GC_INTERVAL) {
+        reportCacheMemory(stage)
+        return
+    }
+    if (typeof Bun === 'undefined' || typeof Bun.gc !== 'function') {
+        reportCacheMemory(`${stage} (gc unavailable)`, true)
+        return
+    }
+
+    lastForcedCacheGcAt = now
+    try {
+        Bun.gc(true)
+    } catch (error: any) {
+        console.warn(`[FileCache][Memory] Full GC failed: ${error?.message || error}`)
+    }
+    const after = getCacheMemoryUsage()
+    reportCacheMemory(`${stage} gc ${formatMemoryMiB(before.rss)} -> ${formatMemoryMiB(after.rss)}`, true)
+}
+
+export const withCachePostProcess = async <T>(signal: AbortSignal | undefined, stage: string, callback: () => Promise<T>): Promise<T> => {
+    await acquireCachePostProcess(signal)
+    try {
+        if (signal?.aborted) throw new Error('Aborted')
+        reportCacheMemory(`${stage} start`)
+        return await callback()
+    } finally {
+        releaseCachePostProcess()
+        maybeCollectCacheMemory(`${stage} end`)
+    }
+}
+
+export const getCachePostProcessStats = () => ({
+    active: cachePostProcessActive,
+    waiting: cachePostProcessWaiters.length,
+})
 
 // [新增] 歌词获取钩子：由 server.ts 在启动时注入，避免 fileCache 直接依赖 musicSdk
 // 调用时会通过 /api/music/lyric 接口逻辑（先查本地 .lrc 缓存，再去源站）获取歌词文本
@@ -2108,10 +2216,12 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
     if (result.exists && !result.isCollision) {
         const targetFolder: 'cache' | 'music' = isOnlyDownload ? 'music' : 'cache'
         if (result.folder === targetFolder && result.path) {
-            await ensureCachedLyrics(songInfo, quality || result.quality, username, isOnlyDownload, result.path, targetFolder, shouldCacheLyric, shouldEmbedLyric)
-            const existing = indexManager.getAll(normalizeCacheUsername(username), targetFolder)
-                .find(item => item.filename === result.filename)
-            if (existing) reconcileCacheItemFromDisk(normalizeCacheUsername(username), targetFolder, existing, result.path)
+            await withCachePostProcess(signal, 'existing cache', async () => {
+                await ensureCachedLyrics(songInfo, quality || result.quality, username, isOnlyDownload, result.path!, targetFolder, shouldCacheLyric, shouldEmbedLyric)
+                const existing = indexManager.getAll(normalizeCacheUsername(username), targetFolder)
+                    .find(item => item.filename === result.filename)
+                if (existing) reconcileCacheItemFromDisk(normalizeCacheUsername(username), targetFolder, existing, result.path!)
+            })
             console.log(`[FileCache] Song already exists in ${targetFolder}, skipping download: ${result.filename}`)
             // 通知前端轮询：目标目录文件已存在，视为立即完成
             cacheProgress.set(songKey, { progress: 100, status: 'exists' })
@@ -2120,6 +2230,7 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
         }
 
         if (isOnlyDownload && result.folder === 'cache' && result.path) {
+            return await withCachePostProcess(signal, 'copy cache', async () => {
             const requestedOrCachedQuality = quality || result.quality || 'unknown'
             const inspection = inspectAudioFile(result.path, requestedOrCachedQuality)
             const actualQuality = inspection.quality || requestedOrCachedQuality
@@ -2202,6 +2313,7 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
             cacheProgress.set(songKey, { progress: 100, status: 'finished', total: stat.size, received: stat.size })
             setTimeout(() => cacheProgress.delete(songKey), 30000)
             return Promise.resolve()
+            })
         }
 
         console.log(`[FileCache] Song already exists in ${result.folder}, skipping download: ${result.filename}`)
@@ -2330,6 +2442,20 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                     fail(new Error(`Download incomplete: ${received}/${total}`))
                     return
                 }
+                let releasePostProcess: (() => void) | null = null
+                try {
+                    await acquireCachePostProcess(signal)
+                    releasePostProcess = () => {
+                        if (!releasePostProcess) return
+                        releasePostProcess = null
+                        releaseCachePostProcess()
+                        maybeCollectCacheMemory(`download ${baseName} end`)
+                    }
+                    if (signal?.aborted) {
+                        releasePostProcess()
+                        return
+                    }
+                    reportCacheMemory(`download ${baseName} start`)
                 cacheProgress.set(songKey, { progress: 100, status: 'tagging', total, received, speed: 0, updatedAt: Date.now() })
 
                 let ext = headerExt
@@ -2348,6 +2474,7 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                 const finalPath = path.join(dir, finalBaseName + ext)
                 fs.rename(tempPath, finalPath, async (err) => {
                     if (err) {
+                        releasePostProcess?.()
                         fs.unlink(tempPath, () => { })
                         fail(err)
                         return
@@ -2436,6 +2563,7 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                     if (!finalHasCover && imageBuffer?.length) {
                         finalHasCover = writeCoverCache(finalBaseName + ext, normalizedUsername, imageBuffer, imageMime, taggedStats)
                     }
+                    imageBuffer = undefined
                     const taggedItem = indexManager.get(normalizedUsername, id, folderType, actualQuality)
                     if (taggedItem) {
                         taggedItem.coverType = readEmbeddedCoverState(finalPath)
@@ -2464,6 +2592,7 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                     } catch (postProcessError: any) {
                         console.warn(`[FileCache] Optional post-processing failed for ${path.basename(finalPath)}: ${postProcessError?.message || postProcessError}`)
                     } finally {
+                        releasePostProcess?.()
                         if (!fs.existsSync(finalPath)) {
                             fail(new Error('Downloaded file is missing after processing'))
                             return
@@ -2474,6 +2603,11 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                         settle(() => { resolve(); void checkAndCleanupCache(username) })
                     }
                 })
+                } catch (error: any) {
+                    releasePostProcess?.()
+                    if (fs.existsSync(tempPath)) fs.unlink(tempPath, () => { })
+                    fail(error instanceof Error ? error : new Error(String(error)))
+                }
             })
             fileStream.on('error', (err) => { fs.unlink(tempPath, () => { }); fail(err) })
           })
@@ -2727,19 +2861,6 @@ export const replaceDownloadedMusicItem = async (
         } catch (cleanupError) {
             console.warn('[FileCache] Failed to clean remaster cover staging directory:', cleanupError)
         }
-    }
-}
-
-export const stopUserTasks = (username: string, songKey?: string) => {
-    const tasks = activeTasks.get(username)
-    if (!tasks) return
-    if (songKey) {
-        const idx = tasks.findIndex(t => t.songKey === songKey)
-        if (idx !== -1) { tasks[idx].controller.abort(); tasks.splice(idx, 1) }
-        if (tasks.length === 0) activeTasks.delete(username)
-    } else {
-        tasks.forEach(t => t.controller.abort())
-        activeTasks.delete(username)
     }
 }
 

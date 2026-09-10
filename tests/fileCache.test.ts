@@ -430,3 +430,27 @@ describe('File Cache Path Traversal Defense', () => {
     }
   })
 })
+
+describe('File Cache Post-processing Limiter', () => {
+  it('serializes heavy post-processing and releases the slot after failures', async () => {
+    let active = 0
+    let maxActive = 0
+    const run = (name: string, shouldFail = false) => fileCache.withCachePostProcess(undefined, name, async () => {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise(resolve => setTimeout(resolve, 10))
+      active -= 1
+      if (shouldFail) throw new Error('expected failure')
+      return name
+    })
+
+    const results = await Promise.all([run('first'), run('second')])
+
+    expect(results).toEqual(['first', 'second'])
+    expect(maxActive).toBe(1)
+    expect(fileCache.getCachePostProcessStats()).toEqual({ active: 0, waiting: 0 })
+
+    await expect(run('failed', true)).rejects.toThrow('expected failure')
+    expect(fileCache.getCachePostProcessStats()).toEqual({ active: 0, waiting: 0 })
+  })
+})

@@ -56,6 +56,16 @@ describe('Player manager module boundaries', () => {
         expect(serviceWorker).not.toContain('./js/download_manager.js');
     });
 
+    it('keeps silent prefetch lightweight and marks playback cache requests as background work', () => {
+        const songUrlSource = read('frontend/player/src/features/song_url.ts');
+        const playerSource = read('frontend/player/src/index.ts');
+
+        expect(songUrlSource).toContain("this.bufferer.preload = 'metadata'");
+        expect(songUrlSource).toContain('!isSilent && isRetry !== \'download\'');
+        expect(playerSource).toContain('const serverCacheRequests = new Set<string>();');
+        expect(playerSource).toContain('background: true');
+    });
+
     it('defers songlist loading and paginates detail requests', () => {
         const songListSource = read('frontend/player/src/legacy/songlist_manager.ts');
         const indexSource = read('frontend/player/src/index.ts');

@@ -338,6 +338,7 @@ export const createCacheRouter = (): Router => {
         namingPattern,
         cacheLyric,
         embedLyric,
+        background,
         requestedSource,
         downloadSource,
         sourceName,
@@ -362,52 +363,25 @@ export const createCacheRouter = (): Router => {
       }
 
       const songKey = fileCache.normalizeSongId(songInfo) + '_' + (quality || 'unknown')
-      console.log(`[Cache] Registering active task: ${songKey} for user: "${username}"`)
-
-      const controller = new AbortController()
-      let userTasks = fileCache.activeTasks.get(username)
-      if (!userTasks) {
-        userTasks = []
-        fileCache.activeTasks.set(username, userTasks)
-      }
-      userTasks.push({ songKey, controller })
-
-      void fileCache.downloadAndCache(
+      const queued = serverDownloadQueue.enqueue(username, [{
+        id: songKey,
         songInfo,
-        safeDownloadUrl.toString(),
         quality,
-        username,
-        controller.signal,
-        !!enableOnlyDownloadMode,
-        cacheLyric !== false,
-        embedLyric !== false,
-        {
-          requestedSource: requestedSource || songInfo.source,
-          downloadSource,
-          sourceName,
-        }
-      )
-        .then(() => console.log(`[Cache] Downloaded ${songInfo.name} for ${username || '_open'}`))
-        .catch((err: any) => {
-          if (err.message === 'Aborted') {
-            console.log(`[Cache] Task aborted for ${songInfo.name}`)
-          } else {
-            console.error(`[Cache] Failed to download ${songInfo.name}:`, err)
-          }
-        })
-        .finally(() => {
-          const tasks = fileCache.activeTasks.get(username)
-          if (tasks) {
-            const idx = tasks.findIndex((t: any) => t.songKey === songKey)
-            if (idx !== -1) {
-              tasks.splice(idx, 1)
-              console.log(`[Cache] Cleaned up active task: ${songKey} for user: "${username}"`)
-            }
-            if (tasks.length === 0) fileCache.activeTasks.delete(username)
-          }
-        })
+        resolvedUrl: safeDownloadUrl.toString(),
+        background: background === true,
+        enableOnlyDownloadMode: !!enableOnlyDownloadMode,
+        cacheLyric: cacheLyric !== false,
+        embedLyric: embedLyric !== false,
+        requestedSource: requestedSource || songInfo.source,
+        downloadSource,
+        sourceName,
+      }])
 
-      return ctx.json({ success: true, message: 'Download started' })
+      return ctx.json({
+        success: true,
+        data: queued,
+        message: queued.length > 0 ? 'Download queued' : 'Download already queued',
+      })
     } catch (err: any) {
       console.error('[Cache] Download trigger error:', err?.message || err)
       return ctx.fail(500, '服务器内部错误，请稍后重试')
@@ -429,14 +403,13 @@ export const createCacheRouter = (): Router => {
     try {
       const { songKey, queueId, all } = await ctx.bodyJson<{ songKey?: string; queueId?: string; all?: boolean }>()
       if (all) {
-        fileCache.stopUserTasks(username)
         serverDownloadQueue.pause(username)
         console.log(`[Cache] Stopped all tasks for user: ${username}`)
       } else if (queueId) {
         serverDownloadQueue.pause(username, queueId)
         console.log(`[Cache] Paused persistent queue task ${queueId} for user: ${username}`)
       } else if (songKey) {
-        fileCache.stopUserTasks(username, songKey)
+        serverDownloadQueue.pauseBySongKey(username, songKey)
         console.log(`[Cache] Stopped task ${songKey} for user: ${username}`)
       }
       return ctx.json({ success: true })

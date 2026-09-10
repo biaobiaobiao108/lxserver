@@ -256,10 +256,29 @@ function clearModalStateIfUnused(openOverlays: OverlayElement[]): void {
     unlockBody();
 }
 
+function getOverlayStackingOrder(element: OverlayElement): number {
+    const zIndex = Number.parseInt(getComputedStyle(element).zIndex, 10);
+    return Number.isFinite(zIndex) ? zIndex : 0;
+}
+
+function getTopmostOpenOverlay(openOverlays: OverlayElement[]): OverlayElement | null {
+    // Overlay roots are not ordered consistently in the document: player
+    // drawers are declared after regular modals, while the player detail view
+    // is declared before them. Use the rendered stacking order and keep DOM
+    // order as the tie-breaker for overlays sharing the same z-index.
+    let topmost: OverlayElement | null = null;
+    for (const overlay of openOverlays) {
+        if (!topmost || getOverlayStackingOrder(overlay) >= getOverlayStackingOrder(topmost)) {
+            topmost = overlay;
+        }
+    }
+    return topmost;
+}
+
 function syncOverlays(): void {
     const overlays = getOverlays();
     const openOverlays = overlays.filter(isOpen);
-    const nextOverlay = openOverlays.at(-1) || null;
+    const nextOverlay = getTopmostOpenOverlay(openOverlays);
 
     overlays.forEach(enhanceOverlay);
     enhanceFormLabels();

@@ -9,6 +9,7 @@ describe('Player Navigation and State Restoration Safety', () => {
     const librarySrcPath = path.join(import.meta.dir, '../frontend/player/src/features/library.ts');
     const lyricsSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/lyrics.ts');
     const customSelectSrcPath = path.join(import.meta.dir, '../frontend/player/src/custom_select.ts');
+    const accessibleOverlaysSrcPath = path.join(import.meta.dir, '../frontend/player/src/accessible_overlays.ts');
     const playerCssPath = path.join(import.meta.dir, '../public/music/css/app.css');
     const playerDistPath = path.join(import.meta.dir, '../public/music/app.js');
 
@@ -490,6 +491,16 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(playbackContent.includes('updateQueueBadge();')).toBe(true);
         expect(indexHtmlContent.includes('id="queue-badge-count-mobile"')).toBe(true);
         expect(indexHtmlContent.includes('id="queue-badge-count"')).toBe(true);
+    });
+
+    it('modal overlays stay interactive when a player drawer is open', () => {
+        const overlayContent = fs.readFileSync(accessibleOverlaysSrcPath, 'utf8');
+
+        expect(overlayContent).toContain('function getOverlayStackingOrder(element: OverlayElement): number');
+        expect(overlayContent).toContain('function getTopmostOpenOverlay(openOverlays: OverlayElement[]): OverlayElement | null');
+        expect(overlayContent).toContain('getComputedStyle(element).zIndex');
+        expect(overlayContent).toContain('getOverlayStackingOrder(overlay) >= getOverlayStackingOrder(topmost)');
+        expect(overlayContent).toContain('const nextOverlay = getTopmostOpenOverlay(openOverlays);');
     });
 
     it('library cards and songlist detail use sticky headers aligned with standard list height', () => {

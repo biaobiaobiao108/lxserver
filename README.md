@@ -15,7 +15,7 @@
 [![Docker Support](https://img.shields.io/badge/Docker-Alpine%20Slim-2496ED?logo=docker)](https://www.docker.com/)
 [![License](https://img.shields.io/badge/License-Apache--2.0-green)](./LICENSE)
 
-[在线特性演示页 (GitHub Pages)](https://biaobiaobiao108.github.io/lxserver/) · [快速开始](#-快速开始--docker-部署) · [环境变量参考](#-环境变量完整速查表) · [Subsonic 接入](#-subsonic-流媒体与第三方客户端接入) · [客户端配置](#-多端客户端连接指南)
+[在线特性演示页 (GitHub Pages)](https://biaobiaobiao108.github.io/lxserver/) · [快速开始](#-快速开始--docker-部署) · [数据持久化](#-数据持久化挂载说明) · [环境变量参考](#-环境变量完整速查表) · [Subsonic 接入](#-subsonic-流媒体与第三方客户端接入) · [客户端配置](#-多端客户端连接指南)
 
 </div>
 
@@ -72,11 +72,16 @@ services:
     ports:
       - "9527:9527"
     volumes:
-      # 持久化数据目录（包含数据库、歌单快照、本地音乐缓存与配置）
+      # 数据目录：SQLite 数据库、账户、歌单快照、config.js 与日志
       - ./data:/server/data
-      # 歌曲缓存目录持久化。默认缓存根目录是 <工作目录>/cache，
-      # 不挂载时容器重建（升级镜像、compose down 后再 up）会丢失全部已缓存歌曲。
+      # 歌曲缓存目录。默认缓存根目录是 <工作目录>/cache，即容器内的 /server/cache，
+      # 不在 /server/data 之下；未挂载时容器重建（升级镜像、compose down 后再 up）
+      # 会丢失全部已缓存歌曲。若不想挂载此项，可在「设置 → 缓存位置」中切换为 data。
       - ./cache:/server/cache
+      # 下载目录：仅下载模式下保存的音乐文件，同样位于默认缓存根目录之下
+      - ./music:/server/music
+      # 封面缓存目录（可选，丢失后会自动从音频文件重新提取）
+      - ./cover_cache:/server/cover_cache
     environment:
       - NODE_ENV=production
       # 【必须设置】管理后台登录密码，禁止使用 123456 等示例弱口令！
@@ -110,6 +115,9 @@ docker run -d \
   --restart always \
   -p 9527:9527 \
   -v $(pwd)/data:/server/data \
+  -v $(pwd)/cache:/server/cache \
+  -v $(pwd)/music:/server/music \
+  -v $(pwd)/cover_cache:/server/cover_cache \
   -e NODE_ENV=production \
   -e FRONTEND_PASSWORD=YourStrongAdminPassword123! \
   -e LX_USER_admin=UserPassword456! \
@@ -117,6 +125,8 @@ docker run -d \
   -e SUBSONIC_ENABLE=true \
   ghcr.io/biaobiaobiao108/lxserver:latest
 ```
+
+> 只挂载 `/server/data` 会漏掉歌曲缓存与下载的音乐文件，详见下方[数据持久化说明](#-数据持久化挂载说明)。
 
 ---
 
@@ -187,6 +197,33 @@ bun run dev
 
 ---
 
+## 📁 数据持久化挂载说明
+
+容器内 `/server/data` 存放数据库与配置，但**歌曲缓存与下载的音乐文件默认不在其中**。默认布局（工作目录为 `/server`）如下：
+
+| 内容 | 容器内路径 | 是否在 `/server/data` 内 |
+| :--- | :--- | :--- |
+| SQLite 数据库（账户、设备、歌单快照、用户设置、缓存索引） | `/server/data/lxserver.db` | 是 |
+| 用户数据（歌单 `list`、`devices.json`、`settings.json`、`token.json`、自定义源 `users/source`） | `/server/data/users/` | 是 |
+| 配置落盘文件 `config.js` | `/server/data/config.js` | 是 |
+| 日志 | `/server/data/logs/` | 是 |
+| 歌曲缓存（"缓存"目录） | `/server/cache/<用户名>/` | **否** |
+| 下载的音乐文件（"音乐"目录，仅下载模式） | `/server/music/<用户名>/` | **否** |
+| 封面缓存 | `/server/cover_cache/<用户名>/` | **否** |
+
+原因是缓存根目录默认为 `运行目录`，即工作目录下的 `cache` 与 `music`，并不在 `/server/data` 之下。因此推荐按上文示例把 `./cache`、`./music`、`./cover_cache` 一并挂载。
+
+**如果只想挂载一个 `/server/data`**：在 Web 播放器的「设置 → 缓存歌曲位置」中选择 `DATA_PATH (WebDAV同步)`，等价于在 `config.js` 中设置 `serverCacheLocation: "data"`。该值会持久化到数据库，重启后依然生效，此后缓存与下载目录分别落在 `/server/data/cache` 与 `/server/data/music`，单个卷即可覆盖全部数据。
+
+几点注意：
+
+- 封面缓存始终位于 `/server/cover_cache`，不受缓存位置设置影响；它由音频文件自动提取，丢失后会自动重建。
+- 若同时启用了 **WebDAV 同步**，`/server/data` 下的文件会被整体纳入同步扫描并逐个计算 MD5 上传。把大量音乐放进 `/server/data` 会让同步体积暴涨，此时建议保持默认缓存位置并单独挂载缓存卷（设置项名称中的「WebDAV同步」标记即指这一点）。
+- 缓存位置是服务端全局设置：以公共/未登录身份修改时需要通过管理员验证。
+- 切换缓存位置不会自动搬迁旧目录中的文件，建议切换前先清空缓存（缓存可以重新下载）。
+
+---
+
 ## 🔑 访问地址与默认路径
 
 服务启动后，默认监听 `9527` 端口：
@@ -214,7 +251,7 @@ bun run dev
 | :--- | :--- | :--- | :--- |
 | `PORT` | Number | `9527` | 服务监听端口 |
 | `BIND_IP` | String | `0.0.0.0` | 绑定的 IP 地址 |
-| `DATA_PATH` | String | `/server/data` | 数据持久化存放目录 |
+| `DATA_PATH` | String | `/server/data` | 数据持久化目录（数据库、用户数据、配置与日志，不含歌曲缓存，详见[数据持久化说明](#-数据持久化挂载说明)） |
 | `SERVER_NAME` | String | `lxserver` | 同步服务器名称标识 |
 | `NODE_ENV` | String | `production` | 运行环境模式 |
 | `DISABLE_TELEMETRY` | Boolean | `false` | 是否禁用匿名数据遥测 |

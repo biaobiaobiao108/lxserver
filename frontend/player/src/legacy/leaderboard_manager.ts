@@ -542,6 +542,16 @@ function lbToggleListSearch() {
     }
 }
 
+// ==================== 暴露给 HTML 事件代理 ====================
+Object.assign(window, {
+    changeLeaderboardSource,
+    leaderboardChangePage,
+    playAllLeaderboard,
+    toggleLbBatchMode,
+    lbSelectAll,
+    lbToggleListSearch,
+});
+
 // ==================== 手机端侧边栏切换 ====================
 function toggleLbSidebar(force) {
     const sidebar = document.getElementById('lb-sidebar');

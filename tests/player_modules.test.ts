@@ -103,4 +103,20 @@ describe('Player manager module boundaries', () => {
         expect(userSyncSource).toContain('export class RemoteClient');
         expect(indexSource).toContain('Object.assign(window, { getImgUrl, createMarqueeHtml, applyMarqueeChecks });');
     });
+
+    it('exposes lazy-loaded leaderboard actions to delegated events', () => {
+        const leaderboardSource = read('frontend/player/src/legacy/leaderboard_manager.ts');
+
+        for (const action of [
+            'changeLeaderboardSource',
+            'leaderboardChangePage',
+            'playAllLeaderboard',
+            'toggleLbBatchMode',
+            'lbSelectAll',
+            'lbToggleListSearch',
+        ]) {
+            expect(leaderboardSource).toContain(`${action},`);
+        }
+        expect(leaderboardSource).toContain('Object.assign(window, {');
+    });
 });

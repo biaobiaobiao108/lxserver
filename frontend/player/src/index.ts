@@ -3420,6 +3420,7 @@ window.toggleCacheSelection = toggleCacheSelection;
 window.removeCacheItem = removeCacheItem;
 window.clearServerCache = clearServerCache;
 window.handleHotSearchClick = handleHotSearchClick;
+window.showInitialSearchState = showInitialSearchState;
 window.playSong = playSong;
 window.resolveSongUrl = resolveSongUrl;
 window.resolveDownloadSongUrl = resolveDownloadSongUrl;
@@ -3436,6 +3437,8 @@ window.clearServerCache = clearServerCache;
 window.playPrev = playPrev;
 window.seek = seek;
 window.changeLyricFontSize = changeLyricFontSize;
+window.loadLocalFonts = loadLocalFonts;
+window.changeLyricFontFamily = changeLyricFontFamily;
 // 音量控制
 window.setVolume = setVolume;
 window.toggleMute = toggleMute;
@@ -4815,6 +4818,7 @@ window.renderMyLists = renderMyLists;
 
 // Lyrics
 window.toggleLyrics = toggleLyrics;
+window.handleLyricScroll = handleLyricScroll;
 
 // Favorites & Lists
 window.toggleFavorites = toggleFavorites;
@@ -4825,6 +4829,10 @@ window.handleRefreshList = handleRefreshList;
 window.handleJumpToOriginalList = handleJumpToOriginalList;
 window.handleRemoveList = handleRemoveList;
 window.toggleLove = toggleLove;
+window.collectCurrentSongList = collectCurrentSongList;
+
+// 认证与令牌管理
+window.handleLogout = handleLogout;
 
 // Sync functions
 window.switchSyncMode = switchSyncMode;
@@ -4837,6 +4845,10 @@ window.handleRemoteBack = handleRemoteBack;
 window.selectSyncMode = selectSyncMode;
 window.cancelSyncMode = cancelSyncMode;
 window.closeSyncModal = closeSyncModal;
+window.showRemoteOverwriteModal = showRemoteOverwriteModal;
+window.closeRemoteOverwriteModal = closeRemoteOverwriteModal;
+window.selectRemoteOverwriteMode = selectRemoteOverwriteMode;
+window.handleRemoteOverwriteConnect = handleRemoteOverwriteConnect;
 
 // Comment functions
 window.toggleCommentModal = toggleCommentModal;

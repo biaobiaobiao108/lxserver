@@ -548,8 +548,11 @@ function copyGeneratedToken() {
 }
 
 // 暴漏到全局
+(window as any).handleToggleTokenStatus = handleToggleTokenStatus;
 (window as any).toggleTokenAuthSetting = toggleTokenAuthSetting;
 (window as any).openAddTokenModal = openAddTokenModal;
+(window as any).switchTokenExpireMode = switchTokenExpireMode;
+(window as any).openEditTokenModal = openEditTokenModal;
 (window as any).closeAddTokenModal = closeAddTokenModal;
 (window as any).handleAddToken = handleAddToken;
 (window as any).handleRemoveToken = handleRemoveToken;

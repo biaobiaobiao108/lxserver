@@ -119,4 +119,32 @@ describe('Player manager module boundaries', () => {
         }
         expect(leaderboardSource).toContain('Object.assign(window, {');
     });
+
+    it('exposes static delegated actions from the player entrypoint and token manager', () => {
+        const indexSource = read('frontend/player/src/index.ts');
+        const tokenSource = read('frontend/player/src/token_management.ts');
+
+        for (const action of [
+            'showInitialSearchState',
+            'loadLocalFonts',
+            'changeLyricFontFamily',
+            'handleLyricScroll',
+            'collectCurrentSongList',
+            'handleLogout',
+            'showRemoteOverwriteModal',
+            'closeRemoteOverwriteModal',
+            'selectRemoteOverwriteMode',
+            'handleRemoteOverwriteConnect',
+        ]) {
+            expect(indexSource).toContain(`window.${action} = ${action};`);
+        }
+
+        for (const action of [
+            'handleToggleTokenStatus',
+            'switchTokenExpireMode',
+            'openEditTokenModal',
+        ]) {
+            expect(tokenSource).toContain(`(window as any).${action} = ${action};`);
+        }
+    });
 });

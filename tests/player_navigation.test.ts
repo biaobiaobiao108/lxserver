@@ -495,12 +495,18 @@ describe('Player Navigation and State Restoration Safety', () => {
 
     it('modal overlays stay interactive when a player drawer is open', () => {
         const overlayContent = fs.readFileSync(accessibleOverlaysSrcPath, 'utf8');
+        const playerContent = fs.readFileSync(playerSrcPath, 'utf8');
 
         expect(overlayContent).toContain('function getOverlayStackingOrder(element: OverlayElement): number');
         expect(overlayContent).toContain('function getTopmostOpenOverlay(openOverlays: OverlayElement[]): OverlayElement | null');
+        expect(overlayContent).toContain('function dismissTransientPortals(): void');
         expect(overlayContent).toContain('getComputedStyle(element).zIndex');
         expect(overlayContent).toContain('getOverlayStackingOrder(overlay) >= getOverlayStackingOrder(topmost)');
         expect(overlayContent).toContain('const nextOverlay = getTopmostOpenOverlay(openOverlays);');
+        expect(overlayContent).toContain("(window as any).closeFavoriteSidebarMenus?.();");
+        expect(overlayContent).toContain("(window as any).CustomSelectManager?.closeAll?.();");
+        expect(overlayContent).toContain('if (nextOverlay && !isDrawer(nextOverlay) && activeOverlay !== nextOverlay)');
+        expect(playerContent).toContain('(window as any).closeFavoriteSidebarMenus = closeFavoriteSidebarMenus;');
     });
 
     it('library cards and songlist detail use sticky headers aligned with standard list height', () => {

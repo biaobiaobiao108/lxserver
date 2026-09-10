@@ -3786,6 +3786,8 @@ function closeFavoriteSidebarMenus(restoreFocus = false) {
     }
 }
 
+(window as any).closeFavoriteSidebarMenus = closeFavoriteSidebarMenus;
+
 function removeFavoriteSidebarMenus() {
     closeFavoriteSidebarMenus();
     document.querySelectorAll('.favorite-sidebar-menu').forEach(menu => menu.remove());

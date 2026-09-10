@@ -256,6 +256,16 @@ function clearModalStateIfUnused(openOverlays: OverlayElement[]): void {
     unlockBody();
 }
 
+function dismissTransientPortals(): void {
+    if (document.querySelector('.favorite-sidebar-menu.is-open')) {
+        (window as any).closeFavoriteSidebarMenus?.();
+    }
+
+    if (document.querySelector('.cs-dropdown.portal-active')) {
+        (window as any).CustomSelectManager?.closeAll?.();
+    }
+}
+
 function getOverlayStackingOrder(element: OverlayElement): number {
     const zIndex = Number.parseInt(getComputedStyle(element).zIndex, 10);
     return Number.isFinite(zIndex) ? zIndex : 0;
@@ -279,6 +289,13 @@ function syncOverlays(): void {
     const overlays = getOverlays();
     const openOverlays = overlays.filter(isOpen);
     const nextOverlay = getTopmostOpenOverlay(openOverlays);
+
+    // Portaled menus and custom-select dropdowns intentionally use a higher
+    // z-index than regular content. Dismiss stale instances before a modal
+    // takes over, otherwise an old portal can remain visually above it.
+    if (nextOverlay && !isDrawer(nextOverlay) && activeOverlay !== nextOverlay) {
+        dismissTransientPortals();
+    }
 
     overlays.forEach(enhanceOverlay);
     enhanceFormLabels();

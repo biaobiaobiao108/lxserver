@@ -1457,20 +1457,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 为歌词按钮添加悬停恢复逻辑
+    // 为歌词详情顶栏按钮添加悬停恢复逻辑
     const toggleLyricsBtn = document.getElementById('btn-toggle-lyrics');
-    if (toggleLyricsBtn) {
-        toggleLyricsBtn.addEventListener('mouseenter', () => {
+    const coverModeBtn = document.getElementById('btn-toggle-cover-mode');
+    [toggleLyricsBtn, coverModeBtn].forEach((btn) => {
+        if (!btn) return;
+        btn.addEventListener('mouseenter', () => {
             if (toggleLyricsBtnTimeout) clearTimeout(toggleLyricsBtnTimeout);
-            toggleLyricsBtn.classList.remove('faint');
+            toggleLyricsBtn?.classList.remove('faint');
+            coverModeBtn?.classList.remove('faint');
         });
-        toggleLyricsBtn.addEventListener('mouseleave', () => {
+        btn.addEventListener('mouseleave', () => {
             const view = document.getElementById('view-player-detail');
             if (view && !view.classList.contains('translate-y-[100%]')) {
                 startToggleLyricsBtnTimer();
             }
         });
-    }
+    });
 });
 
 // ==================== 播放队列 (Queue) 逻辑 ====================
@@ -5125,10 +5128,11 @@ function toggleDetailCover() {
         const toggleBtn = document.getElementById('btn-toggle-cover-mode');
         if (toggleBtn) {
             toggleBtn.setAttribute('aria-pressed', 'true');
-            toggleBtn.classList.add('text-emerald-500', 'border-emerald-500/30', 't-bg-panel/80');
+            toggleBtn.classList.add('text-emerald-400', 'border-emerald-500/30', 'bg-white/10');
+            toggleBtn.classList.remove('text-white/50');
             const icon = toggleBtn.querySelector('i');
             const label = toggleBtn.querySelector('span');
-            if (icon) icon.className = 'fas fa-compact-disc text-xs';
+            if (icon) icon.className = 'fas fa-compact-disc text-[11px]';
             if (label) label.textContent = '显示唱片';
         }
 
@@ -5172,10 +5176,11 @@ function toggleDetailCover() {
         const toggleBtn = document.getElementById('btn-toggle-cover-mode');
         if (toggleBtn) {
             toggleBtn.setAttribute('aria-pressed', 'false');
-            toggleBtn.classList.remove('text-emerald-500', 'border-emerald-500/30', 't-bg-panel/80');
+            toggleBtn.classList.remove('text-emerald-400', 'border-emerald-500/30', 'bg-white/10');
+            toggleBtn.classList.add('text-white/50');
             const icon = toggleBtn.querySelector('i');
             const label = toggleBtn.querySelector('span');
-            if (icon) icon.className = 'fas fa-align-left text-xs';
+            if (icon) icon.className = 'fas fa-align-left text-[11px]';
             if (label) label.textContent = '大歌词';
         }
     }
@@ -5310,19 +5315,22 @@ function startExpandBtnTimer() {
     }, 3000);
 }
 
-// 启动歌词按钮淡化计时器
+// 启动歌词顶栏控制按钮淡化计时器
 function startToggleLyricsBtnTimer() {
     const toggleBtn = document.getElementById('btn-toggle-lyrics');
-    if (!toggleBtn) return;
+    const coverModeBtn = document.getElementById('btn-toggle-cover-mode');
+    if (!toggleBtn && !coverModeBtn) return;
 
     if (toggleLyricsBtnTimeout) clearTimeout(toggleLyricsBtnTimeout);
-    toggleBtn.classList.remove('faint');
+    toggleBtn?.classList.remove('faint');
+    coverModeBtn?.classList.remove('faint');
 
     toggleLyricsBtnTimeout = setTimeout(() => {
         // 只有当歌词页面处于显示状态时才淡化
         const view = document.getElementById('view-player-detail');
         if (view && !view.classList.contains('translate-y-[100%]')) {
-            toggleBtn.classList.add('faint');
+            toggleBtn?.classList.add('faint');
+            coverModeBtn?.classList.add('faint');
         }
     }, 3000);
 }

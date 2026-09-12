@@ -1507,18 +1507,19 @@ aside {
     /* Chrome, Safari and Opera */
 }
 
-/* Expand Button Faint Style */
+/* Expand Button & Lyrics View Control Faint Style */
 #btn-expand-panel.faint,
-#btn-toggle-lyrics.faint {
-    opacity: 0.15 !important;
-    background-color: rgba(255, 255, 255, 0.4) !important;
-    border-color: rgba(200, 200, 200, 0.2) !important;
+#btn-toggle-lyrics.faint,
+#btn-toggle-cover-mode.faint {
+    opacity: 0.18 !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 #btn-expand-panel.faint:hover,
-#btn-toggle-lyrics.faint:hover {
+#btn-toggle-lyrics.faint:hover,
+#btn-toggle-cover-mode.faint:hover {
     opacity: 1 !important;
-    background-color: rgba(255, 255, 255, 0.9) !important;
+    background-color: rgba(255, 255, 255, 0.12) !important;
 }
 
 .custom-scrollbar::-webkit-scrollbar {

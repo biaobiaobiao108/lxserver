@@ -1509,15 +1509,13 @@ aside {
 
 /* Expand Button & Lyrics View Control Faint Style */
 #btn-expand-panel.faint,
-#btn-toggle-lyrics.faint,
-#btn-toggle-cover-mode.faint {
+#btn-toggle-lyrics.faint {
     opacity: 0.18 !important;
     border-color: rgba(255, 255, 255, 0.08) !important;
 }
 
 #btn-expand-panel.faint:hover,
-#btn-toggle-lyrics.faint:hover,
-#btn-toggle-cover-mode.faint:hover {
+#btn-toggle-lyrics.faint:hover {
     opacity: 1 !important;
     background-color: rgba(255, 255, 255, 0.12) !important;
 }
@@ -1692,7 +1690,6 @@ aside {
 }
 
 /* 现代移动与桌面端触控微交互：按压轻微回弹反馈 */
-#btn-toggle-cover-mode:active,
 #btn-toggle-lyrics:active,
 .player-secondary-action:active,
 .netease-nav-item:active {

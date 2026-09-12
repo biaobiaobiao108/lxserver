@@ -1111,11 +1111,7 @@ function updatePlayerInfo(song, actualQuality) {
         detailTitle.classList.remove('animate-marquee');
         detailTitle.onclick = (e) => {
             e.stopPropagation();
-            if (window.innerWidth < 1025) {
-                toggleDetailCover();
-            } else {
-                performSearch(song.name, song.source);
-            }
+            performSearch(song.name, song.source);
         };
         detailTitle.classList.add('hover:text-emerald-500', 'cursor-pointer', 'transition-colors');
     }
@@ -1125,17 +1121,13 @@ function updatePlayerInfo(song, actualQuality) {
         detailArtist.innerText = song.singer;
         detailArtist.onclick = async (e) => {
             e.stopPropagation();
-            if (window.innerWidth < 1025) {
-                toggleDetailCover();
+            // 处理多个歌手的情况
+            const singers = song.singer.split(/[、&,，]| \/ /).map(s => s.trim()).filter(s => s);
+            if (singers.length > 1) {
+                const selected = await showOptions('搜索歌手', '识别到多个歌手，请选择要搜索的对象：', singers);
+                if (selected) performSearch(selected, song.source, 'singer');
             } else {
-                // 处理多个歌手的情况
-                const singers = song.singer.split(/[、&,，]| \/ /).map(s => s.trim()).filter(s => s);
-                if (singers.length > 1) {
-                    const selected = await showOptions('搜索歌手', '识别到多个歌手，请选择要搜索的对象：', singers);
-                    if (selected) performSearch(selected, song.source, 'singer');
-                } else {
-                    performSearch(song.singer, song.source, 'singer');
-                }
+                performSearch(song.singer, song.source, 'singer');
             }
         };
         detailArtist.classList.add('hover:text-emerald-500', 'cursor-pointer', 'transition-colors');

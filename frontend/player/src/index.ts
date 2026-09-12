@@ -1459,21 +1459,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 为歌词详情顶栏按钮添加悬停恢复逻辑
     const toggleLyricsBtn = document.getElementById('btn-toggle-lyrics');
-    const coverModeBtn = document.getElementById('btn-toggle-cover-mode');
-    [toggleLyricsBtn, coverModeBtn].forEach((btn) => {
-        if (!btn) return;
-        btn.addEventListener('mouseenter', () => {
+    if (toggleLyricsBtn) {
+        toggleLyricsBtn.addEventListener('mouseenter', () => {
             if (toggleLyricsBtnTimeout) clearTimeout(toggleLyricsBtnTimeout);
-            toggleLyricsBtn?.classList.remove('faint');
-            coverModeBtn?.classList.remove('faint');
+            toggleLyricsBtn.classList.remove('faint');
         });
-        btn.addEventListener('mouseleave', () => {
+        toggleLyricsBtn.addEventListener('mouseleave', () => {
             const view = document.getElementById('view-player-detail');
             if (view && !view.classList.contains('translate-y-[100%]')) {
                 startToggleLyricsBtnTimer();
             }
         });
-    });
+    }
 });
 
 // ==================== 播放队列 (Queue) 逻辑 ====================
@@ -5075,116 +5072,8 @@ window.addEventListener('resize', () => {
 });
 
 // 切换详情页封面显示（移动端优化）
-function toggleDetailCover() {
-    const cover = document.getElementById('mobile-player-cover-container');
-    const container = document.getElementById('player-detail-container');
-    const lyricsWrapper = document.getElementById('lyrics-wrapper');
-    const lyricContent = document.getElementById('lyric-content');
-    const detailTitle = document.getElementById('detail-title');
-
-    // 获取标题区域父容器
-    const titleParent = lyricsWrapper ? lyricsWrapper.querySelector('div:first-child') : null;
-
-    if (!cover || !container) return;
-
-    // 根据 cover 的透明度状态判断当前是否隐藏
-    const isHidden = cover.classList.contains('opacity-0');
-
-    if (!isHidden) {
-        // --- 隐藏封面 ---
-        cover.style.display = 'none'; // 彻底移除渲染占位
-        cover.classList.add('opacity-0', 'scale-90', 'border-0');
-
-        // 隐藏封面时，不再需要那么大的 pt-8/md:pt-32。
-        // 保留 md:pt-10 左右以避开顶部 Now Playing 即可，让歌词有更多纵向空间
-        container.classList.remove('pt-8', 'mt-4', 'md:pt-0', 'md:pt-24');
-        container.classList.add('pt-4', 'md:pt-10');
-
-        if (lyricsWrapper) {
-            lyricsWrapper.classList.remove('md:w-auto', 'md:max-w-[50%]', 'md:w-[500px]', 'lg:w-[600px]', 'flex-shrink-0');
-            lyricsWrapper.classList.add('md:w-2/3', 'mx-auto', 'lyrics-centered');
-            // 隐藏封面时允许歌词区域更高
-            lyricsWrapper.style.maxHeight = '85vh';
-        }
-
-        if (lyricContent) {
-            lyricContent.classList.remove('md:items-start', 'md:text-left', 'md:pl-6');
-            lyricContent.classList.add('items-center', 'text-center');
-        }
-
-        if (titleParent) {
-            titleParent.classList.remove('md:text-left', 'md:pl-6');
-            titleParent.classList.add('text-center');
-        }
-
-        if (detailTitle) {
-            detailTitle.classList.remove('md:mx-0');
-            detailTitle.classList.add('mx-auto');
-        }
-
-        container.classList.add('has-centered-lyrics');
-
-        // 更新唱片/大歌词切换按钮状态
-        const toggleBtn = document.getElementById('btn-toggle-cover-mode');
-        if (toggleBtn) {
-            toggleBtn.setAttribute('aria-pressed', 'true');
-            toggleBtn.classList.add('text-emerald-400', 'border-emerald-500/30', 'bg-white/10');
-            toggleBtn.classList.remove('text-white/50');
-            const icon = toggleBtn.querySelector('i');
-            const label = toggleBtn.querySelector('span');
-            if (icon) icon.className = 'fas fa-compact-disc text-[11px]';
-            if (label) label.textContent = '显示唱片';
-        }
-
-    } else {
-        // --- 显示封面 ---
-        cover.style.display = 'block'; // 恢复显示
-        cover.classList.remove('opacity-0', 'scale-90', 'border-0');
-
-        container.classList.remove('has-centered-lyrics');
-
-        // 恢复当前使用的固定间距
-        container.classList.add('gap-4', 'md:gap-20');
-        container.classList.remove('pt-8', 'md:pt-32', 'md:pt-10'); // 移除纯歌词专用间距
-
-        // 手机端恢复默认 pt
-        if (window.innerWidth < 1025) {
-            container.classList.add('pt-8', 'mt-4');
-        }
-
-
-        if (lyricsWrapper) {
-            lyricsWrapper.classList.remove('md:w-auto', 'md:max-w-[50%]', 'md:w-2/3', 'mx-auto', 'lyrics-centered');
-            // 锁定桌面端宽度，防止长短歌词导致封面抖动
-            lyricsWrapper.classList.add('md:w-[500px]', 'lg:w-[600px]', 'flex-shrink-0');
-            lyricsWrapper.style.maxHeight = ''; // 恢复默认值
-        }
-
-        if (lyricContent) {
-            lyricContent.classList.add('items-center', 'md:items-start', 'text-center', 'md:text-left', 'md:pl-6');
-        }
-
-        if (titleParent) {
-            titleParent.classList.add('text-center', 'md:text-left', 'md:pl-6');
-        }
-
-        if (detailTitle) {
-            detailTitle.classList.add('md:mx-0');
-        }
-
-        // 更新唱片/大歌词切换按钮状态
-        const toggleBtn = document.getElementById('btn-toggle-cover-mode');
-        if (toggleBtn) {
-            toggleBtn.setAttribute('aria-pressed', 'false');
-            toggleBtn.classList.remove('text-emerald-400', 'border-emerald-500/30', 'bg-white/10');
-            toggleBtn.classList.add('text-white/50');
-            const icon = toggleBtn.querySelector('i');
-            const label = toggleBtn.querySelector('span');
-            if (icon) icon.className = 'fas fa-align-left text-[11px]';
-            if (label) label.textContent = '大歌词';
-        }
-    }
-}
+// 切换详情页封面显示（已弃用大歌词模式，保留空实现以兼容历史调用与测试约定）
+function toggleDetailCover() {}
 (window as any).toggleDetailCover = toggleDetailCover;
 
 // Initialize mobile gestures & touch interactions
@@ -5318,19 +5207,16 @@ function startExpandBtnTimer() {
 // 启动歌词顶栏控制按钮淡化计时器
 function startToggleLyricsBtnTimer() {
     const toggleBtn = document.getElementById('btn-toggle-lyrics');
-    const coverModeBtn = document.getElementById('btn-toggle-cover-mode');
-    if (!toggleBtn && !coverModeBtn) return;
+    if (!toggleBtn) return;
 
     if (toggleLyricsBtnTimeout) clearTimeout(toggleLyricsBtnTimeout);
-    toggleBtn?.classList.remove('faint');
-    coverModeBtn?.classList.remove('faint');
+    toggleBtn.classList.remove('faint');
 
     toggleLyricsBtnTimeout = setTimeout(() => {
         // 只有当歌词页面处于显示状态时才淡化
         const view = document.getElementById('view-player-detail');
         if (view && !view.classList.contains('translate-y-[100%]')) {
-            toggleBtn?.classList.add('faint');
-            coverModeBtn?.classList.add('faint');
+            toggleBtn.classList.add('faint');
         }
     }, 3000);
 }

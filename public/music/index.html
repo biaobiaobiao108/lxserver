@@ -3182,13 +3182,7 @@
                 class="pointer-events-auto t-text-muted hover:text-emerald-600 t-bg-panel/40 hover:t-bg-panel/80 rounded-full w-10 h-10 flex items-center justify-center transition-all shadow-sm backdrop-blur-md">
                 <i class="fas fa-chevron-down text-lg"></i>
             </button>
-            <div class="flex items-center gap-3">
-                <button id="btn-toggle-cover-mode" data-event-click-action="toggleDetailCover" aria-label="切换唱片与大歌词" aria-pressed="false"
-                    class="pointer-events-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium text-white/50 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all duration-300 shadow-none backdrop-blur-md">
-                    <i class="fas fa-align-left text-[11px]"></i>
-                    <span class="hidden sm:inline">大歌词</span>
-                </button>
-            </div>
+            <div></div>
         </div>
 
         <!-- Main Content -->
@@ -3233,8 +3227,7 @@
             <div id="lyrics-wrapper"
                 class="w-full md:w-[500px] lg:w-[600px] flex-1 min-h-0 md:flex-none md:h-full md:max-h-[70vh] flex flex-col relative transition-all duration-300 flex-shrink-0">
                 <!-- Song Info -->
-                <div class="mb-4 md:mb-8 text-center md:text-left px-4 md:pl-6 select-none transition-all duration-300 cursor-pointer"
-                    data-event-click-action="toggleDetailCover" data-event-media-max="1024" data-event-stop="true">
+                <div class="mb-4 md:mb-8 text-center md:text-left px-4 md:pl-6 select-none transition-all duration-300">
                     <div id="detail-title-container" class="overflow-hidden whitespace-nowrap mb-1">
                         <div id="detail-title"
                             class="inline-block text-2xl md:text-4xl font-black t-text-main drop-shadow-sm max-w-full truncate w-fit mx-auto md:mx-0">
@@ -3243,12 +3236,6 @@
                     </div>
                     <div id="detail-artist"
                         class="inline-block text-base md:text-xl t-text-muted font-medium truncate max-w-full">Artist
-                    </div>
-                    <div id="toggle-hint"
-                        class="text-[10px] text-emerald-500/60 mt-2 font-mono tracking-widest opacity-80 transition-all duration-1000 overflow-hidden max-h-8">
-                        <i class="fas fa-chevron-up text-xs animate-bounce mr-1"></i>
-                        <span class="md:hidden">点击歌曲名称隐藏显示封面</span>
-                        <span class="hidden md:inline">双击空白区域隐藏显示封面</span>
                     </div>
                 </div>
 

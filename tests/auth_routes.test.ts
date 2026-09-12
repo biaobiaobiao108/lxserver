@@ -13,8 +13,31 @@ import { describe, test, expect, beforeEach } from 'bun:test'
 
 const { createAuthRouter, userSessions } = await import('@/server/routes/auth')
 const { PLAYER_SESSION_TTL } = await import('@/server/auth')
+const { clearLoginFailures } = await import('@/server/auth')
 
 describe('Auth & Token Routes (routes/auth.ts)', () => {
+  test('admin verification and login share their failure budget and success resets it', async () => {
+    const router = createAuthRouter()
+    const ip = '192.0.2.45'
+    const verify = (password: string) => router.handle(new Request('http://localhost/api/admin/verify', {
+      method: 'POST', headers: { 'x-frontend-auth': password },
+    }), { remoteAddress: ip })
+    try {
+      for (let i = 0; i < 9; i++) expect((await verify('wrong')).status).toBe(401)
+      expect((await verify('admin123')).status).toBe(200)
+      for (let i = 0; i < 10; i++) expect((await verify('wrong')).status).toBe(401)
+      expect((await verify('admin123')).status).toBe(429)
+      expect((await router.handle(new Request('http://localhost/api/login', {
+        method: 'POST', body: JSON.stringify({ password: 'admin123' }),
+      }), { remoteAddress: ip })).status).toBe(429)
+      expect((await router.handle(new Request('http://localhost/api/admin/verify', {
+        method: 'POST', headers: { 'x-frontend-auth': 'admin123' },
+      }), { remoteAddress: '192.0.2.46' })).status).toBe(200)
+    } finally {
+      clearLoginFailures(ip)
+      clearLoginFailures('192.0.2.46')
+    }
+  })
   beforeEach(() => {
     const lxGlobal = (global as any).lx;
     lxGlobal.config['frontend.password'] = 'admin123';

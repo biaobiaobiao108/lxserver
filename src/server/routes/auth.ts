@@ -383,12 +383,16 @@ export const createAuthRouter = (): Router => {
 
   // 1. 管理后台密码校验与老版管理员登录
   router.post('/api/admin/verify', (ctx) => {
+    const ip = ctx.remoteAddress || 'unknown'
+    if (isLoginRateLimited(ip)) return loginRateLimitedResponse(ctx)
     if (verifyAdminAuth(ctx.request)) {
+      clearLoginFailures(ip)
       const sessionId = createAdminSession()
       return ctx.json({ success: true }, 200, {
         'Set-Cookie': `${ADMIN_SESSION_COOKIE_NAME}=${sessionId}; HttpOnly; Path=/; SameSite=Strict; Max-Age=${8 * 60 * 60}${ctx.url.protocol === 'https:' ? '; Secure' : ''}`,
       })
     }
+    recordLoginFailure(ip)
     return ctx.fail(401, '管理员密码错误')
   })
 

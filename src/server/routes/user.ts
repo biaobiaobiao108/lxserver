@@ -310,6 +310,7 @@ export const createUserRouter = (): Router => {
   router.post('/api/user/library/artists', async (ctx) => {
     const username = resolveTargetUsername(ctx, false)
     if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
+    if (username === '_open' && !verifyAdminAuth(ctx.request)) return ctx.fail(403, '修改公开收藏需要管理员权限')
     try {
       const parsed = await ctx.bodyJson()
       if (!Array.isArray(parsed)) throw new Error('Expected an array')
@@ -346,6 +347,7 @@ export const createUserRouter = (): Router => {
   router.post('/api/user/library/albums', async (ctx) => {
     const username = resolveTargetUsername(ctx, false)
     if (!username) return ctx.fail(401, '登录状态已失效，请重新登录')
+    if (username === '_open' && !verifyAdminAuth(ctx.request)) return ctx.fail(403, '修改公开收藏需要管理员权限')
     try {
       const parsed = await ctx.bodyJson()
       if (!Array.isArray(parsed)) throw new Error('Expected an array')

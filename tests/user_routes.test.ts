@@ -90,6 +90,28 @@ describe('User snapshot permissions', () => {
     }
     expect((await router.handle(snapshotRequest('upload', 'another_user', userHeaders))).status).toBe(403)
   })
+
+  test('public library writes require an administrator while personal libraries remain writable', async () => {
+    const router = createUserRouter()
+    for (const type of ['artists', 'albums']) {
+      const original = [{ id: 'saved-item', name: 'Saved' }]
+      getDb().run('INSERT INTO user_settings (user_name, key, value, updated_at) VALUES (?, ?, ?, ?)',
+        ['_open', `library_${type}`, JSON.stringify(original), Date.now()])
+      const write = (owner: string, headers: Record<string, string>, body: unknown = []) => router.handle(
+        new Request(`http://localhost/api/user/library/${type}?user=${owner}`, {
+          method: 'POST', headers: { ...headers, 'content-type': 'application/json' }, body: JSON.stringify(body),
+        }))
+      for (const owner of ['_open', 'default', '']) {
+        expect((await write(owner, {})).status).toBe(403)
+      }
+      expect((await write('_open', userHeaders)).status).toBe(403)
+      const read = await router.handle(new Request(`http://localhost/api/user/library/${type}?user=_open`))
+      expect(await read.json()).toEqual(original)
+      expect((await write('_open', adminHeaders)).status).toBe(200)
+      expect((await write(username, userHeaders, original)).status).toBe(200)
+      expect((await write('another-user', userHeaders)).status).toBe(401)
+    }
+  })
 })
 
 describe('Deleted account credentials', () => {

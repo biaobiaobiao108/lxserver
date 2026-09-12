@@ -1,7 +1,8 @@
 import http from 'http'
 import crypto from 'crypto'
 import { URL } from 'url'
-import { getUserSpace, getUserDirname } from '@/user'
+import { getUserSpace } from '@/user'
+import { getDb } from '@/database'
 import { callUserApiGetMusicUrl } from '@/server/userApi'
 import { getSingerPic, getSingerDetail, getSingerMid } from '@/server/utils/singer'
 import { fetchRecommendedAlbums } from '@/server/utils/recommendAlbums'
@@ -361,12 +362,12 @@ class SubsonicHandler {
     // ─────────────────────────────────────────────
 
     private async getLibraryData(username: string, type: 'artists' | 'albums'): Promise<any[]> {
-        const userDir = path.join(global.lx.userPath, getUserDirname(username))
-        const libPath = path.join(userDir, 'library', `${type}.json`)
-        if (!fs.existsSync(libPath)) return []
         try {
-            const content = await fs.promises.readFile(libPath, 'utf8')
-            return JSON.parse(content)
+            const row = getDb().query<{ value: string }, [string, string]>(
+                'SELECT value FROM user_settings WHERE user_name = ? AND key = ?'
+            ).get(username, `library_${type}`)
+            const data = row ? JSON.parse(row.value) : []
+            return Array.isArray(data) ? data : []
         } catch (e) {
             console.error(`[Subsonic] Error reading library ${type}:`, e)
             return []

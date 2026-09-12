@@ -3881,3 +3881,37 @@ input:-webkit-autofill:active {
         padding-bottom: 10rem !important;
     }
 }
+
+/* =============== 现代动效与 View Transitions 增强 =============== */
+@supports (view-transition-name: none) {
+    .view.active {
+        view-transition-name: admin-active-view;
+    }
+
+    ::view-transition-group(admin-active-view) {
+        animation-duration: 260ms;
+        animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    ::view-transition-old(admin-active-view) {
+        animation: fadeOut 160ms cubic-bezier(0.4, 0, 1, 1) both;
+    }
+
+    ::view-transition-new(admin-active-view) {
+        animation: fadeIn 260ms cubic-bezier(0, 0, 0.2, 1) both;
+    }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ::view-transition-group(admin-active-view),
+    ::view-transition-old(admin-active-view),
+    ::view-transition-new(admin-active-view) {
+        animation: none !important;
+    }
+}
+

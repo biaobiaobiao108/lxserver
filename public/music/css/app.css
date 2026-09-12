@@ -2027,7 +2027,7 @@ aside {
 }
 .cs-wrapper.active .cs-trigger-icon { transform: rotate(180deg); }
 
-/* Portal 模式下的下拉框 */
+/* Portal 模式及原生 Popover 模式下的下拉框 */
 .cs-dropdown {
     position: absolute;
     z-index: 9999; /* 必须足够高以穿透所有容器 */
@@ -2040,12 +2040,20 @@ aside {
     opacity: 0;
     transform: translateY(10px) scale(0.95);
     pointer-events: none;
-    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.15);
+    transition: opacity 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.15), transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.15);
     overflow: hidden;
     max-height: 280px;
     overflow-y: auto;
     min-width: 120px;
+    padding: 0;
+    margin: 0;
+    color: inherit;
 }
+/* 原生 Popover 顶层层级重置 */
+.cs-dropdown[popover] {
+    inset: unset;
+}
+.cs-dropdown[popover]:popover-open,
 .cs-dropdown.visible {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -2055,6 +2063,7 @@ aside {
 .cs-dropdown.open-up {
     transform: translateY(-10px) scale(0.95);
 }
+.cs-dropdown[popover].open-up:popover-open,
 .cs-dropdown.open-up.visible {
     transform: translateY(0) scale(1);
 }

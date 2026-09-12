@@ -1310,8 +1310,9 @@ window.LocalMusicManager = {
 
             const folderIcon = item.folder === 'music' ? '<i class="fas fa-download text-blue-500 mr-1" title="下载目录"></i>' : '<i class="fas fa-hdd text-emerald-500 mr-1" title="缓存目录"></i>';
 
+            const deferredClass = pageIndex > 12 ? 'deferred-list-item ' : '';
             html += `
-            <div class="player-track-grid player-track-grid--local player-motion-item p-3 md:p-2 items-center rounded-xl hover:t-bg-item-hover transition-all t-border-main border-b last:border-b-0 group relative ${isSelected ? 't-bg-item-hover ring-1 ring-emerald-500/30' : ''}" style="--player-motion-index: ${Math.min(pageIndex, 7)};" data-lm-row-index="${index}">
+            <div class="player-track-grid player-track-grid--local player-motion-item p-3 md:p-2 items-center rounded-xl hover:t-bg-item-hover transition-all t-border-main border-b last:border-b-0 group relative ${deferredClass}${isSelected ? 't-bg-item-hover ring-1 ring-emerald-500/30' : ''}" style="--player-motion-index: ${Math.min(pageIndex, 7)};" data-lm-row-index="${index}">
                 <!-- # / Batch -->
                 <div class="player-track-index text-center text-xs font-mono t-text-muted flex-shrink-0 flex items-center justify-center">
                     <div class="${this.batchMode ? 'hidden' : 'block'}">${index + 1}</div>

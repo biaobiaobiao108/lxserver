@@ -154,6 +154,24 @@ export function initCustomSelectManager(getSettingsUiMap, getDefaultSettings) {
             document.body.appendChild(dropdown);
             trigger.setAttribute('aria-expanded', 'true');
 
+            // 现代 HTML5 Popover API 检测与挂载（提供浏览器顶层 Top Layer 与原生 Light Dismissal）
+            const supportsPopover = typeof (dropdown as any).showPopover === 'function';
+            if (supportsPopover) {
+                try {
+                    dropdown.setAttribute('popover', 'auto');
+                    dropdown.addEventListener('toggle', (event: any) => {
+                        if (event.newState === 'closed') {
+                            if (this.activeTrigger === trigger) {
+                                this.closeAll(false);
+                            }
+                        }
+                    });
+                    (dropdown as any).showPopover();
+                } catch {
+                    dropdown.removeAttribute('popover');
+                }
+            }
+
             this.reposition(trigger, dropdown);
             window.addEventListener('scroll', this.handleScrollOrResize, true);
             window.addEventListener('resize', this.handleScrollOrResize);

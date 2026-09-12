@@ -4,6 +4,7 @@ import path from 'path';
 
 describe('Player Navigation and State Restoration Safety', () => {
     const playerSrcPath = path.join(import.meta.dir, '../frontend/player/src/index.ts');
+    const navigationSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/navigation.ts');
     const playbackSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/playback.ts');
     const searchSrcPath = path.join(import.meta.dir, '../frontend/player/src/features/search.ts');
     const librarySrcPath = path.join(import.meta.dir, '../frontend/player/src/features/library.ts');
@@ -131,6 +132,7 @@ describe('Player Navigation and State Restoration Safety', () => {
 
     it('search detail views keep one local track header and preserve navigation', () => {
         const playerContent = fs.readFileSync(playerSrcPath, 'utf8');
+        const navigationContent = fs.readFileSync(navigationSrcPath, 'utf8');
         const searchContent = fs.readFileSync(searchSrcPath, 'utf8');
         const css = fs.readFileSync(playerCssPath, 'utf8');
 
@@ -142,9 +144,8 @@ describe('Player Navigation and State Restoration Safety', () => {
         expect(searchContent).toContain('renderTrackListHeader({ extraClass:');
         expect(searchContent).toContain('container.insertAdjacentHTML(\'beforeend\', emptyState)');
         expect(searchContent).toContain('paginationBar.classList.toggle(\'hidden\', searchDetailOpen)');
-        expect(playerContent).toContain('transitionPlayerView(activeView, getPlayerViewDirection(tabId))');
-        expect(playerContent).toContain('startViewTransition.call(document');
-        expect(playerContent).toContain('types: [direction]');
+        expect(playerContent).toContain('const switchTab = createTabSwitcher');
+        expect(navigationContent).toContain('transitionPlayerView(activeView, getPlayerViewDirection(tabId))');
         expect(css).toContain('#search-results-header.hidden');
         expect(css).toContain('display: none !important');
         expect(css).toContain('.player-detail-list-toolbar');
@@ -301,10 +302,10 @@ describe('Player Navigation and State Restoration Safety', () => {
     });
 
     it('player motion is progressive, directional, and reduced-motion aware', () => {
-        const source = fs.readFileSync(playerSrcPath, 'utf8');
+        const source = fs.readFileSync(navigationSrcPath, 'utf8');
         const css = fs.readFileSync(playerCssPath, 'utf8');
 
-        expect(source).toContain('function prefersReducedPlayerMotion()');
+        expect(source).toContain('function prefersReducedPlayerMotion');
         expect(source).toContain('function transitionPlayerView');
         expect(source).toContain('updatePlayerViewVisibility(activeView, direction, true)');
         expect(css).toContain('--motion-duration-panel: 320ms');

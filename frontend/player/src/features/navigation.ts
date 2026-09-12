@@ -79,6 +79,7 @@ export type NavigationContext = {
     loadCustomSources?: () => void;
     loadAboutContent: () => void;
     toggleBatchMode?: () => void;
+    clearPendingTimeouts?: () => void;
 };
 
 export function createTabSwitcher(context: NavigationContext) {
@@ -131,6 +132,11 @@ export function createTabSwitcher(context: NavigationContext) {
         // If leaving search/local-list view, update search scope away from local_list
         if (tabId !== 'search' && (window as any).currentSearchScope === 'local_list') {
             context.setCurrentSearchScope(tabId);
+        }
+
+        // Clear any pending timeouts
+        if (typeof context.clearPendingTimeouts === 'function') {
+            context.clearPendingTimeouts();
         }
 
         // Auto-exit secondary modes (search/batch) when switching tabs

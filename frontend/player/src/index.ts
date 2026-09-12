@@ -50,6 +50,7 @@ import { initSearchFeature } from './features/search';
 import { initPlaybackFeature, type PlaybackState } from './features/playback';
 import { initSyncFeature, type SyncState } from './features/sync';
 import { initShortcutsFeature } from './features/shortcuts';
+import { createTabSwitcher } from './features/navigation';
 import { bindPlayerEvents, registerPlayerEventAction } from './player_events';
 import { DownloadManager } from './legacy/download_manager';
 import { createSongListManager, type SongListManagerApi } from './legacy/songlist_manager';
@@ -1359,225 +1360,31 @@ function changeQualityPreference(quality) {
 }
 
 
-type PlayerViewTransitionDirection = 'forward' | 'backward';
-
-type PlayerViewTransitionDocument = Document & {
-    startViewTransition?: (options: {
-        update: () => void;
-        types?: string[];
-    }) => unknown;
-};
-
-const PLAYER_VIEW_ORDER = ['search', 'songlist', 'leaderboard', 'localmusic', 'favorites', 'settings', 'about'];
-const PLAYER_MAIN_VIEW_SELECTOR = '#view-search, #view-songlist, #view-leaderboard, #view-localmusic, #view-favorites, #view-settings, #view-about';
-const PLAYER_VIEW_MOTION_DURATION = 320;
-
-function prefersReducedPlayerMotion() {
-    return typeof window.matchMedia === 'function'
-        && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-function getPlayerViewDirection(tabId: string): PlayerViewTransitionDirection {
-    const currentView = Array.from(document.querySelectorAll<HTMLElement>(PLAYER_MAIN_VIEW_SELECTOR))
-        .find(view => !view.classList.contains('hidden'));
-    const currentTabId = currentView?.id.replace(/^view-/, '');
-    const currentIndex = currentTabId ? PLAYER_VIEW_ORDER.indexOf(currentTabId) : -1;
-    const targetIndex = PLAYER_VIEW_ORDER.indexOf(tabId);
-
-    return targetIndex >= currentIndex ? 'forward' : 'backward';
-}
-
-function updatePlayerViewVisibility(activeView: HTMLElement, direction: PlayerViewTransitionDirection, fallbackMotion: boolean) {
-    document.querySelectorAll<HTMLElement>(PLAYER_MAIN_VIEW_SELECTOR).forEach(view => {
-        view.classList.remove('player-view-entering');
-        if (view !== activeView) {
-            view.classList.add('hidden', 'opacity-0');
-            view.classList.remove('opacity-100');
-        }
-    });
-
-    activeView.dataset.playerViewDirection = direction;
-    activeView.classList.remove('hidden', 'opacity-0');
-    activeView.classList.add('opacity-100');
-
-    if (fallbackMotion && !prefersReducedPlayerMotion()) {
-        activeView.classList.add('player-view-entering');
-        window.setTimeout(() => {
-            if (activeView.isConnected) activeView.classList.remove('player-view-entering');
-        }, PLAYER_VIEW_MOTION_DURATION);
-    }
-}
-
-function transitionPlayerView(activeView: HTMLElement, direction: PlayerViewTransitionDirection) {
-    const startViewTransition = (document as PlayerViewTransitionDocument).startViewTransition;
-    if (!prefersReducedPlayerMotion() && typeof startViewTransition === 'function') {
-        try {
-            startViewTransition.call(document, {
-                update: () => updatePlayerViewVisibility(activeView, direction, false),
-                types: [direction],
-            });
-            return;
-        } catch {
-            // Fall through to the CSS animation path when the browser exposes
-            // an incompatible or partially implemented View Transitions API.
-        }
-    }
-
-    updatePlayerViewVisibility(activeView, direction, true);
-}
-
-// Tab Switching
-function switchTab(tabId, preserveSearchNavigation = false) {
-    // Favorites is a sidebar group toggle, not a main content view.
-    if (tabId === 'favorites') {
-        handleFavoritesClick();
-        return;
-    }
-
-    // 主页面切换时关闭搜索详情，避免隐藏页面继续持有 History 详情状态。
-    // 路由恢复时保留当前 History 项，否则会把正在恢复的详情替换掉。
-    if (!preserveSearchNavigation) clearSearchNavigation();
-
-    const activeView = document.getElementById(`view-${tabId}`);
-    if (!activeView) return;
-
-    transitionPlayerView(activeView, getPlayerViewDirection(tabId));
-    if (!prefersReducedPlayerMotion()) {
-        window.setTimeout(() => {
-            if (!activeView.isConnected) return;
-            // [新增] 切换 Tab 时顺便检查并更新一次用户状态
-            if (typeof updateUserUI === 'function') updateUserUI();
-        }, 10);
-    } else {
-        // [新增] 切换 Tab 时顺便检查并更新一次用户状态
-        if (typeof updateUserUI === 'function') updateUserUI();
-    }
-
-    // [新增] 切换到设置页面时刷新一次管理员状态和设置项 UI
-    if (tabId === 'settings') {
-        if (typeof syncSettingsUI === 'function') syncSettingsUI();
-        else if (typeof updateAdminUI === 'function') updateAdminUI();
-    }
-
-    // Reset Sidebar Highlight
-    document.querySelectorAll('[id^="tab-"]').forEach(el => {
-        el.classList.remove('active-tab', 'text-emerald-600');
-        el.classList.add('t-text-muted');
-    });
-    // Reset Sidebar Sub-items Highlight (e.g. Favorite lists)
-    document.querySelectorAll('[data-sidebar-list-id]').forEach(el => {
-        el.classList.remove('active-sub-item');
-        el.classList.add('t-text-muted');
-    });
-    const activeTab = document.getElementById(`tab-${tabId}`);
-    if (activeTab) {
-        activeTab.classList.add('active-tab');
-        activeTab.classList.remove('t-text-muted');
-    }
-
-    // If leaving search/local-list view, update search scope away from local_list
-    if (tabId !== 'search' && window.currentSearchScope === 'local_list') {
-        setCurrentSearchScope(tabId);
-    }
-
-    // Clear any pending timeouts
-    if (expandBtnTimeout) clearTimeout(expandBtnTimeout);
-    if (toggleLyricsBtnTimeout) clearTimeout(toggleLyricsBtnTimeout);
-
-    // Auto-exit secondary modes (search/batch) when switching tabs
-    exitListSecondaryModes();
-
-    // Mobile: Close sidebar when switching tabs except for favorites (which should show sub-lists)
-    if (window.innerWidth <= 1024 && tabId !== 'favorites') {
-        const sidebar = document.getElementById('main-sidebar');
-        if (sidebar && !sidebar.classList.contains('-translate-x-full')) {
-            toggleSidebar();
-        }
-    }
-
-    // Always clear sub-item highlight when switching top-level tabs
-    document.querySelectorAll('[data-sidebar-list-id]').forEach(el => {
-        el.classList.remove('active-sub-item');
-        el.classList.add('t-text-muted');
-    });
-
-    // Reset Search Scope if switching to search/settings explicitly
-    if (tabId === 'search') {
-        initGlobalListSearch(); // [New] 强制重置 ListSearch 为 'global' 模式
-        setCurrentSearchScope('network');
-        document.getElementById('search-source').classList.remove('hidden');
-        document.getElementById('search-type').classList.remove('hidden');
-        const searchInput = document.getElementById('search-input');
-        if (searchInput) {
-            searchInput.placeholder = "搜索歌曲、歌手...";
-            // 如果搜索框内容为空，则展示初始热搜状态，避免由于重用搜索界面展示本地列表导致的残留
-            if (!searchInput.value.trim()) {
-                showInitialSearchState();
-            }
-        }
-        document.getElementById('page-title').innerText = "搜索音乐";
-    }
-
-    if (tabId === 'songlist') {
-        document.getElementById('page-title').innerText = "歌单";
-        void songListManager.load().catch(err => {
-            console.error('[SongList] 初始加载失败:', err);
-        });
-    }
-
-    if (tabId === 'leaderboard') {
-        document.getElementById('page-title').innerText = "排行榜";
-        if (window.LeaderboardManager && !window.LeaderboardManager.initialized) {
-            window.LeaderboardManager.init();
-        } else if (!window.LeaderboardManager) {
-            ensureLeaderboardLoaded().then(() => {
-                if (window.LeaderboardManager && !window.LeaderboardManager.initialized) {
-                    window.LeaderboardManager.init();
-                }
-            }).catch(() => showError('排行榜模块加载失败，请稍后重试'));
-        }
-    }
-
-    if (tabId === 'localmusic') {
-        document.getElementById('page-title').innerText = "本地音乐";
-        if (window.LocalMusicManager) {
-            window.LocalMusicManager.init();
-        } else {
-            ensureLocalMusicLoaded().then(() => window.LocalMusicManager?.init()).catch(() => {
-                showError('本地音乐模块加载失败，请稍后重试');
-            });
-        }
-    }
-
-    // Collapse Favorites if leaving
-    if (tabId !== 'favorites') {
-        const favList = document.getElementById('favorites-children');
-        const arrow = document.getElementById('favorites-arrow');
-        if (favList && favList.style.height !== '0px') {
-            favList.style.height = '0px';
-            if (arrow) arrow.style.transform = 'rotate(-90deg)';
-        }
-    }
-
-    // Title update (handled above for search, others here)
-    if (tabId === 'settings') {
-        document.getElementById('page-title').innerText = '设置';
-        // 确保设置界面的自定义源列表是最新的
-        if (typeof loadCustomSources === 'function') {
-            loadCustomSources();
-        }
-    }
-
-    if (tabId === 'about') {
-        document.getElementById('page-title').innerText = '关于';
-        loadAboutContent();
-    }
-
-    // Auto-exit batch mode when switching tabs (Redundant but safe)
-    if (window.batchMode && typeof toggleBatchMode === 'function') {
-        toggleBatchMode();
-    }
-}
+// Tab Switching (Delegated to modular Navigation Feature)
+const switchTab = createTabSwitcher({
+    handleFavoritesClick: () => handleFavoritesClick(),
+    clearSearchNavigation: () => clearSearchNavigation(),
+    updateUserUI: () => updateUserUI(),
+    syncSettingsUI: () => syncSettingsUI(),
+    updateAdminUI: () => updateAdminUI(),
+    setCurrentSearchScope: (scope) => setCurrentSearchScope(scope),
+    exitListSecondaryModes: () => exitListSecondaryModes(),
+    toggleSidebar: (forceState) => toggleSidebar(forceState),
+    initGlobalListSearch: () => initGlobalListSearch(),
+    showInitialSearchState: () => showInitialSearchState(),
+    songListManager,
+    ensureLeaderboardLoaded: () => ensureLeaderboardLoaded(),
+    ensureLocalMusicLoaded: () => ensureLocalMusicLoaded(),
+    showError: (msg) => showError(msg),
+    loadCustomSources: () => loadCustomSources(),
+    loadAboutContent: () => loadAboutContent(),
+    toggleBatchMode: () => toggleBatchMode(),
+    clearPendingTimeouts: () => {
+        if (expandBtnTimeout) clearTimeout(expandBtnTimeout);
+        if (toggleLyricsBtnTimeout) clearTimeout(toggleLyricsBtnTimeout);
+    },
+});
+(window as any).switchTab = switchTab;
 
 /**
  * 退出列表的二级模式（搜索框和批量模式）
@@ -2501,6 +2308,7 @@ audio.addEventListener('canplay', () => {
 // Additional events to sync progress
 audio.addEventListener('loadedmetadata', updatePositionState);
 audio.addEventListener('ratechange', updatePositionState);
+audio.addEventListener('seeking', updatePositionState);
 audio.addEventListener('seeked', () => {
     updatePositionState();
     setTimeout(updatePositionState, 200); // 针对跳转后的 iOS 二次确认

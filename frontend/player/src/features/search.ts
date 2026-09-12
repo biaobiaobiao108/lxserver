@@ -2112,6 +2112,7 @@ function renderResults(list) {
         if (isCurrentMatch) rowClass += 'search-current ';
         else if (isMatched) rowClass += 'search-match ';
         if (isSelected) rowClass += 'row-selected ring-1 ring-emerald-500/30 ';
+        if (pageIndex > 12) rowClass += 'deferred-list-item ';
 
         const selectionLabel = isSelected ? '取消选择' : '选择';
         row.className = rowClass;

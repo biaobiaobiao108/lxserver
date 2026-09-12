@@ -11,7 +11,7 @@ import { buildLyrics, parseLyrics } from '../utils/lrcTool'
 import { formatPlayTime } from '../common/utils/common'
 import { getDb } from '@/database'
 import { assertSafePathSegment, isPathInside, resolveInside } from '@/utils/pathSecurity'
-import { assertSafeRemoteHttpUrl } from './networkSecurity'
+import { assertSafeRemoteHttpUrl, type SafeRemoteHttpUrl } from './networkSecurity'
 
 type MusicTagNative = {
     MusicTagger: new () => any
@@ -1516,9 +1516,9 @@ export const linkLocalFile = async (oldFilename: string, songInfo: any, username
 }
 
 
-const downloadCoverImage = async (imageUrl: string, redirects = 0): Promise<{ data: Buffer; mime: string } | null> => {
+export const downloadCoverImage = async (imageUrl: string, redirects = 0): Promise<{ data: Buffer; mime: string } | null> => {
     if (!hasUsableRemoteCover(imageUrl) || redirects > 3) return null
-    let safeUrl: URL
+    let safeUrl: SafeRemoteHttpUrl
     try {
         safeUrl = await assertSafeRemoteHttpUrl(imageUrl)
     } catch {
@@ -1526,7 +1526,7 @@ const downloadCoverImage = async (imageUrl: string, redirects = 0): Promise<{ da
     }
     return await new Promise((resolve) => {
         const client = safeUrl.protocol === 'https:' ? https : http
-        const req = client.get(safeUrl, response => {
+        const req = client.get(safeUrl, { lookup: safeUrl.lookup, agent: false }, response => {
             const statusCode = response.statusCode || 500
             if (statusCode >= 300 && statusCode < 400 && response.headers.location) {
                 response.resume()
@@ -2356,13 +2356,15 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
 
         if (signal) signal.addEventListener('abort', abortHandler)
 
-        const requestWithRedirect = (currentUrl: URL, depth = 0) => {
+        const requestWithRedirect = (currentUrl: SafeRemoteHttpUrl, depth = 0) => {
             if (depth > 5) {
                 fail(new Error('Too many redirects'))
                 return
             }
             const currentProtocol = currentUrl.protocol === 'https:' ? https : http
             const options: https.RequestOptions = {
+                lookup: currentUrl.lookup,
+                agent: false,
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Referer': currentUrl.origin,
@@ -2494,7 +2496,7 @@ export const downloadAndCache = async (songInfo: any, url: string, quality?: str
                             const chunks: Buffer[] = []
                             const p = safeImageUrl.protocol === 'https:' ? https : http
                             imageBuffer = await new Promise((resolveI, rejectI) => {
-                                const imgReq = p.get(safeImageUrl, ires => {
+                                const imgReq = p.get(safeImageUrl, { lookup: safeImageUrl.lookup, agent: false }, ires => {
                                     if (ires.statusCode && ires.statusCode >= 400) {
                                         ires.resume()
                                         rejectI(new Error(`Cover status: ${ires.statusCode}`))

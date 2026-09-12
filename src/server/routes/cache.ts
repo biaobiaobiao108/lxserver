@@ -28,34 +28,6 @@ const getMusicTagNative = (): MusicTagNative => {
   return musicTagNative
 }
 
-const readResponseBuffer = async (response: Response, maxBytes: number): Promise<Buffer | null> => {
-  const contentLength = Number(response.headers.get('content-length') || 0)
-  if (Number.isFinite(contentLength) && contentLength > maxBytes) return null
-  if (!response.body) {
-    const data = Buffer.from(await response.arrayBuffer())
-    return data.length <= maxBytes ? data : null
-  }
-
-  const reader = response.body.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  try {
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      total += value.byteLength
-      if (total > maxBytes) {
-        await reader.cancel()
-        return null
-      }
-      chunks.push(value)
-    }
-    return Buffer.concat(chunks.map(chunk => Buffer.from(chunk)), total)
-  } finally {
-    reader.releaseLock()
-  }
-}
-
 /** 辅助获取缓存与下载任务的目标用户名 */
 const getCacheRequestUsername = (ctx: HttpContext): string | null => {
   const requested = ctx.headers.get('x-user-name') || ''
@@ -998,6 +970,8 @@ export const createCacheRouter = (): Router => {
             const parsedUrl = await assertSafeRemoteHttpUrl(targetUrl)
             const options: any = {
               method: 'GET',
+              lookup: parsedUrl.lookup,
+              agent: false,
               headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Referer': parsedUrl.origin,
@@ -1177,16 +1151,9 @@ export const createCacheRouter = (): Router => {
 
                     if (imageUrl) {
                       try {
-                        let imgBuf: Buffer | null = null
-                        if (imageUrl.startsWith('http')) {
-                          const safeImageUrl = await assertSafeRemoteHttpUrl(imageUrl)
-                          const imgResp = await (global as any).fetch(safeImageUrl, { redirect: 'error' })
-                          if (imgResp.ok) {
-                            imgBuf = await readResponseBuffer(imgResp, 10 * 1024 * 1024)
-                          }
-                        }
-                        if (imgBuf && imgBuf.length > 0) {
-                          tagger.pictures = [new (getMusicTagNative().MetaPicture)('image/jpeg', new Uint8Array(imgBuf), 'Cover')]
+                        const cover = await fileCache.downloadCoverImage(imageUrl)
+                        if (cover) {
+                          tagger.pictures = [new (getMusicTagNative().MetaPicture)(cover.mime, new Uint8Array(cover.data), 'Cover')]
                         }
                       } catch (e: any) {
                         console.warn('[DownloadProxy] Picture fetch/embed failed:', imageUrl, e.message)

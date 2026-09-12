@@ -57,4 +57,41 @@ describe('Outbound URL network boundaries', () => {
       request.mockRestore()
     }
   })
+
+  test('connection lookup retains validated addresses even after DNS changes', async () => {
+    const lookup = spyOn(dns, 'lookup').mockResolvedValue([{ address: '8.8.8.8', family: 4 }] as any)
+    try {
+      const url = await assertSafeRemoteHttpUrl('https://example.com/audio')
+      lookup.mockResolvedValue([{ address: '127.0.0.1', family: 4 }] as any)
+      const resolveConnection = (hostname: string, options: any) => new Promise((resolve, reject) => {
+        url.lookup(hostname, options, (error, address, family) => error ? reject(error) : resolve({ address, family }))
+      })
+      expect(await resolveConnection('example.com', { all: true })).toEqual({ address: [{ address: '8.8.8.8', family: 4 }], family: undefined })
+      expect(await resolveConnection('example.com', { family: 4 })).toEqual({ address: '8.8.8.8', family: 4 })
+      await expect(resolveConnection('another.example', {})).rejects.toThrow('No validated address')
+      await expect(resolveConnection('example.com', { family: 6 })).rejects.toThrow('No validated address')
+      expect(lookup).toHaveBeenCalledTimes(1)
+      expect(url.hostname).toBe('example.com')
+    } finally {
+      lookup.mockRestore()
+    }
+  })
+
+  test('download proxy passes the pinned lookup to the transport', async () => {
+    const lookup = spyOn(dns, 'lookup').mockResolvedValue([{ address: '8.8.8.8', family: 4 }] as any)
+    let options: any
+    const request = spyOn(http, 'request').mockImplementation((_url, requestOptions) => {
+      options = requestOptions
+      throw new Error('Transport intercepted by test')
+    })
+    try {
+      await createCacheRouter().handle(new Request('http://localhost/api/music/download?url=http%3A%2F%2Fexample.com%2Faudio'))
+      expect(options.agent).toBe(false)
+      const connectedAddress = await new Promise(resolve => options.lookup('example.com', {}, (_error: any, address: string) => resolve(address)))
+      expect(connectedAddress).toBe('8.8.8.8')
+    } finally {
+      request.mockRestore()
+      lookup.mockRestore()
+    }
+  })
 })

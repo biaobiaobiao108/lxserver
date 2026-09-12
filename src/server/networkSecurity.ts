@@ -1,5 +1,5 @@
 import dns from 'node:dns/promises'
-import { isIP } from 'node:net'
+import { isIP, type LookupFunction } from 'node:net'
 
 const ipv4ToNumber = (value: string): number | null => {
   const parts = value.split('.')
@@ -74,8 +74,10 @@ const isBlockedHostname = (hostname: string): boolean => {
   return normalized === 'localhost' || normalized.endsWith('.localhost') || normalized === 'local'
 }
 
-/** Validate an outbound URL before any request is opened. */
-export const assertSafeRemoteHttpUrl = async (rawUrl: string): Promise<URL> => {
+export type SafeRemoteHttpUrl = URL & { lookup: LookupFunction }
+
+/** Validate once and pin the connection to these addresses, keeping Host/TLS hostname intact. */
+export const assertSafeRemoteHttpUrl = async (rawUrl: string): Promise<SafeRemoteHttpUrl> => {
   if (typeof rawUrl !== 'string' || rawUrl.length === 0 || rawUrl.length > 2048) {
     throw new Error('Invalid remote URL')
   }
@@ -100,5 +102,15 @@ export const assertSafeRemoteHttpUrl = async (rawUrl: string): Promise<URL> => {
   if (addresses.length === 0 || (hasPrivateAddress && !onlySyntheticAddresses)) {
     throw new Error('Private network URL is not allowed')
   }
-  return url
+  const lookup: LookupFunction = (requestedHostname, options, callback) => {
+    const family = Number(options.family) || 0
+    const candidates = addresses.filter(address => !family || address.family === family)
+    if (requestedHostname !== hostname || candidates.length === 0) {
+      callback(new Error('No validated address for requested host'), '', 0)
+      return
+    }
+    if (options.all) callback(null, candidates)
+    else callback(null, candidates[0].address, candidates[0].family)
+  }
+  return Object.assign(url, { lookup })
 }

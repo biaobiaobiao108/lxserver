@@ -1000,21 +1000,23 @@ export const createCacheRouter = (): Router => {
                 resolve(ctx.fail(413, '远程文件过大，已超过允许的下载上限'))
                 return
               }
-              let contentType = proxyRes.headers['content-type'] || 'application/octet-stream'
-              if (contentType.includes('audio/') || contentType.includes('video/')) {
-                contentType = contentType.split(';')[0].trim()
-              }
+              const remoteType = String(proxyRes.headers['content-type'] || '').split(';')[0].trim().toLowerCase()
+              const safeInlineType = /^(audio|video)\/[a-z0-9.+-]+$/.test(remoteType)
+                || /^image\/(jpeg|png|gif|webp|avif|bmp)$/.test(remoteType)
+              const contentType = safeInlineType ? remoteType : 'application/octet-stream'
 
               const headers: Record<string, string> = {
                 'Content-Type': contentType,
                 'Access-Control-Allow-Origin': '*',
+                'X-Content-Type-Options': 'nosniff',
+                'Content-Security-Policy': "sandbox; default-src 'none'",
               }
 
               if (proxyRes.headers['content-length']) headers['Content-Length'] = proxyRes.headers['content-length']
               if (proxyRes.headers['accept-ranges']) headers['Accept-Ranges'] = proxyRes.headers['accept-ranges']
               if (proxyRes.headers['content-range']) headers['Content-Range'] = proxyRes.headers['content-range']
 
-              if (!isInline) {
+              if (!isInline || !safeInlineType) {
                 headers['Content-Disposition'] = `attachment; filename="${encodeURIComponent(filename)}"`
               }
 

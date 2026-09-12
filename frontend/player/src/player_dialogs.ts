@@ -1,9 +1,18 @@
 import { escapeHtmlText } from './player_security';
 
+export type InputDialogOptions = {
+    placeholder?: string;
+    defaultValue?: string;
+    confirmText?: string;
+    cancelText?: string;
+    confirmColor?: string;
+    inputType?: string;
+};
+
 /**
- * 弹出输入对话框。
+ * 弹出输入对话框，全面采用现代标准 HTML5 <dialog>
  */
-export function showInput(title, message, options = {}) {
+export function showInput(title: string, message: string, options: InputDialogOptions = {}): Promise<string | null> {
     const {
         placeholder = '请输入内容...',
         defaultValue = '',
@@ -21,13 +30,12 @@ export function showInput(title, message, options = {}) {
     const safeInputType = ['text', 'password', 'url', 'number', 'search'].includes(inputType) ? inputType : 'text';
 
     return new Promise((resolve) => {
-        const modal = document.createElement('div');
-        modal.id = `runtime-input-modal-${Date.now()}`;
-        modal.dataset.a11yOverlay = 'modal';
-        modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-4 animate-fade-in";
-        modal.innerHTML = `
-            <div class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"></div>
-            <div class="t-bg-panel rounded-xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all animate-slide-up relative z-10 border t-border-main">
+        const dialog = document.createElement('dialog');
+        dialog.id = `runtime-input-modal-${Date.now()}`;
+        dialog.dataset.a11yOverlay = 'modal';
+        dialog.className = "m-auto bg-transparent p-4 outline-none border-none backdrop:bg-black/60 backdrop:backdrop-blur-sm";
+        dialog.innerHTML = `
+            <div class="t-bg-panel rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all relative z-10 border t-border-main animate-slide-up">
                 <!-- Header -->
                 <div class="px-5 py-4 border-b border-emerald-100/50 flex justify-between items-center bg-emerald-50/50">
                     <h3 class="text-sm font-bold t-text-main">${safeTitle}</h3>
@@ -61,40 +69,70 @@ export function showInput(title, message, options = {}) {
             </div>
         `;
 
-        document.body.appendChild(modal);
+        document.body.appendChild(dialog);
 
-        const input = modal.querySelector('#modal-input');
-        input.focus();
-        if (defaultValue) input.select();
+        const input = dialog.querySelector('#modal-input') as HTMLInputElement;
 
-        const close = (result) => {
-            const content = modal.querySelector('.max-w-sm');
-            if (content) {
-                content.classList.add('scale-95', 'opacity-0');
+        let settled = false;
+        const close = (result: string | null) => {
+            if (settled) return;
+            settled = true;
+            try {
+                if (typeof dialog.close === 'function' && dialog.open) {
+                    dialog.close();
+                }
+            } catch {
+                // Ignore any close failure
             }
-            modal.classList.add('opacity-0');
-            setTimeout(() => {
-                modal.remove();
-                resolve(result);
-            }, 200);
+            dialog.remove();
+            resolve(result);
         };
 
-        modal.querySelector('#confirm-ok').onclick = () => close(input.value.trim() || null);
-        modal.querySelector('#confirm-cancel').onclick = () => close(null);
-        modal.querySelector('#modal-close-x').onclick = () => close(null);
-        modal.querySelector('div:first-child').onclick = () => close(null);
+        (dialog.querySelector('#confirm-ok') as HTMLElement).onclick = () => close(input.value.trim() || null);
+        (dialog.querySelector('#confirm-cancel') as HTMLElement).onclick = () => close(null);
+        (dialog.querySelector('#modal-close-x') as HTMLElement).onclick = () => close(null);
+
+        // 点击 backdrop 关闭
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) close(null);
+        });
+
+        // 监听原生 cancel 事件 (Escape)
+        dialog.addEventListener('cancel', (e) => {
+            e.preventDefault();
+            close(null);
+        });
 
         input.onkeydown = (e) => {
             if (e.key === 'Enter') close(input.value.trim() || null);
-            if (e.key === 'Escape') close(null);
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                close(null);
+            }
         };
+
+        if (typeof dialog.showModal === 'function') {
+            dialog.showModal();
+        } else {
+            dialog.setAttribute('open', '');
+        }
+
+        input.focus();
+        if (defaultValue) input.select();
     });
 }
 
+export type SelectDialogOptions = {
+    confirmText?: string;
+    cancelText?: string;
+    confirmColor?: string;
+    danger?: boolean;
+};
+
 /**
- * 弹出确认对话框。
+ * 弹出确认对话框，采用原生 HTML5 <dialog>
  */
-export function showSelect(title, message, options = {}) {
+export function showSelect(title: string, message: string, options: SelectDialogOptions = {}): Promise<boolean> {
     const {
         confirmText = '确定',
         cancelText = '取消',
@@ -109,13 +147,12 @@ export function showSelect(title, message, options = {}) {
     const safeCancelText = escapeHtmlText(cancelText);
 
     return new Promise((resolve) => {
-        const modal = document.createElement('div');
-        modal.id = `runtime-confirm-modal-${Date.now()}`;
-        modal.dataset.a11yOverlay = 'modal';
-        modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-4 animate-fade-in";
-        modal.innerHTML = `
-            <div class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"></div>
-            <div class="t-bg-panel rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all animate-slide-up relative z-10 border t-border-main">
+        const dialog = document.createElement('dialog');
+        dialog.id = `runtime-confirm-modal-${Date.now()}`;
+        dialog.dataset.a11yOverlay = 'modal';
+        dialog.className = "m-auto bg-transparent p-4 outline-none border-none backdrop:bg-black/60 backdrop:backdrop-blur-sm";
+        dialog.innerHTML = `
+            <div class="t-bg-panel rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all relative z-10 border t-border-main animate-slide-up">
                 <!-- Header -->
                 <div class="px-5 py-4 border-b border-emerald-100/50 flex justify-between items-center bg-emerald-50/50">
                     <h3 class="text-sm font-bold t-text-main">${safeTitle}</h3>
@@ -146,38 +183,58 @@ export function showSelect(title, message, options = {}) {
             </div>
         `;
 
-        document.body.appendChild(modal);
+        document.body.appendChild(dialog);
 
-        const close = (result) => {
-            const content = modal.querySelector('.max-w-sm');
-            if (content) {
-                content.classList.add('scale-95', 'opacity-0');
+        let settled = false;
+        const close = (result: boolean) => {
+            if (settled) return;
+            settled = true;
+            try {
+                if (typeof dialog.close === 'function' && dialog.open) {
+                    dialog.close();
+                }
+            } catch {
+                // Ignore
             }
-            modal.classList.add('opacity-0');
-            setTimeout(() => {
-                modal.remove();
-                resolve(result);
-            }, 200);
+            dialog.remove();
+            resolve(result);
         };
 
-        modal.querySelector('#confirm-ok').onclick = () => close(true);
-        modal.querySelector('#confirm-cancel').onclick = () => close(false);
-        modal.querySelector('#modal-close-x').onclick = () => close(false);
-        modal.querySelector('div:first-child').onclick = () => close(false);
+        (dialog.querySelector('#confirm-ok') as HTMLElement).onclick = () => close(true);
+        (dialog.querySelector('#confirm-cancel') as HTMLElement).onclick = () => close(false);
+        (dialog.querySelector('#modal-close-x') as HTMLElement).onclick = () => close(false);
+
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) close(false);
+        });
+
+        dialog.addEventListener('cancel', (e) => {
+            e.preventDefault();
+            close(false);
+        });
+
+        if (typeof dialog.showModal === 'function') {
+            dialog.showModal();
+        } else {
+            dialog.setAttribute('open', '');
+        }
+
+        const confirmBtn = dialog.querySelector('#confirm-ok') as HTMLButtonElement | null;
+        confirmBtn?.focus();
     });
 }
 
 /**
- * 通用多选选择列表。
+ * 通用多选选择列表，采用原生 HTML5 <dialog>
  */
-export function showOptions(title, message, options = []) {
+export function showOptions(title: string, message: string, options: string[] = []): Promise<string | null> {
     const safeTitle = escapeHtmlText(title);
     const safeMessage = escapeHtmlText(message);
     return new Promise((resolve) => {
-        const modal = document.createElement('div');
-        modal.id = `runtime-options-modal-${Date.now()}`;
-        modal.dataset.a11yOverlay = 'modal';
-        modal.className = "fixed inset-0 z-[200] flex items-center justify-center p-4 animate-fade-in";
+        const dialog = document.createElement('dialog');
+        dialog.id = `runtime-options-modal-${Date.now()}`;
+        dialog.dataset.a11yOverlay = 'modal';
+        dialog.className = "m-auto bg-transparent p-4 outline-none border-none backdrop:bg-black/60 backdrop:backdrop-blur-sm";
 
         const optionsHtml = options.map(opt => {
             const optionText = String(opt ?? '');
@@ -190,9 +247,8 @@ export function showOptions(title, message, options = []) {
         `;
         }).join('');
 
-        modal.innerHTML = `
-            <div class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity duration-300"></div>
-            <div class="t-bg-panel rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all animate-slide-up relative z-10 border t-border-main">
+        dialog.innerHTML = `
+            <div class="t-bg-panel rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden transform transition-all relative z-10 border t-border-main animate-slide-up">
                 <div class="px-5 py-4 border-b border-emerald-100/50 flex justify-between items-center bg-emerald-50/50">
                     <h3 class="text-sm font-bold t-text-main">${safeTitle}</h3>
                     <button id="opt-close-x" data-overlay-close aria-label="关闭" class="t-text-muted hover:text-emerald-500 transition-colors">
@@ -208,30 +264,50 @@ export function showOptions(title, message, options = []) {
             </div>
         `;
 
-        const close = (result) => {
-            const content = modal.querySelector('.max-w-sm');
-            if (content) {
-                content.classList.add('scale-95', 'opacity-0');
+        document.body.appendChild(dialog);
+
+        let settled = false;
+        const close = (result: string | null) => {
+            if (settled) return;
+            settled = true;
+            try {
+                if (typeof dialog.close === 'function' && dialog.open) {
+                    dialog.close();
+                }
+            } catch {
+                // Ignore
             }
-            modal.classList.add('opacity-0');
-            setTimeout(() => {
-                modal.remove();
-                resolve(result);
-            }, 200);
+            dialog.remove();
+            resolve(result);
         };
 
-        modal.querySelectorAll('button[data-value]').forEach(btn => {
-            btn.onclick = () => close(btn.getAttribute('data-value'));
+        dialog.querySelectorAll('button[data-value]').forEach(btn => {
+            (btn as HTMLElement).onclick = () => close(btn.getAttribute('data-value'));
         });
 
-        modal.querySelector('#opt-close-x').onclick = () => close(null);
-        modal.querySelector('div:first-child').onclick = () => close(null);
+        (dialog.querySelector('#opt-close-x') as HTMLElement).onclick = () => close(null);
 
-        document.body.appendChild(modal);
+        dialog.addEventListener('click', (event) => {
+            if (event.target === dialog) close(null);
+        });
+
+        dialog.addEventListener('cancel', (e) => {
+            e.preventDefault();
+            close(null);
+        });
+
+        if (typeof dialog.showModal === 'function') {
+            dialog.showModal();
+        } else {
+            dialog.setAttribute('open', '');
+        }
+
+        const firstOption = dialog.querySelector('button[data-value]') as HTMLElement | null;
+        firstOption?.focus();
     });
 }
 
-// These functions are called by legacy inline handlers and other classic scripts.
+// 暴露全局兼容接口
 (window as any).showInput = showInput;
 (window as any).showSelect = showSelect;
 (window as any).showOptions = showOptions;

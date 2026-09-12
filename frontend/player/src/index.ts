@@ -49,6 +49,7 @@ import { initLyricFeature } from './features/lyrics';
 import { initSearchFeature } from './features/search';
 import { initPlaybackFeature, type PlaybackState } from './features/playback';
 import { initSyncFeature, type SyncState } from './features/sync';
+import { initShortcutsFeature } from './features/shortcuts';
 import { bindPlayerEvents, registerPlayerEventAction } from './player_events';
 import { DownloadManager } from './legacy/download_manager';
 import { createSongListManager, type SongListManagerApi } from './legacy/songlist_manager';
@@ -2938,82 +2939,20 @@ function changeVolume(delta) {
 }
 
 // 注册全局键盘监听
-document.addEventListener('keydown', (e) => {
-    if (!settings.enableKeyboardShortcuts) return;
-
-    // 如果焦点在输入框中，忽略快捷键
-    const target = e.target;
-    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return;
-    }
-
-    switch (e.code) {
-        case 'Space':
-            e.preventDefault();
-            togglePlay();
-            break;
-        case 'ArrowUp':
-            e.preventDefault();
-            changeVolume(0.05);
-            break;
-        case 'ArrowDown':
-            e.preventDefault();
-            changeVolume(-0.05);
-            break;
-        case 'ArrowLeft':
-            e.preventDefault();
-            handleSeekKey('backward', 'down');
-            break;
-        case 'ArrowRight':
-            e.preventDefault();
-            handleSeekKey('forward', 'down');
-            break;
-        case 'BracketLeft': // '['
-            playPrev();
-            break;
-        case 'BracketRight': // ']'
-            playNext();
-            break;
-        case 'KeyL':
-            toggleLyrics();
-            break;
-        case 'Digit1':
-            if (e.altKey) switchTab('search');
-            break;
-        case 'Digit2':
-            if (e.altKey) switchTab('songlist');
-            break;
-        case 'Digit3':
-            if (e.altKey) switchTab('leaderboard');
-            break;
-        case 'Digit4':
-            if (e.altKey) switchTab('favorites');
-            break;
-        case 'Digit5':
-            if (e.altKey) switchTab('settings');
-            break;
-        case 'Digit6':
-            if (e.altKey) switchTab('about');
-            break;
-        case 'KeyF':
-            updateSetting('showFooterVisualizer', !settings.showFooterVisualizer);
-            break;
-        case 'KeyG':
-            updateSetting('showDetailVisualizer', !settings.showDetailVisualizer);
-            break;
-        case 'KeyH':
-            if (typeof toggleCacheDrawer === 'function') toggleCacheDrawer();
-            break;
-        case 'KeyJ':
-            downloadManager.toggleDrawer();
-            break;
-    }
-});
-
-document.addEventListener('keyup', (e) => {
-    if (!settings.enableKeyboardShortcuts) return;
-    if (e.code === 'ArrowLeft') handleSeekKey('backward', 'up');
-    if (e.code === 'ArrowRight') handleSeekKey('forward', 'up');
+initShortcutsFeature({
+    getSettings: () => settings,
+    togglePlay: () => togglePlay(),
+    changeVolume: (delta) => changeVolume(delta),
+    handleSeekKey: (dir, st) => handleSeekKey(dir, st),
+    playPrev: () => playPrev(),
+    playNext: () => playNext(),
+    toggleLyrics: () => toggleLyrics(),
+    switchTab: (tabId) => switchTab(tabId),
+    updateSetting: (key, val) => updateSetting(key, val),
+    toggleCacheDrawer: () => {
+        if (typeof toggleCacheDrawer === 'function') toggleCacheDrawer();
+    },
+    getDownloadManager: () => downloadManager,
 });
 
 function getRemasterStorageUsername() {

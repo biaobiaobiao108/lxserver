@@ -149,15 +149,29 @@ export function initShellFeature(context: AdminFeatureContext) {
     }
 
     async function switchView(viewName) {
-        // 更新导航状态
-        document.querySelectorAll('.nav-item').forEach(item => {
-            item.classList.toggle('active', item.dataset.view === viewName);
-        });
+        const updateDOM = () => {
+            // 更新导航状态
+            document.querySelectorAll('.nav-item').forEach(item => {
+                item.classList.toggle('active', item.dataset.view === viewName);
+            });
 
-        // 切换视图
-        document.querySelectorAll('.view').forEach(view => {
-            view.classList.toggle('active', view.id === `view-${viewName}`);
-        });
+            // 切换视图
+            document.querySelectorAll('.view').forEach(view => {
+                view.classList.toggle('active', view.id === `view-${viewName}`);
+            });
+        };
+
+        const doc = document as any;
+        const prefersReducedMotion = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!prefersReducedMotion && typeof doc.startViewTransition === 'function') {
+            try {
+                doc.startViewTransition(updateDOM);
+            } catch {
+                updateDOM();
+            }
+        } else {
+            updateDOM();
+        }
 
         // 更新标题
         const titles = {

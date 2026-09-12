@@ -15,6 +15,7 @@ import { getBuiltinSource } from '@/modules/utils/musicSdk'
 import { accessLog } from '@/utils/log4js'
 import { assertSafeRemoteHttpUrl } from '../networkSecurity'
 import { resolveInside } from '@/utils/pathSecurity'
+import { identifyLocalSong } from '../utils/identify'
 
 type MusicTagNative = {
   MusicTagger: new () => any
@@ -909,7 +910,6 @@ export const createCacheRouter = (): Router => {
     try {
       const { filename, folder } = await ctx.bodyJson<{ filename?: string; folder?: 'cache' | 'music' }>()
       if (!filename) return ctx.fail(400, '缺少必要参数：filename')
-      const { identifyLocalSong } = require('./utils/identify')
       const dir = fileCache.getCacheDir(target.username, folder === 'music')
       const filePath = fileCache.resolveCacheRelativePath(dir, filename)
       if (!filePath) throw new Error('文件名不合法')

@@ -175,3 +175,50 @@ export const closeDb = (): void => {
     dbInstance = null
   }
 }
+
+/** VACUUM INTO produces a consistent standalone snapshot including committed WAL data. */
+export const createDatabaseSnapshot = (destination: string): void => {
+  getDb().run('VACUUM INTO ?', [destination])
+}
+
+/** Copy known data tables transactionally; never replace an open database or execute backup schema. */
+export const restoreDatabaseSnapshot = (sourcePath: string): void => {
+  const source = new Database(sourcePath, { readonly: true })
+  const target = getDb()
+  const tables = ['system_info', 'users', 'devices', 'snapshots', 'snapshot_meta', 'device_snapshot_state', 'user_settings', 'cache_index']
+  try {
+    source.run('PRAGMA trusted_schema = OFF')
+    const check = source.query<{ quick_check: string }, []>('PRAGMA quick_check').get()
+    if (check?.quick_check !== 'ok') throw new Error('备份数据库损坏')
+    const schemas = tables.map(table => {
+      const definition = source.query<{ type: string; sql: string }, [string]>(
+        'SELECT type, sql FROM sqlite_master WHERE name = ?'
+      ).get(table)
+      if (definition?.type !== 'table' || !/^CREATE TABLE\s/i.test(definition.sql)) throw new Error('备份数据库结构不兼容')
+      const columns = target.query<{ name: string }, []>(`PRAGMA table_info("${table}")`).all().map(column => column.name)
+      const backupColumns = source.query<{ name: string }, []>(`PRAGMA table_info("${table}")`).all().map(column => column.name)
+      if (JSON.stringify(columns) !== JSON.stringify(backupColumns)) throw new Error('备份数据库版本不兼容')
+      return { table, columns }
+    })
+    target.transaction(() => {
+      for (const table of [...tables].reverse()) target.run(`DELETE FROM "${table}"`)
+      for (const { table, columns } of schemas) {
+        const names = columns.map(column => `"${column}"`).join(', ')
+        const insert = target.prepare(`INSERT INTO "${table}" (${names}) VALUES (${columns.map(() => '?').join(', ')})`)
+        try {
+          for (const row of source.query<Record<string, any>, []>(`SELECT ${names} FROM "${table}"`).iterate()) {
+            insert.run(...columns.map(column => row[column]))
+          }
+        } finally {
+          insert.finalize()
+        }
+      }
+      // Sessions from a historical backup must not revive logged-out credentials.
+      target.run('DELETE FROM user_sessions')
+      target.run('DELETE FROM player_sessions')
+    })()
+    stmtCache.clear()
+  } finally {
+    source.close()
+  }
+}

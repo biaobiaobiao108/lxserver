@@ -64,6 +64,10 @@ export const releaseUserSpace = (userName: string, force = false) => {
   } else seartDelayReleaseTimeout(userName)
 }
 
+export const resetUserSpaces = (): void => {
+  for (const userName of users.keys()) releaseUserSpace(userName, true)
+}
+
 /**
  * 重命名用户空间缓存并加锁
  * @param oldName 旧用户名

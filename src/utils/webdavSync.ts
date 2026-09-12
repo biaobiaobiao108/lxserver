@@ -4,6 +4,8 @@ import crypto from 'crypto'
 import { EventEmitter } from 'events'
 import { PassThrough } from 'stream'
 import { resolveInside } from './pathSecurity'
+import os from 'node:os'
+import { createDatabaseSnapshot, restoreDatabaseSnapshot } from '@/database'
 
 interface WebDAVConfig {
     enable?: boolean
@@ -362,15 +364,11 @@ class WebDAVSync extends EventEmitter {
     }
 
     async createBackup(): Promise<string | null> {
+        const snapshotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-db-backup-'))
+        const snapshotPath = path.join(snapshotDir, 'lxserver.db')
         try {
             const { ZipArchive } = await import('archiver')
-            try {
-                const { getDb } = require('@/database')
-                const db = getDb()
-                db.run('PRAGMA wal_checkpoint(TRUNCATE);')
-            } catch (e) {
-                // database might not be initialized or required
-            }
+            createDatabaseSnapshot(snapshotPath)
 
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
             const zipName = `lx-sync-backup-${timestamp}.zip`
@@ -394,9 +392,11 @@ class WebDAVSync extends EventEmitter {
                 })
 
                 output.on('close', () => resolve())
+                output.on('error', reject)
                 archive.on('error', (err: Error) => reject(err))
 
                 archive.pipe(output)
+                archive.file(snapshotPath, { name: 'lxserver.db' })
                 archive.glob('**/*', {
                     cwd: this.dataPath,
                     ignore: ['temp-*.zip', '*.log', 'lx-sync-backup-*.zip', '*.db-shm', '*.db-wal', '**/config.js', '**/users.json', '**/lxserver.db'],
@@ -409,22 +409,18 @@ class WebDAVSync extends EventEmitter {
         } catch (err) {
             console.error('Failed to create backup:', err)
             return null
+        } finally {
+            if (fs.existsSync(snapshotPath)) fs.unlinkSync(snapshotPath)
+            fs.rmdirSync(snapshotDir)
         }
     }
 
-    async uploadBackup(force = false): Promise<boolean> {
+    async uploadBackup(_force = false): Promise<boolean> {
         if (!this.client) await this.initClient()
         if (!this.client) return false
 
         try {
-            // 检查是否有文件变化
-            if (!force) {
-                const { changed, deleted } = await this.getChangedFiles()
-                if (changed.length === 0 && deleted.length === 0) {
-                    console.log('No changes detected, skipping backup')
-                    return true
-                }
-            }
+            // Periodic backups must include SQLite/WAL changes, which the file-sync scan excludes.
 
             this.emit('progress', { type: 'backup', status: 'preparing', message: '正在创建备份...' })
 
@@ -649,53 +645,80 @@ class WebDAVSync extends EventEmitter {
         const { Open } = await import('unzipper')
         const directory = await Open.file(zipPath)
         if (directory.files.length > 10_000) throw new Error('Backup contains too many files')
+        if (directory.files.filter(entry => entry.path === 'lxserver.db' && entry.type === 'File').length !== 1) {
+            throw new Error('备份缺少有效数据库，无法恢复歌单和设置')
+        }
         let totalBytes = 0
         const maxEntryBytes = 500 * 1024 * 1024
         const maxArchiveBytes = 1024 * 1024 * 1024
-        for (const entry of directory.files) {
-            const relative = String(entry.path || '').replace(/\\/g, '/')
-            if (!relative || relative.split('/').some(part => !part || part === '..' || part === '.')) continue
-            if (isProtectedFile(relative)) continue
-            const destination = resolveInside(targetPath, relative)
-            if (entry.type === 'Directory') {
-                fs.mkdirSync(destination, { recursive: true })
-                continue
-            }
-            const declaredSize = Number(entry.uncompressedSize || 0)
-            if (Number.isFinite(declaredSize) && declaredSize > maxEntryBytes) throw new Error('Backup entry is too large')
-            fs.mkdirSync(path.dirname(destination), { recursive: true })
-            const input = entry.stream()
-            const output = fs.createWriteStream(destination)
-            let entryBytes = 0
-            let settled = false
-            try {
-                await new Promise<void>((resolve, reject) => {
-                    const fail = (error: Error) => {
-                        if (settled) return
-                        settled = true
-                        input.destroy()
-                        output.destroy()
-                        reject(error)
-                    }
-                    input.on('data', (chunk: Buffer) => {
-                        entryBytes += chunk.length
-                        totalBytes += chunk.length
-                        if (entryBytes > maxEntryBytes) fail(new Error('Backup entry is too large'))
-                        else if (totalBytes > maxArchiveBytes) fail(new Error('Backup is too large'))
+        const snapshotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lx-db-restore-'))
+        const snapshotPath = path.join(snapshotDir, 'lxserver.db')
+        let hasDatabase = false
+        try {
+            for (const entry of directory.files) {
+                const relative = String(entry.path || '').replace(/\\/g, '/')
+                if (!relative || relative.split('/').some(part => !part || part === '..' || part === '.')) continue
+                const isDatabase = relative === 'lxserver.db'
+                if (isDatabase && (hasDatabase || entry.type !== 'File' || path.resolve(targetPath) !== path.resolve(this.dataPath))) {
+                    throw new Error('备份数据库条目不合法')
+                }
+                if (!isDatabase && isProtectedFile(relative)) continue
+                const destination = isDatabase ? snapshotPath : resolveInside(targetPath, relative)
+                if (isDatabase) hasDatabase = true
+                if (entry.type === 'Directory') {
+                    fs.mkdirSync(destination, { recursive: true })
+                    continue
+                }
+                const declaredSize = Number(entry.uncompressedSize || 0)
+                if (Number.isFinite(declaredSize) && declaredSize > maxEntryBytes) throw new Error('Backup entry is too large')
+                fs.mkdirSync(path.dirname(destination), { recursive: true })
+                const input = entry.stream()
+                const output = fs.createWriteStream(destination)
+                let entryBytes = 0
+                let settled = false
+                try {
+                    await new Promise<void>((resolve, reject) => {
+                        const fail = (error: Error) => {
+                            if (settled) return
+                            settled = true
+                            input.destroy()
+                            output.destroy()
+                            reject(error)
+                        }
+                        input.on('data', (chunk: Buffer) => {
+                            entryBytes += chunk.length
+                            totalBytes += chunk.length
+                            if (entryBytes > maxEntryBytes) fail(new Error('Backup entry is too large'))
+                            else if (totalBytes > maxArchiveBytes) fail(new Error('Backup is too large'))
+                        })
+                        input.on('error', fail)
+                        output.on('error', fail)
+                        output.on('finish', () => {
+                            if (settled) return
+                            settled = true
+                            resolve()
+                        })
+                        input.pipe(output)
                     })
-                    input.on('error', fail)
-                    output.on('error', fail)
-                    output.on('finish', () => {
-                        if (settled) return
-                        settled = true
-                        resolve()
-                    })
-                    input.pipe(output)
-                })
-            } catch (error) {
-                try { fs.unlinkSync(destination) } catch { }
-                throw error
+                } catch (error) {
+                    try { fs.unlinkSync(destination) } catch { }
+                    throw error
+                }
             }
+            if (hasDatabase) {
+                const { resetUserSpaces } = await import('@/user')
+                const { clearPlayerSessionCache } = await import('@/server/auth')
+                const { reloadUserAuthAfterRestore } = await import('@/server/routes/auth')
+                const { disconnectSyncClientsForRestore } = await import('@/server/sync/socketServer')
+                restoreDatabaseSnapshot(snapshotPath)
+                disconnectSyncClientsForRestore()
+                resetUserSpaces()
+                clearPlayerSessionCache()
+                reloadUserAuthAfterRestore()
+            }
+        } finally {
+            if (fs.existsSync(snapshotPath)) fs.unlinkSync(snapshotPath)
+            fs.rmdirSync(snapshotDir)
         }
     }
 

@@ -139,6 +139,16 @@ export const persistentTokenMeta = new Map<string, {
 /** lastUsed 防抖写盘队列：username → debounce timer */
 const persistentTokenSaveQueue = new Map<string, ReturnType<typeof setTimeout>>()
 
+/** Discard pre-restore state, including delayed writes which could overwrite restored tokens. */
+export const reloadUserAuthAfterRestore = (): void => {
+  for (const timer of persistentTokenSaveQueue.values()) clearTimeout(timer)
+  persistentTokenSaveQueue.clear()
+  userSessions.clear()
+  persistentTokens.clear()
+  persistentTokenMeta.clear()
+  for (const user of global.lx?.config?.users || []) saveUserTokenConfig(user.name, getUserTokenConfig(user.name))
+}
+
 /** Revoke all credentials and pending token writes when an account is removed. */
 export const revokeUserAuth = (username: string): void => {
   getDb().run('DELETE FROM user_sessions WHERE user_name = ?', [username])

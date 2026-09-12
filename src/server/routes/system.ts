@@ -475,7 +475,7 @@ export const createSystemRouter = (): Router => {
     if (!verifyAdminAuth(ctx.request)) return ctx.fail(401, '登录状态已失效，请重新登录')
     const webdavSync = global.lx.webdavSync
     if (!webdavSync) return ctx.json({ success: false, message: 'WebDAV not initialized' }, 500)
-    const success = await webdavSync.restoreFromRemote()
+    const success = await webdavSync.downloadLatestBackup()
     if (success) await reloadServerData()
     return ctx.json({ success })
   })

@@ -213,6 +213,7 @@ export const authConnect = async (reqOrUrl: http.IncomingMessage | Request | str
 
 export const SESSION_COOKIE_NAME = 'lx_player_session'
 const playerSessions = new Map<string, { createdAt: number }>()
+export const clearPlayerSessionCache = (): void => { playerSessions.clear() }
 export const PLAYER_SESSION_TTL = 30 * 24 * 60 * 60 * 1000
 const MAX_PLAYER_SESSIONS = 10_000
 

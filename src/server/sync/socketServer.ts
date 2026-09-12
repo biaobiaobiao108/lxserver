@@ -116,6 +116,15 @@ export const handleSocketUpgrade = async (
 const socketMap = new WeakMap<ServerWebSocket<LX.SocketData>, LX.Socket>()
 const activeClients = new Set<LX.Socket>()
 
+export const disconnectSyncClientsForRestore = (): void => {
+  for (const client of activeClients) {
+    client.isReady = false
+    client.moduleReadys.list = false
+    client.moduleReadys.dislike = false
+    client.terminate?.()
+  }
+}
+
 /** 创建或获取 LX.Socket 适配代理 */
 const getOrCreateSocketAdapter = (ws: ServerWebSocket<LX.SocketData>): LX.Socket => {
   let adapter = socketMap.get(ws)

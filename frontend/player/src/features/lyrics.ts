@@ -99,10 +99,12 @@ function toggleLyrics(fromPopState = false) {
             if (window.musicVisualizer) window.musicVisualizer.applySettings();
         }, 300);
 
-        // 开启歌词详情页沉浸极简底栏模式
+        // 开启歌词详情页沉浸极简底栏模式并确保底栏交互正常可用
         const footerEl = document.getElementById('player-footer');
         if (footerEl) {
             footerEl.classList.add('player-footer-immersive');
+            if (footerEl.inert) footerEl.inert = false;
+            if (footerEl.hasAttribute('inert')) footerEl.removeAttribute('inert');
         }
 
         // 如果开启了自动精简，且在手机端进入详情页，则自动精简
@@ -111,10 +113,12 @@ function toggleLyrics(fromPopState = false) {
         }
     } else {
         view.classList.add('translate-y-[100%]', 'opacity-0');
-        // 退出歌词详情页，平滑恢复完整底栏模式
+        // 退出歌词详情页，平滑恢复完整底栏模式并确保底栏交互正常
         const footerEl = document.getElementById('player-footer');
         if (footerEl) {
             footerEl.classList.remove('player-footer-immersive');
+            if (footerEl.inert) footerEl.inert = false;
+            if (footerEl.hasAttribute('inert')) footerEl.removeAttribute('inert');
         }
 
         setTimeout(() => {

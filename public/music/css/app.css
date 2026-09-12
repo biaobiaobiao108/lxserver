@@ -1648,6 +1648,8 @@ aside {
 }
 
 #player-footer {
+    z-index: 60 !important;
+    pointer-events: auto !important;
     transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1) !important;
     will-change: transform;
 }

@@ -5121,6 +5121,17 @@ function toggleDetailCover() {
 
         container.classList.add('has-centered-lyrics');
 
+        // 更新唱片/大歌词切换按钮状态
+        const toggleBtn = document.getElementById('btn-toggle-cover-mode');
+        if (toggleBtn) {
+            toggleBtn.setAttribute('aria-pressed', 'true');
+            toggleBtn.classList.add('text-emerald-500', 'border-emerald-500/30', 't-bg-panel/80');
+            const icon = toggleBtn.querySelector('i');
+            const label = toggleBtn.querySelector('span');
+            if (icon) icon.className = 'fas fa-compact-disc text-xs';
+            if (label) label.textContent = '显示唱片';
+        }
+
     } else {
         // --- 显示封面 ---
         cover.style.display = 'block'; // 恢复显示
@@ -5155,6 +5166,17 @@ function toggleDetailCover() {
 
         if (detailTitle) {
             detailTitle.classList.add('md:mx-0');
+        }
+
+        // 更新唱片/大歌词切换按钮状态
+        const toggleBtn = document.getElementById('btn-toggle-cover-mode');
+        if (toggleBtn) {
+            toggleBtn.setAttribute('aria-pressed', 'false');
+            toggleBtn.classList.remove('text-emerald-500', 'border-emerald-500/30', 't-bg-panel/80');
+            const icon = toggleBtn.querySelector('i');
+            const label = toggleBtn.querySelector('span');
+            if (icon) icon.className = 'fas fa-align-left text-xs';
+            if (label) label.textContent = '大歌词';
         }
     }
 }

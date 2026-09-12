@@ -3184,7 +3184,13 @@
             <div class="flex-col items-center hidden md:flex">
                 <h2 class="text-sm font-bold text-gray-500 tracking-widest uppercase">Now Playing</h2>
             </div>
-            <div class="w-10"></div> <!-- Spacer -->
+            <div class="flex items-center gap-3">
+                <button id="btn-toggle-cover-mode" data-event-click-action="toggleDetailCover" aria-label="切换唱片与大歌词" aria-pressed="false"
+                    class="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold t-text-muted hover:text-emerald-500 t-bg-panel/40 hover:t-bg-panel/80 border t-border-main/50 transition-all shadow-sm backdrop-blur-md">
+                    <i class="fas fa-align-left text-xs"></i>
+                    <span class="hidden sm:inline">大歌词</span>
+                </button>
+            </div>
         </div>
 
         <!-- Main Content -->
@@ -3491,7 +3497,7 @@
         </div>
 
         <!-- Right: Audio Quality, Volume & Queue Tools -->
-        <div class="w-full md:w-[28%] hidden md:flex items-center justify-end gap-2.5 lg:gap-3.5 order-2 md:order-none pr-8">
+        <div id="player-right-tools" class="player-footer-right-tools w-full md:w-[28%] hidden md:flex items-center justify-end gap-2.5 lg:gap-3.5 order-2 md:order-none pr-8">
             <!-- Quality Badge Button -->
             <div id="player-quality-control" class="relative flex items-center">
                 <button id="player-quality-tag" type="button" class="badge-quality-runtime player-secondary-action player-quality-tag select-none"

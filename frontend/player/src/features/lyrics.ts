@@ -99,12 +99,24 @@ function toggleLyrics(fromPopState = false) {
             if (window.musicVisualizer) window.musicVisualizer.applySettings();
         }, 300);
 
+        // 开启歌词详情页沉浸极简底栏模式
+        const footerEl = document.getElementById('player-footer');
+        if (footerEl) {
+            footerEl.classList.add('player-footer-immersive');
+        }
+
         // 如果开启了自动精简，且在手机端进入详情页，则自动精简
         if (settings.autoCompactPlaybar !== false && window.innerWidth < 1025) {
             window.setCompactPlaybar(true);
         }
     } else {
         view.classList.add('translate-y-[100%]', 'opacity-0');
+        // 退出歌词详情页，平滑恢复完整底栏模式
+        const footerEl = document.getElementById('player-footer');
+        if (footerEl) {
+            footerEl.classList.remove('player-footer-immersive');
+        }
+
         setTimeout(() => {
             view.classList.add('hidden');
             // Notify visualizer to switch back to footer
@@ -539,10 +551,11 @@ function syncLyricByLineNum(lineNum) {
 
 /**
  * 启动逐字动画更新循环 (仅针对有逐字数据的行)
+ * 极致性能重构：预提取/缓存节点数据，脏值比对避免无谓 DOM/CSS 变量写，消除微卡顿
  */
 function startWordProgressUpdate(lineIndex, lineEl, lineData) {
-    const wordSpans = lineEl.querySelectorAll('.word-item');
-    if (!wordSpans.length) return;
+    const rawWordSpans = lineEl.querySelectorAll('.word-item');
+    if (!rawWordSpans.length) return;
 
     const lineStartTime = lineData.time;
 
@@ -554,11 +567,59 @@ function startWordProgressUpdate(lineIndex, lineEl, lineData) {
     }
     if (lineDuration <= 0) lineDuration = 5000;
 
-    // 提前计算本行所有字的总演唱时长，用于翻译进度的精准映射
+    // 预提取所有 word 节点的时长与起止时间，避免每一帧读取 dataset
     let totalWordsDuration = 0;
-    wordSpans.forEach(span => {
-        totalWordsDuration += parseInt(span.dataset.duration) || 0;
-    });
+    const wordsMeta = new Array(rawWordSpans.length);
+    for (let i = 0; i < rawWordSpans.length; i++) {
+        const span = rawWordSpans[i] as HTMLElement;
+        const start = parseInt(span.dataset.start || '0', 10) || 0;
+        const duration = parseInt(span.dataset.duration || '0', 10) || 0;
+        totalWordsDuration += duration;
+        wordsMeta[i] = {
+            el: span,
+            start,
+            duration,
+            lastProgress: -1,
+            lastState: '' // 'none', 'playing', 'passed'
+        };
+    }
+
+    // 预提取所有 extended (翻译/罗马音) 节点，避免每一帧 querySelector
+    const extSpans = lineEl.querySelectorAll('.extended');
+    const extMeta: Array<{
+        el: HTMLElement;
+        items: Array<{
+            el: HTMLElement;
+            itemStart: number;
+            itemEnd: number;
+            perItemWeight: number;
+            lastProgress: number;
+            lastState: string;
+        }>;
+    }> = [];
+
+    for (let i = 0; i < extSpans.length; i++) {
+        const ext = extSpans[i] as HTMLElement;
+        const items = ext.querySelectorAll('.ext-item');
+        const itemCount = items.length;
+        if (itemCount > 0) {
+            const perItemWeight = 100 / itemCount;
+            const itemsArr = new Array(itemCount);
+            for (let j = 0; j < itemCount; j++) {
+                itemsArr[j] = {
+                    el: items[j] as HTMLElement,
+                    itemStart: j * perItemWeight,
+                    itemEnd: (j + 1) * perItemWeight,
+                    perItemWeight,
+                    lastProgress: -1,
+                    lastState: ''
+                };
+            }
+            extMeta.push({ el: ext, items: itemsArr });
+        }
+    }
+
+    let lastLineProgress = -1;
 
     function update() {
         // 如果当前播放行已改变，或音频暂停，停止动画
@@ -571,64 +632,95 @@ function startWordProgressUpdate(lineIndex, lineEl, lineData) {
 
         let sungDuration = 0;
 
-        // 2. 更新逐字进度
-        wordSpans.forEach(span => {
-            const start = parseInt(span.dataset.start);
-            const duration = parseInt(span.dataset.duration);
+        // 1. 更新逐字进度 (脏检查)
+        for (let i = 0; i < wordsMeta.length; i++) {
+            const meta = wordsMeta[i];
+            const start = meta.start;
+            const duration = meta.duration;
 
             if (relativeTime >= start + duration) {
                 // 已播放完
                 sungDuration += duration;
-                span.style.setProperty('--word-progress', '100%');
-                span.classList.add('passed');
-                span.classList.remove('playing');
+                if (meta.lastState !== 'passed') {
+                    meta.lastState = 'passed';
+                    meta.lastProgress = 100;
+                    meta.el.style.setProperty('--word-progress', '100%');
+                    meta.el.classList.add('passed');
+                    meta.el.classList.remove('playing');
+                }
             } else if (relativeTime >= start) {
                 // 正在播放中
-                sungDuration += (relativeTime - start);
-                const progress = Math.min(100, Math.max(0, ((relativeTime - start) / duration) * 100));
-                span.style.setProperty('--word-progress', `${progress}%`);
-                span.classList.add('playing');
-                span.classList.remove('passed');
+                const elapsed = relativeTime - start;
+                sungDuration += elapsed;
+                const rawProgress = duration > 0 ? (elapsed / duration) * 100 : 100;
+                const progress = Math.min(100, Math.max(0, rawProgress));
+
+                // 脏检查：进度变动超过 0.5% 或从其他状态切入时才写入 DOM
+                if (meta.lastState !== 'playing' || Math.abs(progress - meta.lastProgress) >= 0.5) {
+                    meta.lastProgress = progress;
+                    meta.el.style.setProperty('--word-progress', `${progress.toFixed(1)}%`);
+                    if (meta.lastState !== 'playing') {
+                        meta.lastState = 'playing';
+                        meta.el.classList.add('playing');
+                        meta.el.classList.remove('passed');
+                    }
+                }
             } else {
                 // 尚未播放
-                span.style.setProperty('--word-progress', '0%');
-                span.classList.remove('passed', 'playing');
+                if (meta.lastState !== 'none') {
+                    meta.lastState = 'none';
+                    meta.lastProgress = 0;
+                    meta.el.style.setProperty('--word-progress', '0%');
+                    meta.el.classList.remove('passed', 'playing');
+                }
             }
-        });
+        }
 
-        // 1. 更新整行进度 (用于带有逐字数据的翻译/罗马音平滑扫过)
-        // 通过 实际已唱时长 / 总发声时长，实现翻译和原词进度严丝合缝对齐，消除"晚来早走"现象
-        const lineProgress = totalWordsDuration > 0 ? (sungDuration / totalWordsDuration) * 100 : Math.min(100, Math.max(0, (relativeTime / lineDuration) * 100));
-        lineEl.style.setProperty('--line-progress', `${lineProgress}%`);
+        // 2. 更新整行进度 (用于带有逐字数据的翻译/罗马音平滑扫过)
+        const lineProgress = totalWordsDuration > 0
+            ? (sungDuration / totalWordsDuration) * 100
+            : Math.min(100, Math.max(0, (relativeTime / lineDuration) * 100));
 
-        // 2. 更新扩展歌词逐字类 (翻译/罗马音) - 实现与主词同步的平滑“染色”
-        const extSpans = lineEl.querySelectorAll('.extended');
-        extSpans.forEach(ext => {
-            const items = ext.querySelectorAll('.ext-item');
-            const itemCount = items.length;
-            if (itemCount > 0) {
-                const perItemWeight = 100 / itemCount;
-                items.forEach((item, idx) => {
-                    const itemStart = idx * perItemWeight;
-                    const itemEnd = (idx + 1) * perItemWeight;
+        if (Math.abs(lineProgress - lastLineProgress) >= 0.5) {
+            lastLineProgress = lineProgress;
+            lineEl.style.setProperty('--line-progress', `${lineProgress.toFixed(1)}%`);
+        }
 
-                    if (lineProgress >= itemEnd) {
-                        item.style.setProperty('--word-progress', '100%');
-                        item.classList.add('passed');
-                        item.classList.remove('playing');
-                    } else if (lineProgress >= itemStart) {
-                        // 正在该字符/单词内平滑填充
-                        const progress = ((lineProgress - itemStart) / perItemWeight) * 100;
-                        item.style.setProperty('--word-progress', `${progress}%`);
-                        item.classList.add('playing');
-                        item.classList.remove('passed');
-                    } else {
-                        item.style.setProperty('--word-progress', '0%');
-                        item.classList.remove('passed', 'playing');
+        // 3. 更新扩展歌词逐字类 (翻译/罗马音) - 同步平滑染色
+        for (let e = 0; e < extMeta.length; e++) {
+            const ext = extMeta[e];
+            for (let j = 0; j < ext.items.length; j++) {
+                const item = ext.items[j];
+                if (lineProgress >= item.itemEnd) {
+                    if (item.lastState !== 'passed') {
+                        item.lastState = 'passed';
+                        item.lastProgress = 100;
+                        item.el.style.setProperty('--word-progress', '100%');
+                        item.el.classList.add('passed');
+                        item.el.classList.remove('playing');
                     }
-                });
+                } else if (lineProgress >= item.itemStart) {
+                    const rawP = ((lineProgress - item.itemStart) / item.perItemWeight) * 100;
+                    const p = Math.min(100, Math.max(0, rawP));
+                    if (item.lastState !== 'playing' || Math.abs(p - item.lastProgress) >= 0.5) {
+                        item.lastProgress = p;
+                        item.el.style.setProperty('--word-progress', `${p.toFixed(1)}%`);
+                        if (item.lastState !== 'playing') {
+                            item.lastState = 'playing';
+                            item.el.classList.add('playing');
+                            item.el.classList.remove('passed');
+                        }
+                    }
+                } else {
+                    if (item.lastState !== 'none') {
+                        item.lastState = 'none';
+                        item.lastProgress = 0;
+                        item.el.style.setProperty('--word-progress', '0%');
+                        item.el.classList.remove('passed', 'playing');
+                    }
+                }
             }
-        });
+        }
 
         state.wordAnimationId = requestAnimationFrame(update);
     }

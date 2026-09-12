@@ -1688,6 +1688,15 @@ aside {
     }
 }
 
+/* 现代移动与桌面端触控微交互：按压轻微回弹反馈 */
+#btn-toggle-cover-mode:active,
+#btn-toggle-lyrics:active,
+.player-secondary-action:active,
+.netease-nav-item:active {
+    transform: scale(0.96);
+    transition: transform 0.12s cubic-bezier(0.2, 0.8, 0.2, 1) !important;
+}
+
 /* Buffering status dots animation */
 @keyframes loading-bounce {
 

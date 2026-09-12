@@ -163,7 +163,13 @@ export function initDashboardFeature(context: AdminFeatureContext) {
         const height = 60;
         const padding = 5;
 
-        let html = '';
+        // 检查 svg 是否已经初始化过持久化结构
+        let defs = svg.querySelector('defs');
+        if (!defs) {
+            defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
+            svg.appendChild(defs);
+        }
+
         series.forEach((s, idx) => {
             if (s.data.length < 2) return;
 
@@ -182,23 +188,49 @@ export function initDashboardFeature(context: AdminFeatureContext) {
             }
             d += ` L ${points[points.length - 1].x} ${points[points.length - 1].y}`;
 
+            const gradId = `grad-${svgId}-${idx}`;
+            const fillPathId = `${svgId}-fill-${idx}`;
+            const linePathId = `${svgId}-line-${idx}`;
+
             if (s.fill) {
                 const fillD = d + ` L ${width} ${height} L 0 ${height} Z`;
-                html += `
-                    <defs>
-                        <linearGradient id="grad-${svgId}-${idx}" x1="0%" y1="0%" x2="0%" y2="100%">
-                            <stop offset="0%" style="stop-color:${s.color};stop-opacity:0.3" />
-                            <stop offset="100%" style="stop-color:${s.color};stop-opacity:0" />
-                        </linearGradient>
-                    </defs>
-                    <path d="${fillD}" fill="url(#grad-${svgId}-${idx})" />
-                `;
+                let grad = defs.querySelector(`#${gradId}`);
+                if (!grad) {
+                    grad = document.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+                    grad.id = gradId;
+                    grad.setAttribute('x1', '0%');
+                    grad.setAttribute('y1', '0%');
+                    grad.setAttribute('x2', '0%');
+                    grad.setAttribute('y2', '100%');
+                    grad.innerHTML = `
+                        <stop offset="0%" style="stop-color:${s.color};stop-opacity:0.3" />
+                        <stop offset="100%" style="stop-color:${s.color};stop-opacity:0" />
+                    `;
+                    defs.appendChild(grad);
+                }
+
+                let fillPath = svg.querySelector(`#${fillPathId}`);
+                if (!fillPath) {
+                    fillPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    fillPath.id = fillPathId;
+                    fillPath.setAttribute('fill', `url(#${gradId})`);
+                    svg.appendChild(fillPath);
+                }
+                fillPath.setAttribute('d', fillD);
             }
 
-            html += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.strokeWidth || 2}" stroke-linecap="round" />`;
+            let linePath = svg.querySelector(`#${linePathId}`);
+            if (!linePath) {
+                linePath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                linePath.id = linePathId;
+                linePath.setAttribute('fill', 'none');
+                linePath.setAttribute('stroke', s.color);
+                linePath.setAttribute('stroke-width', String(s.strokeWidth || 2));
+                linePath.setAttribute('stroke-linecap', 'round');
+                svg.appendChild(linePath);
+            }
+            linePath.setAttribute('d', d);
         });
-
-        svg.innerHTML = html;
     }
     return {
         loadDashboard,

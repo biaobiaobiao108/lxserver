@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lx-music-web-v28';
+const CACHE_NAME = 'lx-music-web-v29';
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
@@ -6,6 +6,7 @@ const ASSETS_TO_CACHE = [
     './app.js',
     // CSS
     './css/theme_variables.css',
+    './css/app.css',
     './assets/fontawesome/css/all.min.css',
     // 核心 JS
     './css/tailwind.generated.css',

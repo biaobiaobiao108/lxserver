@@ -4,6 +4,7 @@ import os from 'node:os'
 import crypto from 'node:crypto'
 import http from 'node:http'
 import https from 'node:https'
+import { Readable, Transform, pipeline } from 'node:stream'
 import { Router, type HttpContext } from '../core'
 import { toUserMessage } from '../core/context'
 import { verifyAdminAuth } from '../auth'
@@ -16,6 +17,26 @@ import { accessLog } from '@/utils/log4js'
 import { assertSafeRemoteHttpUrl } from '../networkSecurity'
 import { resolveInside } from '@/utils/pathSecurity'
 import { identifyLocalSong } from '../utils/identify'
+
+/** Keep upstream buffers bounded by downstream demand; cancellation tears down the whole pipeline. */
+export const createProxyResponseStream = (source: Readable, request: http.ClientRequest, maxBytes: number): ReadableStream => {
+  let received = 0
+  const limited = new Transform({
+    highWaterMark: 64 * 1024,
+    transform(chunk: Buffer, _encoding, callback) {
+      received += chunk.byteLength
+      if (received > maxBytes) callback(new Error('Remote file is too large'))
+      else callback(null, chunk)
+    },
+  })
+  const stream = Readable.toWeb(limited, {
+    strategy: { highWaterMark: 64 * 1024, size: chunk => chunk.byteLength },
+  }) as unknown as ReadableStream
+  pipeline(source, limited, error => {
+    if (error) request.destroy()
+  })
+  return stream
+}
 
 type MusicTagNative = {
   MusicTagger: new () => any
@@ -972,6 +993,7 @@ export const createCacheRouter = (): Router => {
               method: 'GET',
               lookup: parsedUrl.lookup,
               agent: false,
+              signal: ctx.request.signal,
               headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                 'Referer': parsedUrl.origin,
@@ -996,7 +1018,7 @@ export const createCacheRouter = (): Router => {
               const maxAudioBytes = 500 * 1024 * 1024
               const declaredLength = Number(proxyRes.headers['content-length'] || 0)
               if (declaredLength > maxAudioBytes) {
-                proxyRes.resume()
+                proxyRes.destroy()
                 resolve(ctx.fail(413, '远程文件过大，已超过允许的下载上限'))
                 return
               }
@@ -1205,22 +1227,7 @@ export const createCacheRouter = (): Router => {
                 return
               }
 
-              // 零缓冲流式代理返回给客户端
-              let received = 0
-              proxyRes.on('data', (chunk: Buffer) => {
-                received += chunk.length
-                if (received > maxAudioBytes) proxyRes.destroy(new Error('Remote file is too large'))
-              })
-              const stream = new ReadableStream({
-                start(controller) {
-                  proxyRes.on('data', (chunk: Buffer) => controller.enqueue(new Uint8Array(chunk)))
-                  proxyRes.on('end', () => controller.close())
-                  proxyRes.on('error', (err: Error) => controller.error(err))
-                },
-                cancel() {
-                  proxyReq.destroy()
-                },
-              })
+              const stream = createProxyResponseStream(proxyRes, proxyReq, maxAudioBytes)
 
               resolve(new Response(stream, {
                 status: proxyRes.statusCode || 200,

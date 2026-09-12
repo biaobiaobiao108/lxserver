@@ -8,7 +8,37 @@ import { EventEmitter } from 'node:events'
 import { Readable } from 'node:stream'
 import * as identify from '@/server/utils/identify'
 import * as fileCache from '@/server/fileCache'
-import { createCacheRouter } from '@/server/routes/cache'
+import { createCacheRouter, createProxyResponseStream } from '@/server/routes/cache'
+
+test('proxy stream bounds unread data and cancels the upstream transport', async () => {
+  let produced = 0
+  let destroyed = false
+  const source = new Readable({
+    highWaterMark: 16 * 1024,
+    read() {
+      produced += 16 * 1024
+      this.push(Buffer.alloc(16 * 1024))
+    },
+  })
+  const stream = createProxyResponseStream(source, { destroy() { destroyed = true } } as any, 10 * 1024 * 1024)
+  await Bun.sleep(20)
+  expect(produced).toBeLessThan(512 * 1024)
+  await stream.cancel()
+  await Bun.sleep(10)
+  expect(source.destroyed).toBe(true)
+  expect(destroyed).toBe(true)
+})
+
+test('proxy stream propagates size violations and truncated upstream responses', async () => {
+  for (const oversized of [true, false]) {
+    let destroyed = false
+    const source = oversized ? Readable.from([Buffer.alloc(128)]) : new Readable({ read() { this.destroy(new Error('truncated')) } })
+    const stream = createProxyResponseStream(source, { destroy() { destroyed = true } } as any, 64)
+    await expect(new Response(stream).arrayBuffer()).rejects.toThrow(oversized ? 'Remote file is too large' : 'truncated')
+    await Bun.sleep(10)
+    expect(destroyed).toBe(true)
+  }
+})
 
 test('download proxy isolates active content and preserves media responses', async () => {
   const lookup = spyOn(dns, 'lookup').mockResolvedValue([{ address: '8.8.8.8', family: 4 }] as any)
